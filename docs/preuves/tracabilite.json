@@ -1,0 +1,2801 @@
+{
+ "totals": {
+  "cahier": {
+   "total": 127,
+   "FONCTIONNE": 57,
+   "PARTIEL": 8,
+   "NE FONCTIONNE PAS": 5,
+   "NON TESTABLE EN LOCAL": 57
+  },
+  "decisions": {
+   "total": 20,
+   "FONCTIONNE": 11,
+   "PARTIEL": 1,
+   "NE FONCTIONNE PAS": 2,
+   "NON TESTABLE EN LOCAL": 6
+  }
+ },
+ "cahier": [
+  {
+   "id": "C001",
+   "section": "1.4",
+   "text": "Budget gratuit : fonctions essentielles sans Nitro, boost ni service payant",
+   "doc": "oui",
+   "flag": "DISCORD_BOOSTERS_ENABLED (cosmétique seulement)",
+   "verdict": "FONCTIONNE",
+   "scenario": "Scénario exécuté : références XP/étages/vote dans booster-support*.ts : « aucune » ; fichiers de paiement dans src/ : « aucun »",
+   "reason": "",
+   "tests": [],
+   "captures": []
+  },
+  {
+   "id": "C002",
+   "section": "2.1",
+   "text": "Expérience quotidienne accessible depuis Discord (commandes, boutons, modales)",
+   "doc": "oui",
+   "flag": "TOWER_CHALLENGES_ENABLED",
+   "verdict": "NON TESTABLE EN LOCAL",
+   "scenario": "Logique simulée uniquement (clients Discord remplacés par des doublures) : src/lib/discord-commands-manifest.test.ts 4/4.",
+   "reason": "L'effet réel se produit dans Discord (serveur, rôles, salons, MP) : impossible sans appel Discord.",
+   "tests": [
+    {
+     "file": "src/lib/discord-commands-manifest.test.ts",
+     "status": "passed",
+     "passed": 4,
+     "total": 4
+    }
+   ],
+   "captures": []
+  },
+  {
+   "id": "C003",
+   "section": "2.2",
+   "text": "Actions GameNight → Discord sans doublon, interactions Discord → GameNight",
+   "doc": "oui",
+   "flag": "NOTIFICATION_EXECUTOR_ENABLED",
+   "verdict": "NON TESTABLE EN LOCAL",
+   "scenario": "Logique simulée uniquement (clients Discord remplacés par des doublures) : src/lib/notification-executor.integration.test.ts 24/24.",
+   "reason": "L'effet réel se produit dans Discord (serveur, rôles, salons, MP) : impossible sans appel Discord.",
+   "tests": [
+    {
+     "file": "src/lib/notification-executor.integration.test.ts",
+     "status": "passed",
+     "passed": 24,
+     "total": 24
+    }
+   ],
+   "captures": []
+  },
+  {
+   "id": "C004",
+   "section": "2.3",
+   "text": "Connexion non obligatoire pour Discord, obligatoire pour les fonctions avancées",
+   "doc": "oui",
+   "flag": "aucun (connexion fermée S0 toujours active)",
+   "verdict": "FONCTIONNE",
+   "scenario": "Tests exécutés : src/lib/s0-access-controls.integration.test.ts 22/22.",
+   "reason": "",
+   "tests": [
+    {
+     "file": "src/lib/s0-access-controls.integration.test.ts",
+     "status": "passed",
+     "passed": 22,
+     "total": 22
+    }
+   ],
+   "captures": [
+    "docs/preuves/captures/nouveau-bureau-profil.png",
+    "docs/preuves/captures/actif-bureau-profil.png"
+   ]
+  },
+  {
+   "id": "C005",
+   "section": "3.1",
+   "text": "Sept espaces et organisation du serveur",
+   "doc": "partielle",
+   "flag": "aucun (simulation seulement)",
+   "verdict": "NON TESTABLE EN LOCAL",
+   "scenario": "Logique simulée uniquement (clients Discord remplacés par des doublures) : src/lib/tower-layout-dryrun.test.ts 15/15.",
+   "reason": "L'effet réel se produit dans Discord (serveur, rôles, salons, MP) : impossible sans appel Discord.",
+   "tests": [
+    {
+     "file": "src/lib/tower-layout-dryrun.test.ts",
+     "status": "passed",
+     "passed": 15,
+     "total": 15
+    }
+   ],
+   "captures": []
+  },
+  {
+   "id": "C006",
+   "section": "4.1–4.2",
+   "text": "Accueil immersif et parcours sans GameNight (panneau à 3 boutons)",
+   "doc": "oui",
+   "flag": "TOWER_ONBOARDING_PANEL_ENABLED",
+   "verdict": "NON TESTABLE EN LOCAL",
+   "scenario": "Logique simulée uniquement (clients Discord remplacés par des doublures) : src/lib/tower-onboarding-panel.test.ts 2/2.",
+   "reason": "L'effet réel se produit dans Discord (serveur, rôles, salons, MP) : impossible sans appel Discord.",
+   "tests": [
+    {
+     "file": "src/lib/tower-onboarding-panel.test.ts",
+     "status": "passed",
+     "passed": 2,
+     "total": 2
+    }
+   ],
+   "captures": []
+  },
+  {
+   "id": "C007",
+   "section": "4.4",
+   "text": "Sélection de jeux et d'intérêts modernisée plutôt que dupliquée (/role)",
+   "doc": "oui",
+   "flag": "DISCORD_ROLE_COMMAND_ENABLED",
+   "verdict": "NON TESTABLE EN LOCAL",
+   "scenario": "Logique simulée uniquement (clients Discord remplacés par des doublures) : src/lib/discord-role-command.test.ts 24/24.",
+   "reason": "L'effet réel se produit dans Discord (serveur, rôles, salons, MP) : impossible sans appel Discord.",
+   "tests": [
+    {
+     "file": "src/lib/discord-role-command.test.ts",
+     "status": "passed",
+     "passed": 24,
+     "total": 24
+    }
+   ],
+   "captures": []
+  },
+  {
+   "id": "C008",
+   "section": "6.1",
+   "text": "Grades Régulars / Irregular / Ranker / High Ranker",
+   "doc": "oui",
+   "flag": "TOWER_CHALLENGES_ENABLED ; TOWER_IRREGULAR_GRANTS_ENABLED (Irregular manuel)",
+   "verdict": "FONCTIONNE",
+   "scenario": "Tests exécutés : src/lib/tower-ranks.test.ts 24/24.",
+   "reason": "",
+   "tests": [
+    {
+     "file": "src/lib/tower-ranks.test.ts",
+     "status": "passed",
+     "passed": 24,
+     "total": 24
+    }
+   ],
+   "captures": [
+    "docs/preuves/captures/visiteur-bureau-tower.png",
+    "docs/preuves/captures/nouveau-bureau-tower.png"
+   ]
+  },
+  {
+   "id": "C009",
+   "section": "6.2",
+   "text": "Séparation des pouvoirs : un grade ne donne aucun droit d'administration",
+   "doc": "oui",
+   "flag": "aucun",
+   "verdict": "FONCTIONNE",
+   "scenario": "Scénario exécuté : actif /admin → HTTP 200, page finale / ; nouveau /admin → HTTP 200, page finale / ; actif /admin/tableau-de-bord → HTTP 200, page finale /",
+   "reason": "",
+   "tests": [],
+   "captures": [
+    "docs/preuves/captures/admin-bureau-admin.png",
+    "docs/preuves/captures/actif-bureau-admin.png"
+   ]
+  },
+  {
+   "id": "C010",
+   "section": "6.3",
+   "text": "Aucun nouveau rôle Discord permanent par étage",
+   "doc": "oui",
+   "flag": "aucun",
+   "verdict": "NON TESTABLE EN LOCAL",
+   "scenario": "Logique simulée uniquement (clients Discord remplacés par des doublures) : src/lib/tower-etage-roles.test.ts 17/17.",
+   "reason": "L'effet réel se produit dans Discord (serveur, rôles, salons, MP) : impossible sans appel Discord.",
+   "tests": [
+    {
+     "file": "src/lib/tower-etage-roles.test.ts",
+     "status": "passed",
+     "passed": 17,
+     "total": 17
+    }
+   ],
+   "captures": []
+  },
+  {
+   "id": "C011",
+   "section": "6.4",
+   "text": "Examen distinct des rôles techniques et historiques (admins, modération, jeux, bots, équipes, sanctions, notifications, obsolètes)",
+   "doc": "partielle",
+   "flag": "aucun",
+   "verdict": "NON TESTABLE EN LOCAL",
+   "scenario": "Logique simulée uniquement (clients Discord remplacés par des doublures) : src/lib/tower-etage-roles.test.ts 17/17.",
+   "reason": "L'effet réel se produit dans Discord (serveur, rôles, salons, MP) : impossible sans appel Discord.",
+   "tests": [
+    {
+     "file": "src/lib/tower-etage-roles.test.ts",
+     "status": "passed",
+     "passed": 17,
+     "total": 17
+    }
+   ],
+   "captures": []
+  },
+  {
+   "id": "C012",
+   "section": "7.1",
+   "text": "Étages infinis, stockés en base, affichés par le bot",
+   "doc": "oui",
+   "flag": "TOWER_CHALLENGES_ENABLED",
+   "verdict": "FONCTIONNE",
+   "scenario": "Tests exécutés : src/lib/tower-challenges.integration.test.ts 72/72.",
+   "reason": "",
+   "tests": [
+    {
+     "file": "src/lib/tower-challenges.integration.test.ts",
+     "status": "passed",
+     "passed": 72,
+     "total": 72
+    }
+   ],
+   "captures": [
+    "docs/preuves/captures/visiteur-bureau-tower.png",
+    "docs/preuves/captures/nouveau-bureau-tower.png"
+   ]
+  },
+  {
+   "id": "C013",
+   "section": "7.2",
+   "text": "Le compteur démarre de zéro sans effacer les profils ni les historiques",
+   "doc": "oui",
+   "flag": "TOWER_CHALLENGES_ENABLED",
+   "verdict": "FONCTIONNE",
+   "scenario": "Scénario exécuté : capture docs/preuves/captures/nouveau-bureau-tower.png (HTTP 200) ; extrait du texte : \"Aller au contenu\\nGameNight\\n\\nJOUER ENSEMBLE\\n\\nAccueil\\nSoirées\\nRoulette\\nTournois\\nCalendrier\\n\\nLES JEUX\\n\\nMa bibliothèque\\nBibliothèque du groupe\\nTierlist\\nÀ acheter\\nÀ vérifier\\n\\nLA COMMUNAUTÉ\\n\\nPotes\\nThe Tower\\nClassement\\nMon profil\\n↗ Le guide GameNight\\n✦\\nAnimations activées\\nN\\nNouveau Joueur\\nNiveau 1 · 0 XP\\nSERVEUR ACTUEL\\nGameNight\\n✦ Niveau 1\\n· 0 XP\\n💬\\n🔔\\n\\nGAMENIGHT · GAMENIGHT\\n\\nThe Tower\\n\\nDéfis solo et d’é\"",
+   "reason": "",
+   "tests": [],
+   "captures": [
+    "docs/preuves/captures/visiteur-bureau-tower.png",
+    "docs/preuves/captures/nouveau-bureau-tower.png"
+   ]
+  },
+  {
+   "id": "C014",
+   "section": "7.3",
+   "text": "Étages obtenus par défis, barème +1 / +2 / +3, pas de double attribution",
+   "doc": "oui",
+   "flag": "TOWER_CHALLENGES_ENABLED",
+   "verdict": "FONCTIONNE",
+   "scenario": "Tests exécutés : src/lib/tower-s1-catalogue.test.ts 15/15, src/lib/tower-challenges.integration.test.ts 72/72.",
+   "reason": "",
+   "tests": [
+    {
+     "file": "src/lib/tower-s1-catalogue.test.ts",
+     "status": "passed",
+     "passed": 15,
+     "total": 15
+    },
+    {
+     "file": "src/lib/tower-challenges.integration.test.ts",
+     "status": "passed",
+     "passed": 72,
+     "total": 72
+    }
+   ],
+   "captures": [
+    "docs/preuves/captures/visiteur-bureau-tower.png",
+    "docs/preuves/captures/nouveau-bureau-tower.png"
+   ]
+  },
+  {
+   "id": "C015",
+   "section": "7.4",
+   "text": "Progression permanente entre saisons, arrivants tardifs sans rattrapage",
+   "doc": "oui",
+   "flag": "TOWER_CHALLENGES_ENABLED",
+   "verdict": "FONCTIONNE",
+   "scenario": "Tests exécutés : src/lib/tower-standings.test.ts 50/50.",
+   "reason": "",
+   "tests": [
+    {
+     "file": "src/lib/tower-standings.test.ts",
+     "status": "passed",
+     "passed": 50,
+     "total": 50
+    }
+   ],
+   "captures": [
+    "docs/preuves/captures/nouveau-bureau-tower_palmares.png",
+    "docs/preuves/captures/actif-bureau-tower_palmares.png"
+   ]
+  },
+  {
+   "id": "C016",
+   "section": "8.2",
+   "text": "Bouton « Mon défi », 1 attribution toutes les 12 h, 48 h pour réaliser",
+   "doc": "oui",
+   "flag": "TOWER_CHALLENGES_ENABLED",
+   "verdict": "FONCTIONNE",
+   "scenario": "Tests exécutés : src/lib/tower-challenge-rules.test.ts 34/34.",
+   "reason": "",
+   "tests": [
+    {
+     "file": "src/lib/tower-challenge-rules.test.ts",
+     "status": "passed",
+     "passed": 34,
+     "total": 34
+    }
+   ],
+   "captures": [
+    "docs/preuves/captures/visiteur-bureau-tower.png",
+    "docs/preuves/captures/nouveau-bureau-tower.png"
+   ]
+  },
+  {
+   "id": "C017",
+   "section": "8.3",
+   "text": "Défi d'équipe quotidien automatique, éligibilité et anti-abus",
+   "doc": "oui",
+   "flag": "TOWER_TEAM_DAILY_ENABLED (+ TOWER_CHALLENGES_ENABLED, communityTeamsEnabled)",
+   "verdict": "FONCTIONNE",
+   "scenario": "Tests exécutés : src/lib/tower-team-daily.regression.integration.test.ts 4/4.",
+   "reason": "",
+   "tests": [
+    {
+     "file": "src/lib/tower-team-daily.regression.integration.test.ts",
+     "status": "passed",
+     "passed": 4,
+     "total": 4
+    }
+   ],
+   "captures": [
+    "docs/preuves/captures/visiteur-bureau-tower.png",
+    "docs/preuves/captures/nouveau-bureau-tower.png"
+   ]
+  },
+  {
+   "id": "C018",
+   "section": "8.4",
+   "text": "Deux réussites validées par jour au plus, même sous validations simultanées",
+   "doc": "oui",
+   "flag": "TOWER_CHALLENGES_ENABLED",
+   "verdict": "FONCTIONNE",
+   "scenario": "Tests exécutés : src/lib/tower-challenge-rules.test.ts 34/34, src/lib/tower-challenges.integration.test.ts 72/72.",
+   "reason": "",
+   "tests": [
+    {
+     "file": "src/lib/tower-challenge-rules.test.ts",
+     "status": "passed",
+     "passed": 34,
+     "total": 34
+    },
+    {
+     "file": "src/lib/tower-challenges.integration.test.ts",
+     "status": "passed",
+     "passed": 72,
+     "total": 72
+    }
+   ],
+   "captures": []
+  },
+  {
+   "id": "C019",
+   "section": "8.5",
+   "text": "Variété des défis (gaming, créatifs, absurdes, coopération, hors jeu…)",
+   "doc": "partielle",
+   "flag": "aucun",
+   "verdict": "PARTIEL",
+   "scenario": "Tests exécutés : src/lib/tower-s1-catalogue.test.ts 15/15.",
+   "reason": "Le cahier la déclare partielle ; seule la partie livrée est prouvée ci-dessous.",
+   "tests": [
+    {
+     "file": "src/lib/tower-s1-catalogue.test.ts",
+     "status": "passed",
+     "passed": 15,
+     "total": 15
+    }
+   ],
+   "captures": []
+  },
+  {
+   "id": "C020",
+   "section": "8.6",
+   "text": "Remplacement d'un défi si le jeu n'est pas possédé ; aucun achat obligatoire",
+   "doc": "oui",
+   "flag": "TOWER_CHALLENGE_REPLACEMENT_ENABLED",
+   "verdict": "FONCTIONNE",
+   "scenario": "Tests exécutés : src/lib/tower-challenge-replacement.integration.test.ts 7/7.",
+   "reason": "",
+   "tests": [
+    {
+     "file": "src/lib/tower-challenge-replacement.integration.test.ts",
+     "status": "passed",
+     "passed": 7,
+     "total": 7
+    }
+   ],
+   "captures": [
+    "docs/preuves/captures/visiteur-bureau-tower.png",
+    "docs/preuves/captures/nouveau-bureau-tower.png"
+   ]
+  },
+  {
+   "id": "C021",
+   "section": "8.7",
+   "text": "Propositions de défis par les grades élevés (≥ Ranker)",
+   "doc": "oui",
+   "flag": "TOWER_CHALLENGE_PROPOSALS_ENABLED",
+   "verdict": "FONCTIONNE",
+   "scenario": "Tests exécutés : src/lib/tower-challenge-proposals.integration.test.ts 9/9.",
+   "reason": "",
+   "tests": [
+    {
+     "file": "src/lib/tower-challenge-proposals.integration.test.ts",
+     "status": "passed",
+     "passed": 9,
+     "total": 9
+    }
+   ],
+   "captures": [
+    "docs/preuves/captures/nouveau-bureau-tower_propositions.png",
+    "docs/preuves/captures/actif-bureau-tower_propositions.png"
+   ]
+  },
+  {
+   "id": "C022",
+   "section": "9.1",
+   "text": "Dépôt de preuve postérieur à l'attribution, avec code de preuve et consentement de publication",
+   "doc": "oui",
+   "flag": "TOWER_CHALLENGES_ENABLED",
+   "verdict": "FONCTIONNE",
+   "scenario": "Tests exécutés : src/lib/tower-challenge-proof-rules.test.ts 12/12, src/lib/tower-challenges.integration.test.ts 72/72.",
+   "reason": "",
+   "tests": [
+    {
+     "file": "src/lib/tower-challenge-proof-rules.test.ts",
+     "status": "passed",
+     "passed": 12,
+     "total": 12
+    },
+    {
+     "file": "src/lib/tower-challenges.integration.test.ts",
+     "status": "passed",
+     "passed": 72,
+     "total": 72
+    }
+   ],
+   "captures": [
+    "docs/preuves/captures/visiteur-bureau-tower.png",
+    "docs/preuves/captures/nouveau-bureau-tower.png"
+   ]
+  },
+  {
+   "id": "C023",
+   "section": "9.1",
+   "text": "Les défis qui autorisent des preuves anciennes doivent l'indiquer explicitement",
+   "doc": "non",
+   "flag": "aucun",
+   "verdict": "NE FONCTIONNE PAS",
+   "scenario": "Recherche d'absence exécutée : champs de TowerChallengeDefinition : id communityId community mode title instructions rewardFloors gameId active createdAt measureKind measureAppId measureTarget measureAchievement attempts ; recherche « ancienne preuve / preuve antérieure » dans les définitions : « aucun résultat »",
+   "reason": "Exigence non implémentée.",
+   "tests": [],
+   "captures": [
+    "docs/preuves/captures/visiteur-bureau-tower.png",
+    "docs/preuves/captures/nouveau-bureau-tower.png"
+   ]
+  },
+  {
+   "id": "C024",
+   "section": "9.2",
+   "text": "Vote 24 h, 3 votants distincts, majorité stricte, pas d'auto-vote, égalité = refus, sans quorum : prolongation unique de 24 h puis rejet",
+   "doc": "oui",
+   "flag": "TOWER_CHALLENGES_ENABLED",
+   "verdict": "FONCTIONNE",
+   "scenario": "Tests exécutés : src/lib/tower-challenge-voting.test.ts 25/25.",
+   "reason": "",
+   "tests": [
+    {
+     "file": "src/lib/tower-challenge-voting.test.ts",
+     "status": "passed",
+     "passed": 25,
+     "total": 25
+    }
+   ],
+   "captures": []
+  },
+  {
+   "id": "C025",
+   "section": "9.3",
+   "text": "Contestations publiques et anti-abus (votes multiples, rejeux, non autorisés, double récompense, abus d'équipe)",
+   "doc": "oui",
+   "flag": "TOWER_CHALLENGES_ENABLED",
+   "verdict": "FONCTIONNE",
+   "scenario": "Tests exécutés : src/lib/tower-challenge-appeal-rules.test.ts 8/8, src/lib/tower-challenges.integration.test.ts 72/72.",
+   "reason": "",
+   "tests": [
+    {
+     "file": "src/lib/tower-challenge-appeal-rules.test.ts",
+     "status": "passed",
+     "passed": 8,
+     "total": 8
+    },
+    {
+     "file": "src/lib/tower-challenges.integration.test.ts",
+     "status": "passed",
+     "passed": 72,
+     "total": 72
+    }
+   ],
+   "captures": []
+  },
+  {
+   "id": "C026",
+   "section": "9.4",
+   "text": "Aucune IA ne valide une preuve",
+   "doc": "oui",
+   "flag": "aucun",
+   "verdict": "FONCTIONNE",
+   "scenario": "Scénario exécuté : dépendances IA dans package.json : « aucune » ; fichiers de src/ (hors tests) mentionnant un fournisseur d'IA : « aucun »",
+   "reason": "",
+   "tests": [],
+   "captures": []
+  },
+  {
+   "id": "C027",
+   "section": "10.1",
+   "text": "Annonce automatique des réussites (joueur ou équipe, défi, preuve publiable, difficulté, récompense, étage)",
+   "doc": "oui",
+   "flag": "TOWER_DISCORD_ANNOUNCE_ENABLED",
+   "verdict": "FONCTIONNE",
+   "scenario": "Tests exécutés : src/lib/tower-challenge-announcements.test.ts 6/6.",
+   "reason": "",
+   "tests": [
+    {
+     "file": "src/lib/tower-challenge-announcements.test.ts",
+     "status": "passed",
+     "passed": 6,
+     "total": 6
+    }
+   ],
+   "captures": []
+  },
+  {
+   "id": "C028",
+   "section": "10.2",
+   "text": "Information de publication au dépôt, données personnelles non exposées",
+   "doc": "oui",
+   "flag": "TOWER_DISCORD_ANNOUNCE_ENABLED",
+   "verdict": "FONCTIONNE",
+   "scenario": "Tests exécutés : src/lib/tower-challenges.integration.test.ts 72/72.",
+   "reason": "",
+   "tests": [
+    {
+     "file": "src/lib/tower-challenges.integration.test.ts",
+     "status": "passed",
+     "passed": 72,
+     "total": 72
+    }
+   ],
+   "captures": []
+  },
+  {
+   "id": "C029",
+   "section": "10.3",
+   "text": "Animation : réussites marquantes, exploits insolites, distinctions humoristiques, résultats de compétitions, récapitulatifs hebdomadaires, mise en avant des joueurs actifs",
+   "doc": "partielle",
+   "flag": "COMMUNITY_HIGHLIGHTS_ENABLED (exploits)",
+   "verdict": "PARTIEL",
+   "scenario": "Tests exécutés : src/lib/community-highlights.test.ts 11/11.",
+   "reason": "Le cahier la déclare partielle ; seule la partie livrée est prouvée ci-dessous.",
+   "tests": [
+    {
+     "file": "src/lib/community-highlights.test.ts",
+     "status": "passed",
+     "passed": 11,
+     "total": 11
+    }
+   ],
+   "captures": [
+    "docs/preuves/captures/nouveau-bureau-tower_palmares.png",
+    "docs/preuves/captures/actif-bureau-tower_palmares.png"
+   ]
+  },
+  {
+   "id": "C030",
+   "section": "11.1",
+   "text": "Découvrir, créer, rejoindre une équipe, candidater, recruter",
+   "doc": "oui",
+   "flag": "TEAM_APPLICATIONS_ENABLED ; TEAM_RECRUITERS_ENABLED (le socle n'a pas d'interrupteur)",
+   "verdict": "FONCTIONNE",
+   "scenario": "Tests exécutés : src/lib/team-recruiters-rules.test.ts 25/25.",
+   "reason": "",
+   "tests": [
+    {
+     "file": "src/lib/team-recruiters-rules.test.ts",
+     "status": "passed",
+     "passed": 25,
+     "total": 25
+    }
+   ],
+   "captures": [
+    "docs/preuves/captures/nouveau-bureau-equipes.png",
+    "docs/preuves/captures/actif-bureau-equipes.png",
+    "docs/preuves/captures/nouveau-bureau-equipes_candidatures.png",
+    "docs/preuves/captures/actif-bureau-equipes_candidatures.png"
+   ]
+  },
+  {
+   "id": "C031",
+   "section": "11.2",
+   "text": "Fiche d'équipe : nom, présentation, capitaine, membres, jeux, objectifs, critères de recrutement, rendez-vous",
+   "doc": "oui",
+   "flag": "TEAM_RECRUITMENT_CRITERIA_ENABLED (critères)",
+   "verdict": "FONCTIONNE",
+   "scenario": "Tests exécutés : src/lib/community-teams-rules.test.ts 8/8.",
+   "reason": "",
+   "tests": [
+    {
+     "file": "src/lib/community-teams-rules.test.ts",
+     "status": "passed",
+     "passed": 8,
+     "total": 8
+    }
+   ],
+   "captures": [
+    "docs/preuves/captures/nouveau-bureau-equipes.png",
+    "docs/preuves/captures/actif-bureau-equipes.png",
+    "docs/preuves/captures/nouveau-bureau-equipes_gestion.png",
+    "docs/preuves/captures/actif-bureau-equipes_gestion.png"
+   ]
+  },
+  {
+   "id": "C032",
+   "section": "11.2",
+   "text": "Identité visuelle d'une équipe",
+   "doc": "non",
+   "flag": "aucun",
+   "verdict": "NE FONCTIONNE PAS",
+   "scenario": "Recherche d'absence exécutée : champs de CommunityTeam : id communityId gameId createdById captainId name description platform maxMembers isRecruiting captainLastActivityAt createdAt updatedAt community game createdBy captain members towerChallengeAttempts sessions applications tournamentEntries recruiters tournamentGuests recruitmentCriteria discordSpaces challengesSent challengesReceived ; champs logo/bannière/couleur : « aucun »",
+   "reason": "Exigence non implémentée.",
+   "tests": [],
+   "captures": [
+    "docs/preuves/captures/nouveau-bureau-equipes.png",
+    "docs/preuves/captures/actif-bureau-equipes.png",
+    "docs/preuves/captures/nouveau-bureau-equipes_gestion.png",
+    "docs/preuves/captures/actif-bureau-equipes_gestion.png"
+   ]
+  },
+  {
+   "id": "C033",
+   "section": "11.3",
+   "text": "Forums existants (recherche de joueurs, recrutement, projets) avec tags",
+   "doc": "oui",
+   "flag": "aucun",
+   "verdict": "FONCTIONNE",
+   "scenario": "Tests exécutés : src/lib/tower-forums.test.ts 6/6, src/app/tower/forums/page.test.tsx 2/2.",
+   "reason": "",
+   "tests": [
+    {
+     "file": "src/lib/tower-forums.test.ts",
+     "status": "passed",
+     "passed": 6,
+     "total": 6
+    },
+    {
+     "file": "src/app/tower/forums/page.test.tsx",
+     "status": "passed",
+     "passed": 2,
+     "total": 2
+    }
+   ],
+   "captures": [
+    "docs/preuves/captures/nouveau-bureau-tower_forums.png",
+    "docs/preuves/captures/actif-bureau-tower_forums.png"
+   ]
+  },
+  {
+   "id": "C034",
+   "section": "11.4",
+   "text": "Équipes conservées dans GameNight : 2 à 8 membres, équipe unique, capitaine",
+   "doc": "oui",
+   "flag": "aucun (communityTeamsEnabled)",
+   "verdict": "FONCTIONNE",
+   "scenario": "Tests exécutés : src/lib/community-teams-rules.test.ts 8/8.",
+   "reason": "",
+   "tests": [
+    {
+     "file": "src/lib/community-teams-rules.test.ts",
+     "status": "passed",
+     "passed": 8,
+     "total": 8
+    }
+   ],
+   "captures": [
+    "docs/preuves/captures/nouveau-bureau-equipes.png",
+    "docs/preuves/captures/actif-bureau-equipes.png"
+   ]
+  },
+  {
+   "id": "C035",
+   "section": "12.2",
+   "text": "Critères de recherche : jeux, plateformes, disponibilités, mode compétitif ou détente, niveau",
+   "doc": "oui",
+   "flag": "GAME_LEVELS_ENABLED ; GAME_LEVELS_MATCHMAKING_ENABLED ; playerClassifiedsEnabled",
+   "verdict": "NON TESTABLE EN LOCAL",
+   "scenario": "Aucun test ni scénario exécutable trouvé pour cette ligne.",
+   "reason": "Aucune preuve exécutable.",
+   "tests": [],
+   "captures": [
+    "docs/preuves/captures/nouveau-bureau-joueurs.png",
+    "docs/preuves/captures/actif-bureau-joueurs.png"
+   ]
+  },
+  {
+   "id": "C036",
+   "section": "12.2",
+   "text": "Critères de recherche : langue, préférences communautaires, habitudes de jeu, centres d'intérêt",
+   "doc": "partielle",
+   "flag": "aucun",
+   "verdict": "PARTIEL",
+   "scenario": "Capture de la page existante : /joueurs, /joueurs (filtres et tags visibles ; langue et habitudes de jeu absents).",
+   "reason": "Le cahier la déclare partielle ; seule la partie livrée est prouvée ci-dessous.",
+   "tests": [],
+   "captures": [
+    "docs/preuves/captures/nouveau-bureau-joueurs.png",
+    "docs/preuves/captures/actif-bureau-joueurs.png"
+   ]
+  },
+  {
+   "id": "C037",
+   "section": "12.3",
+   "text": "Parcours « Qui joue ce soir ? », « Je cherche une partie », recherche par jeu, profils publics, recrutement",
+   "doc": "oui",
+   "flag": "WHO_PLAYS_TONIGHT_ENABLED",
+   "verdict": "FONCTIONNE",
+   "scenario": "Tests exécutés : src/lib/tonight.integration.test.ts 7/7.",
+   "reason": "",
+   "tests": [
+    {
+     "file": "src/lib/tonight.integration.test.ts",
+     "status": "passed",
+     "passed": 7,
+     "total": 7
+    }
+   ],
+   "captures": [
+    "docs/preuves/captures/nouveau-bureau-ce-soir.png",
+    "docs/preuves/captures/actif-bureau-ce-soir.png",
+    "docs/preuves/captures/nouveau-bureau-joueurs.png",
+    "docs/preuves/captures/actif-bureau-joueurs.png"
+   ]
+  },
+  {
+   "id": "C038",
+   "section": "12.3",
+   "text": "Proposition de partenaires compatibles",
+   "doc": "non",
+   "flag": "aucun",
+   "verdict": "NE FONCTIONNE PAS",
+   "scenario": "Recherche d'absence exécutée : recherche d'une suggestion automatique de partenaires : « aucun résultat »",
+   "reason": "Exigence non implémentée.",
+   "tests": [],
+   "captures": [
+    "docs/preuves/captures/nouveau-bureau-ce-soir.png",
+    "docs/preuves/captures/actif-bureau-ce-soir.png",
+    "docs/preuves/captures/nouveau-bureau-joueurs.png",
+    "docs/preuves/captures/actif-bureau-joueurs.png"
+   ]
+  },
+  {
+   "id": "C039",
+   "section": "12.3",
+   "text": "Découverte des joueurs respectant leur choix de visibilité",
+   "doc": "partielle",
+   "flag": "PROFILE_VISIBILITY_ENABLED",
+   "verdict": "PARTIEL",
+   "scenario": "Tests exécutés : src/lib/profile-visibility.test.ts 10/10.",
+   "reason": "Le cahier la déclare partielle ; seule la partie livrée est prouvée ci-dessous.",
+   "tests": [
+    {
+     "file": "src/lib/profile-visibility.test.ts",
+     "status": "passed",
+     "passed": 10,
+     "total": 10
+    }
+   ],
+   "captures": [
+    "docs/preuves/captures/nouveau-bureau-ce-soir.png",
+    "docs/preuves/captures/actif-bureau-ce-soir.png",
+    "docs/preuves/captures/nouveau-bureau-joueurs.png",
+    "docs/preuves/captures/actif-bureau-joueurs.png"
+   ]
+  },
+  {
+   "id": "C040",
+   "section": "12.4",
+   "text": "Profil : jeux favoris, plateformes, niveaux, disponibilités, préférences, tier list, historique",
+   "doc": "oui",
+   "flag": "GAME_PLATFORMS_ENABLED ; GAME_LEVELS_ENABLED",
+   "verdict": "FONCTIONNE",
+   "scenario": "Tests exécutés : src/lib/game-platforms.test.ts 11/11.",
+   "reason": "",
+   "tests": [
+    {
+     "file": "src/lib/game-platforms.test.ts",
+     "status": "passed",
+     "passed": 11,
+     "total": 11
+    }
+   ],
+   "captures": [
+    "docs/preuves/captures/nouveau-bureau-profil.png",
+    "docs/preuves/captures/actif-bureau-profil.png",
+    "docs/preuves/captures/nouveau-bureau-profil_parametres.png",
+    "docs/preuves/captures/actif-bureau-profil_parametres.png"
+   ]
+  },
+  {
+   "id": "C041",
+   "section": "13.1",
+   "text": "Soirées : création, jeux, disponibilités, inscriptions, votes, rappels, annonces, coordination",
+   "doc": "oui",
+   "flag": "DISCORD_BOT_SESSION_ANNOUNCE_ENABLED (annonces) ; le socle n'a pas d'interrupteur",
+   "verdict": "FONCTIONNE",
+   "scenario": "Tests exécutés : src/lib/session-announce.integration.test.ts 82/82.",
+   "reason": "",
+   "tests": [
+    {
+     "file": "src/lib/session-announce.integration.test.ts",
+     "status": "passed",
+     "passed": 82,
+     "total": 82
+    }
+   ],
+   "captures": [
+    "docs/preuves/captures/nouveau-bureau-sessions.png",
+    "docs/preuves/captures/actif-bureau-sessions.png"
+   ]
+  },
+  {
+   "id": "C042",
+   "section": "13.2",
+   "text": "Calendrier communautaire sans second bot",
+   "doc": "oui",
+   "flag": "CALENDAR_SUBSCRIPTIONS_ENABLED (abonnement iCal)",
+   "verdict": "FONCTIONNE",
+   "scenario": "Tests exécutés : src/lib/calendar-feed.integration.test.ts 3/3.",
+   "reason": "",
+   "tests": [
+    {
+     "file": "src/lib/calendar-feed.integration.test.ts",
+     "status": "passed",
+     "passed": 3,
+     "total": 3
+    }
+   ],
+   "captures": [
+    "docs/preuves/captures/nouveau-bureau-calendrier.png",
+    "docs/preuves/captures/actif-bureau-calendrier.png"
+   ]
+  },
+  {
+   "id": "C043",
+   "section": "13.3",
+   "text": "Tournois : inscriptions, règles, participants, résultats, annonces, classements",
+   "doc": "oui",
+   "flag": "TOURNAMENT_SCORES_ENABLED (scores) ; le socle n'a pas d'interrupteur",
+   "verdict": "FONCTIONNE",
+   "scenario": "Tests exécutés : src/lib/tournament-announce.integration.test.ts 65/65.",
+   "reason": "",
+   "tests": [
+    {
+     "file": "src/lib/tournament-announce.integration.test.ts",
+     "status": "passed",
+     "passed": 65,
+     "total": 65
+    }
+   ],
+   "captures": [
+    "docs/preuves/captures/nouveau-bureau-tournois.png",
+    "docs/preuves/captures/actif-bureau-tournois.png"
+   ]
+  },
+  {
+   "id": "C044",
+   "section": "13.4",
+   "text": "Interfaces : « Ce soir », fiches de soirée, recherche de partie, roulette, calendrier, notifications personnalisées",
+   "doc": "oui",
+   "flag": "WHO_PLAYS_TONIGHT_ENABLED ; NOTIFICATION_CENTER_ENABLED",
+   "verdict": "PARTIEL",
+   "scenario": "Tests exécutés et réussis pour la roulette et les RSVP. Vérification par grep : isDirectMessageAllowed: 0 usage(s) hors définition ; isPublicAnnouncementAllowed: 0 usage(s) hors définition ; buildGameRolePing: 0 usage(s) hors définition ; notifyGamePingOptIns: 0 usage(s) hors définition ; neutralizeEveryoneText: 0 usage(s) hors définition. Le ping de rôle de jeu et l'opt-in ne sont donc branchés à aucun flux ; la page /notifications existe (capture) mais la règle « MP seulement ciblés » n'est appliquée par aucun code.",
+   "reason": "« Notifications personnalisées » : l'opt-in par jeu n'est branché à aucun flux.",
+   "tests": [],
+   "captures": [
+    "docs/preuves/captures/nouveau-bureau-ce-soir.png",
+    "docs/preuves/captures/actif-bureau-ce-soir.png",
+    "docs/preuves/captures/nouveau-bureau-roulette.png",
+    "docs/preuves/captures/actif-bureau-roulette.png",
+    "docs/preuves/captures/nouveau-bureau-notifications.png",
+    "docs/preuves/captures/actif-bureau-notifications.png"
+   ]
+  },
+  {
+   "id": "C045",
+   "section": "14.1",
+   "text": "Saisons accessibles aux arrivants tardifs",
+   "doc": "oui",
+   "flag": "TOWER_CHALLENGES_ENABLED",
+   "verdict": "NON TESTABLE EN LOCAL",
+   "scenario": "Aucun test ni scénario exécutable trouvé pour cette ligne.",
+   "reason": "Aucune preuve exécutable.",
+   "tests": [],
+   "captures": [
+    "docs/preuves/captures/nouveau-bureau-saisons.png",
+    "docs/preuves/captures/actif-bureau-saisons.png"
+   ]
+  },
+  {
+   "id": "C046",
+   "section": "14.2",
+   "text": "Calendrier scolaire et saison d'été (S1 du 1er décembre au 31 mars, avril–juin, été, septembre–novembre)",
+   "doc": "oui",
+   "flag": "aucun",
+   "verdict": "FONCTIONNE",
+   "scenario": "Tests exécutés : src/lib/tower-challenge-seasons.test.ts 17/17.",
+   "reason": "",
+   "tests": [
+    {
+     "file": "src/lib/tower-challenge-seasons.test.ts",
+     "status": "passed",
+     "passed": 17,
+     "total": 17
+    }
+   ],
+   "captures": []
+  },
+  {
+   "id": "C047",
+   "section": "14.3",
+   "text": "Classements individuel, saisonnier, permanent, historique, distinctions",
+   "doc": "oui",
+   "flag": "TOWER_CHALLENGES_ENABLED",
+   "verdict": "FONCTIONNE",
+   "scenario": "Tests exécutés : src/lib/tower-standings.test.ts 50/50.",
+   "reason": "",
+   "tests": [
+    {
+     "file": "src/lib/tower-standings.test.ts",
+     "status": "passed",
+     "passed": 50,
+     "total": 50
+    }
+   ],
+   "captures": [
+    "docs/preuves/captures/nouveau-bureau-classement.png",
+    "docs/preuves/captures/actif-bureau-classement.png",
+    "docs/preuves/captures/nouveau-bureau-tower_palmares.png",
+    "docs/preuves/captures/actif-bureau-tower_palmares.png"
+   ]
+  },
+  {
+   "id": "C048",
+   "section": "14.3",
+   "text": "Classement d'équipes",
+   "doc": "non",
+   "flag": "TEAM_RIVALRIES_ENABLED (bilans de rivalités seulement)",
+   "verdict": "NE FONCTIONNE PAS",
+   "scenario": "Recherche d'absence exécutée : recherche d'un classement d'équipes Tower : « aucun résultat » ; pages tower : src/app/tower: actions.ts forums page.launch.test.tsx page.tsx palmares propositions  src/app/tower/palmares: page.test.tsx page.tsx",
+   "reason": "Exigence non implémentée.",
+   "tests": [],
+   "captures": [
+    "docs/preuves/captures/nouveau-bureau-classement.png",
+    "docs/preuves/captures/actif-bureau-classement.png",
+    "docs/preuves/captures/nouveau-bureau-tower_palmares.png",
+    "docs/preuves/captures/actif-bureau-tower_palmares.png"
+   ]
+  },
+  {
+   "id": "C049",
+   "section": "14.4",
+   "text": "Réinitialisation saisonnière, étages conservés, historique, pas de salon par saison",
+   "doc": "oui",
+   "flag": "TOWER_CHALLENGES_ENABLED",
+   "verdict": "FONCTIONNE",
+   "scenario": "Tests exécutés : src/lib/tower-challenges.integration.test.ts 72/72.",
+   "reason": "",
+   "tests": [
+    {
+     "file": "src/lib/tower-challenges.integration.test.ts",
+     "status": "passed",
+     "passed": 72,
+     "total": 72
+    }
+   ],
+   "captures": [
+    "docs/preuves/captures/nouveau-bureau-saisons.png",
+    "docs/preuves/captures/actif-bureau-saisons.png"
+   ]
+  },
+  {
+   "id": "C050",
+   "section": "15.1",
+   "text": "Récompenses : badges, titres, grades cosmétiques, distinctions de saison, Hall of Fame, proposer des défis, choisir des événements, distinctions humoristiques, exploits collectifs",
+   "doc": "oui",
+   "flag": "TOWER_SEASON_AWARDS_ENABLED ; PROFILE_CUSTOMIZATION_ENABLED",
+   "verdict": "NON TESTABLE EN LOCAL",
+   "scenario": "Aucun test ni scénario exécutable trouvé pour cette ligne.",
+   "reason": "Aucune preuve exécutable.",
+   "tests": [],
+   "captures": [
+    "docs/preuves/captures/nouveau-bureau-profil_badges.png",
+    "docs/preuves/captures/actif-bureau-profil_badges.png",
+    "docs/preuves/captures/nouveau-bureau-profil_personnalisation.png",
+    "docs/preuves/captures/actif-bureau-profil_personnalisation.png",
+    "docs/preuves/captures/nouveau-bureau-tower_palmares.png",
+    "docs/preuves/captures/actif-bureau-tower_palmares.png"
+   ]
+  },
+  {
+   "id": "C051",
+   "section": "15.2",
+   "text": "Aucun droit d'administration par récompense ; aucun cadeau payant sans budget",
+   "doc": "oui",
+   "flag": "aucun",
+   "verdict": "FONCTIONNE",
+   "scenario": "Tests exécutés : src/lib/profile-customization.test.ts 27/27.",
+   "reason": "",
+   "tests": [
+    {
+     "file": "src/lib/profile-customization.test.ts",
+     "status": "passed",
+     "passed": 27,
+     "total": 27
+    }
+   ],
+   "captures": []
+  },
+  {
+   "id": "C052",
+   "section": "16",
+   "text": "Le Sommet : classements, Hall of Fame, Rankers, défis entre équipes, distinctions, exploits, sur des données réelles",
+   "doc": "oui",
+   "flag": "TOWER_CHALLENGES_ENABLED ; TEAM_RIVALRIES_ENABLED",
+   "verdict": "NON TESTABLE EN LOCAL",
+   "scenario": "Aucun test ni scénario exécutable trouvé pour cette ligne.",
+   "reason": "Aucune preuve exécutable.",
+   "tests": [],
+   "captures": [
+    "docs/preuves/captures/nouveau-bureau-tower_palmares.png",
+    "docs/preuves/captures/actif-bureau-tower_palmares.png"
+   ]
+  },
+  {
+   "id": "C053",
+   "section": "17",
+   "text": "Salons vocaux : groupes de jeu, équipes, événements, vocaux temporaires",
+   "doc": "partielle",
+   "flag": "SESSION_VISIBILITY_ENABLED ; DISCORD_TEAM_SPACES_ENABLED",
+   "verdict": "NON TESTABLE EN LOCAL",
+   "scenario": "Logique simulée uniquement (clients Discord remplacés par des doublures) : src/lib/session-visibility.integration.test.ts 23/23.",
+   "reason": "L'effet réel se produit dans Discord (serveur, rôles, salons, MP) : impossible sans appel Discord.",
+   "tests": [
+    {
+     "file": "src/lib/session-visibility.integration.test.ts",
+     "status": "passed",
+     "passed": 23,
+     "total": 23
+    }
+   ],
+   "captures": []
+  },
+  {
+   "id": "C054",
+   "section": "19.1",
+   "text": "Permissions cohérentes, administrateurs vérifiés, salons privés protégés",
+   "doc": "oui",
+   "flag": "aucun",
+   "verdict": "FONCTIONNE",
+   "scenario": "Tests exécutés : src/lib/tower-layout-permissions.test.ts 6/6, src/lib/s0-access-controls.integration.test.ts 22/22.",
+   "reason": "",
+   "tests": [
+    {
+     "file": "src/lib/tower-layout-permissions.test.ts",
+     "status": "passed",
+     "passed": 6,
+     "total": 6
+    },
+    {
+     "file": "src/lib/s0-access-controls.integration.test.ts",
+     "status": "passed",
+     "passed": 22,
+     "total": 22
+    }
+   ],
+   "captures": []
+  },
+  {
+   "id": "C055",
+   "section": "19.1",
+   "text": "Journalisation des opérations sensibles",
+   "doc": "partielle",
+   "flag": "aucun",
+   "verdict": "PARTIEL",
+   "scenario": "Tests exécutés : src/lib/tower-challenges.integration.test.ts 72/72.",
+   "reason": "Le cahier la déclare partielle ; seule la partie livrée est prouvée ci-dessous.",
+   "tests": [
+    {
+     "file": "src/lib/tower-challenges.integration.test.ts",
+     "status": "passed",
+     "passed": 72,
+     "total": 72
+    }
+   ],
+   "captures": []
+  },
+  {
+   "id": "C056",
+   "section": "19.2",
+   "text": "Rôles de prestige séparés des rôles techniques ; permissions sensibles vérifiées avant application",
+   "doc": "oui",
+   "flag": "aucun",
+   "verdict": "NON TESTABLE EN LOCAL",
+   "scenario": "Logique simulée uniquement (clients Discord remplacés par des doublures) : src/lib/tower-layout-permissions.test.ts 6/6.",
+   "reason": "L'effet réel se produit dans Discord (serveur, rôles, salons, MP) : impossible sans appel Discord.",
+   "tests": [
+    {
+     "file": "src/lib/tower-layout-permissions.test.ts",
+     "status": "passed",
+     "passed": 6,
+     "total": 6
+    }
+   ],
+   "captures": []
+  },
+  {
+   "id": "C057",
+   "section": "19.3",
+   "text": "Confidentialité des preuves, tickets et journaux de modération",
+   "doc": "oui",
+   "flag": "DISCORD_REPORT_COMMAND_ENABLED ; TOWER_DISCORD_ANNOUNCE_ENABLED",
+   "verdict": "NON TESTABLE EN LOCAL",
+   "scenario": "Logique simulée uniquement (clients Discord remplacés par des doublures) : src/lib/discord-report-command.test.ts 19/19.",
+   "reason": "L'effet réel se produit dans Discord (serveur, rôles, salons, MP) : impossible sans appel Discord.",
+   "tests": [
+    {
+     "file": "src/lib/discord-report-command.test.ts",
+     "status": "passed",
+     "passed": 19,
+     "total": 19
+    }
+   ],
+   "captures": []
+  },
+  {
+   "id": "C058",
+   "section": "19.4",
+   "text": "Anti-abus : récompenses multiples, votes frauduleux, validations doubles, participation artificielle, exploitation d'interactions, accès inter-communautés",
+   "doc": "oui",
+   "flag": "COMMUNITY_ISOLATION_ENABLED (garde Membership toujours active)",
+   "verdict": "FONCTIONNE",
+   "scenario": "Tests exécutés : src/lib/tower-challenges.integration.test.ts 72/72, src/lib/community-scope.test.ts 7/7, src/lib/s0-access-controls.integration.test.ts 22/22.",
+   "reason": "",
+   "tests": [
+    {
+     "file": "src/lib/tower-challenges.integration.test.ts",
+     "status": "passed",
+     "passed": 72,
+     "total": 72
+    },
+    {
+     "file": "src/lib/community-scope.test.ts",
+     "status": "passed",
+     "passed": 7,
+     "total": 7
+    },
+    {
+     "file": "src/lib/s0-access-controls.integration.test.ts",
+     "status": "passed",
+     "passed": 22,
+     "total": 22
+    }
+   ],
+   "captures": []
+  },
+  {
+   "id": "C059",
+   "section": "21.2",
+   "text": "Bot : commandes, boutons, menus, défis, preuves, votes, progression, événements, notifications",
+   "doc": "partielle",
+   "flag": "TOWER_CHALLENGES_ENABLED",
+   "verdict": "NON TESTABLE EN LOCAL",
+   "scenario": "Logique simulée uniquement (clients Discord remplacés par des doublures) : src/lib/discord-tower-challenges.test.ts 30/30.",
+   "reason": "L'effet réel se produit dans Discord (serveur, rôles, salons, MP) : impossible sans appel Discord.",
+   "tests": [
+    {
+     "file": "src/lib/discord-tower-challenges.test.ts",
+     "status": "passed",
+     "passed": 30,
+     "total": 30
+    }
+   ],
+   "captures": []
+  },
+  {
+   "id": "C060",
+   "section": "21.3",
+   "text": "Base de données : membres, équipes, défis, attributions, preuves, votes, récompenses, étages, saisons, classements, historiques ; opérations idempotentes et concurrentes",
+   "doc": "oui",
+   "flag": "aucun",
+   "verdict": "FONCTIONNE",
+   "scenario": "Tests exécutés : src/lib/tower-challenges.integration.test.ts 72/72.",
+   "reason": "",
+   "tests": [
+    {
+     "file": "src/lib/tower-challenges.integration.test.ts",
+     "status": "passed",
+     "passed": 72,
+     "total": 72
+    }
+   ],
+   "captures": []
+  },
+  {
+   "id": "C061",
+   "section": "21.4",
+   "text": "Migrations : structure vérifiée, sauvegarde, tests, retour arrière, validation de la bascule",
+   "doc": "partielle",
+   "flag": "aucun",
+   "verdict": "PARTIEL",
+   "scenario": "Tests exécutés : src/lib/migrations-immutable.test.ts 38/39.",
+   "reason": "Le cahier la déclare partielle ; seule la partie livrée est prouvée ci-dessous.",
+   "tests": [
+    {
+     "file": "src/lib/migrations-immutable.test.ts",
+     "status": "passed",
+     "passed": 38,
+     "total": 39
+    }
+   ],
+   "captures": []
+  },
+  {
+   "id": "C062",
+   "section": "21.5",
+   "text": "Environnements distincts, aucune donnée de production en test",
+   "doc": "oui",
+   "flag": "aucun",
+   "verdict": "FONCTIONNE",
+   "scenario": "Tests exécutés : src/lib/notification-executor.preview.test.ts 1/1, src/lib/tower-challenges.integration.test.ts 72/72.",
+   "reason": "",
+   "tests": [
+    {
+     "file": "src/lib/notification-executor.preview.test.ts",
+     "status": "passed",
+     "passed": 1,
+     "total": 1
+    },
+    {
+     "file": "src/lib/tower-challenges.integration.test.ts",
+     "status": "passed",
+     "passed": 72,
+     "total": 72
+    }
+   ],
+   "captures": []
+  },
+  {
+   "id": "C063",
+   "section": "22.2",
+   "text": "Test : limite de 12 h entre deux attributions solo",
+   "doc": "oui",
+   "flag": "aucun",
+   "verdict": "FONCTIONNE",
+   "scenario": "Tests exécutés : src/lib/tower-challenge-rules.test.ts 34/34.",
+   "reason": "",
+   "tests": [
+    {
+     "file": "src/lib/tower-challenge-rules.test.ts",
+     "status": "passed",
+     "passed": 34,
+     "total": 34
+    }
+   ],
+   "captures": []
+  },
+  {
+   "id": "C064",
+   "section": "22.2",
+   "text": "Test : expiration des défis à 48 h",
+   "doc": "oui",
+   "flag": "aucun",
+   "verdict": "FONCTIONNE",
+   "scenario": "Tests exécutés : src/lib/tower-challenge-rules.test.ts 34/34.",
+   "reason": "",
+   "tests": [
+    {
+     "file": "src/lib/tower-challenge-rules.test.ts",
+     "status": "passed",
+     "passed": 34,
+     "total": 34
+    }
+   ],
+   "captures": []
+  },
+  {
+   "id": "C065",
+   "section": "22.2",
+   "text": "Test : deux réussites maximum par jour",
+   "doc": "oui",
+   "flag": "aucun",
+   "verdict": "FONCTIONNE",
+   "scenario": "Tests exécutés : src/lib/tower-challenge-rules.test.ts 34/34.",
+   "reason": "",
+   "tests": [
+    {
+     "file": "src/lib/tower-challenge-rules.test.ts",
+     "status": "passed",
+     "passed": 34,
+     "total": 34
+    }
+   ],
+   "captures": []
+  },
+  {
+   "id": "C066",
+   "section": "22.2",
+   "text": "Test : votes de 24 h",
+   "doc": "oui",
+   "flag": "aucun",
+   "verdict": "FONCTIONNE",
+   "scenario": "Tests exécutés : src/lib/tower-challenge-voting.test.ts 25/25.",
+   "reason": "",
+   "tests": [
+    {
+     "file": "src/lib/tower-challenge-voting.test.ts",
+     "status": "passed",
+     "passed": 25,
+     "total": 25
+    }
+   ],
+   "captures": []
+  },
+  {
+   "id": "C067",
+   "section": "22.2",
+   "text": "Test : minimum de trois votants",
+   "doc": "oui",
+   "flag": "aucun",
+   "verdict": "FONCTIONNE",
+   "scenario": "Tests exécutés : src/lib/tower-challenge-voting.test.ts 25/25.",
+   "reason": "",
+   "tests": [
+    {
+     "file": "src/lib/tower-challenge-voting.test.ts",
+     "status": "passed",
+     "passed": 25,
+     "total": 25
+    }
+   ],
+   "captures": []
+  },
+  {
+   "id": "C068",
+   "section": "22.2",
+   "text": "Test : majorité réelle",
+   "doc": "oui",
+   "flag": "aucun",
+   "verdict": "FONCTIONNE",
+   "scenario": "Tests exécutés : src/lib/tower-challenge-voting.test.ts 25/25.",
+   "reason": "",
+   "tests": [
+    {
+     "file": "src/lib/tower-challenge-voting.test.ts",
+     "status": "passed",
+     "passed": 25,
+     "total": 25
+    }
+   ],
+   "captures": []
+  },
+  {
+   "id": "C069",
+   "section": "22.2",
+   "text": "Test : égalités et absence de quorum",
+   "doc": "oui",
+   "flag": "aucun",
+   "verdict": "FONCTIONNE",
+   "scenario": "Tests exécutés : src/lib/tower-challenge-voting.test.ts 25/25.",
+   "reason": "",
+   "tests": [
+    {
+     "file": "src/lib/tower-challenge-voting.test.ts",
+     "status": "passed",
+     "passed": 25,
+     "total": 25
+    }
+   ],
+   "captures": []
+  },
+  {
+   "id": "C070",
+   "section": "22.2",
+   "text": "Test : contestations",
+   "doc": "oui",
+   "flag": "aucun",
+   "verdict": "FONCTIONNE",
+   "scenario": "Tests exécutés : src/lib/tower-challenge-appeal-rules.test.ts 8/8, src/lib/tower-challenges.integration.test.ts 72/72.",
+   "reason": "",
+   "tests": [
+    {
+     "file": "src/lib/tower-challenge-appeal-rules.test.ts",
+     "status": "passed",
+     "passed": 8,
+     "total": 8
+    },
+    {
+     "file": "src/lib/tower-challenges.integration.test.ts",
+     "status": "passed",
+     "passed": 72,
+     "total": 72
+    }
+   ],
+   "captures": []
+  },
+  {
+   "id": "C071",
+   "section": "22.2",
+   "text": "Test : récompense attribuée une seule fois",
+   "doc": "oui",
+   "flag": "aucun",
+   "verdict": "FONCTIONNE",
+   "scenario": "Tests exécutés : src/lib/tower-challenges.integration.test.ts 72/72.",
+   "reason": "",
+   "tests": [
+    {
+     "file": "src/lib/tower-challenges.integration.test.ts",
+     "status": "passed",
+     "passed": 72,
+     "total": 72
+    }
+   ],
+   "captures": []
+  },
+  {
+   "id": "C072",
+   "section": "22.2",
+   "text": "Test : attributions simultanées",
+   "doc": "oui",
+   "flag": "aucun",
+   "verdict": "FONCTIONNE",
+   "scenario": "Tests exécutés : src/lib/tower-challenges.integration.test.ts 72/72.",
+   "reason": "",
+   "tests": [
+    {
+     "file": "src/lib/tower-challenges.integration.test.ts",
+     "status": "passed",
+     "passed": 72,
+     "total": 72
+    }
+   ],
+   "captures": []
+  },
+  {
+   "id": "C073",
+   "section": "22.2",
+   "text": "Test : permissions",
+   "doc": "oui",
+   "flag": "aucun",
+   "verdict": "FONCTIONNE",
+   "scenario": "Tests exécutés : src/lib/s0-access-controls.integration.test.ts 22/22, src/lib/community-scope.test.ts 7/7.",
+   "reason": "",
+   "tests": [
+    {
+     "file": "src/lib/s0-access-controls.integration.test.ts",
+     "status": "passed",
+     "passed": 22,
+     "total": 22
+    },
+    {
+     "file": "src/lib/community-scope.test.ts",
+     "status": "passed",
+     "passed": 7,
+     "total": 7
+    }
+   ],
+   "captures": []
+  },
+  {
+   "id": "C074",
+   "section": "22.2",
+   "text": "Test : isolation des communautés",
+   "doc": "oui",
+   "flag": "aucun",
+   "verdict": "FONCTIONNE",
+   "scenario": "Tests exécutés : src/lib/community-scope.test.ts 7/7, src/lib/s0-access-controls.integration.test.ts 22/22.",
+   "reason": "",
+   "tests": [
+    {
+     "file": "src/lib/community-scope.test.ts",
+     "status": "passed",
+     "passed": 7,
+     "total": 7
+    },
+    {
+     "file": "src/lib/s0-access-controls.integration.test.ts",
+     "status": "passed",
+     "passed": 22,
+     "total": 22
+    }
+   ],
+   "captures": []
+  },
+  {
+   "id": "C075",
+   "section": "22.2",
+   "text": "Test : bascule depuis les anciens étages",
+   "doc": "non",
+   "flag": "aucun",
+   "verdict": "NE FONCTIONNE PAS",
+   "scenario": "Recherche d'absence exécutée : recherche d'une bascule des anciens étages : « aucun résultat »",
+   "reason": "Exigence non implémentée.",
+   "tests": [],
+   "captures": []
+  },
+  {
+   "id": "C076",
+   "section": "24",
+   "text": "Notifications configurables",
+   "doc": "oui",
+   "flag": "NOTIFICATION_CENTER_ENABLED (+ préférences existantes)",
+   "verdict": "FONCTIONNE",
+   "scenario": "Tests exécutés : src/lib/notification-preferences.test.ts 9/9, src/lib/game-ping-optin.test.ts 7/7.",
+   "reason": "",
+   "tests": [
+    {
+     "file": "src/lib/notification-preferences.test.ts",
+     "status": "passed",
+     "passed": 9,
+     "total": 9
+    },
+    {
+     "file": "src/lib/game-ping-optin.test.ts",
+     "status": "passed",
+     "passed": 7,
+     "total": 7
+    }
+   ],
+   "captures": [
+    "docs/preuves/captures/nouveau-bureau-notifications.png",
+    "docs/preuves/captures/actif-bureau-notifications.png",
+    "docs/preuves/captures/nouveau-bureau-profil_parametres.png",
+    "docs/preuves/captures/actif-bureau-profil_parametres.png"
+   ]
+  },
+  {
+   "id": "C077",
+   "section": "27 A",
+   "text": "Équipes : recruteurs (≤ 2), invités de tournoi, relance 48 h, expiration 7 j, 8 joueurs max [#479]",
+   "doc": "oui",
+   "flag": "TEAM_RECRUITERS_ENABLED (migration team_recruiters_guest)",
+   "verdict": "FONCTIONNE",
+   "scenario": "Tests exécutés : src/lib/team-recruiters-rules.test.ts 25/25.",
+   "reason": "",
+   "tests": [
+    {
+     "file": "src/lib/team-recruiters-rules.test.ts",
+     "status": "passed",
+     "passed": 25,
+     "total": 25
+    }
+   ],
+   "captures": [
+    "docs/preuves/captures/nouveau-bureau-equipes_candidatures.png",
+    "docs/preuves/captures/actif-bureau-equipes_candidatures.png"
+   ]
+  },
+  {
+   "id": "C078",
+   "section": "27 B",
+   "text": "Votes de preuves dans Discord : boutons ✅/❌, fil par preuve, votants ≥ 7 jours [#476]",
+   "doc": "oui",
+   "flag": "TOWER_DISCORD_VOTES_ENABLED (sans migration)",
+   "verdict": "NON TESTABLE EN LOCAL",
+   "scenario": "Logique simulée uniquement (clients Discord remplacés par des doublures) : src/lib/tower-vote-eligibility.test.ts 3/3, src/lib/tower-discord-votes.integration.test.ts 6/6.",
+   "reason": "L'effet réel se produit dans Discord (serveur, rôles, salons, MP) : impossible sans appel Discord.",
+   "tests": [
+    {
+     "file": "src/lib/tower-vote-eligibility.test.ts",
+     "status": "passed",
+     "passed": 3,
+     "total": 3
+    },
+    {
+     "file": "src/lib/tower-discord-votes.integration.test.ts",
+     "status": "passed",
+     "passed": 6,
+     "total": 6
+    }
+   ],
+   "captures": []
+  },
+  {
+   "id": "C079",
+   "section": "27 C",
+   "text": "Validation automatique Steam, repli sur le vote, « Signaler un doute » [#484]",
+   "doc": "oui",
+   "flag": "TOWER_STEAM_AUTOVALIDATE_ENABLED (migration tower_challenge_measure)",
+   "verdict": "FONCTIONNE",
+   "scenario": "Tests exécutés : src/lib/tower-steam-measure.integration.test.ts 4/4.",
+   "reason": "",
+   "tests": [
+    {
+     "file": "src/lib/tower-steam-measure.integration.test.ts",
+     "status": "passed",
+     "passed": 4,
+     "total": 4
+    }
+   ],
+   "captures": [
+    "docs/preuves/captures/visiteur-bureau-tower.png",
+    "docs/preuves/captures/nouveau-bureau-tower.png"
+   ]
+  },
+  {
+   "id": "C080",
+   "section": "27 D",
+   "text": "Soirées publique / candidature / privée, liste d'attente, espace temporaire [#480]",
+   "doc": "oui",
+   "flag": "SESSION_VISIBILITY_ENABLED (migration session_visibility_waitlist)",
+   "verdict": "FONCTIONNE",
+   "scenario": "Tests exécutés : src/lib/session-visibility.test.ts 21/21, src/lib/session-visibility.integration.test.ts 23/23.",
+   "reason": "",
+   "tests": [
+    {
+     "file": "src/lib/session-visibility.test.ts",
+     "status": "passed",
+     "passed": 21,
+     "total": 21
+    },
+    {
+     "file": "src/lib/session-visibility.integration.test.ts",
+     "status": "passed",
+     "passed": 23,
+     "total": 23
+    }
+   ],
+   "captures": [
+    "docs/preuves/captures/nouveau-bureau-sessions.png",
+    "docs/preuves/captures/actif-bureau-sessions.png"
+   ]
+  },
+  {
+   "id": "C081",
+   "section": "27 E",
+   "text": "Tournois par équipes, score confirmé par les 2 capitaines, équilibrage par niveau [#488]",
+   "doc": "oui",
+   "flag": "TOURNAMENT_TEAMS_ENABLED (migration tournament_teams)",
+   "verdict": "FONCTIONNE",
+   "scenario": "Tests exécutés : src/lib/tournament-teams-rules.test.ts 30/30.",
+   "reason": "",
+   "tests": [
+    {
+     "file": "src/lib/tournament-teams-rules.test.ts",
+     "status": "passed",
+     "passed": 30,
+     "total": 30
+    }
+   ],
+   "captures": [
+    "docs/preuves/captures/nouveau-bureau-tournois_equipes.png",
+    "docs/preuves/captures/actif-bureau-tournois_equipes.png"
+   ]
+  },
+  {
+   "id": "C082",
+   "section": "27 F",
+   "text": "/role : création automatique de rôles via la file, 1 par joueur et par semaine, alerte à 80 % [#475]",
+   "doc": "oui",
+   "flag": "DISCORD_ROLE_AUTOCREATE_ENABLED (migration discord_role_requests)",
+   "verdict": "NON TESTABLE EN LOCAL",
+   "scenario": "Logique simulée uniquement (clients Discord remplacés par des doublures) : src/lib/notification-executor-role-autocreate.test.ts 2/2.",
+   "reason": "L'effet réel se produit dans Discord (serveur, rôles, salons, MP) : impossible sans appel Discord.",
+   "tests": [
+    {
+     "file": "src/lib/notification-executor-role-autocreate.test.ts",
+     "status": "passed",
+     "passed": 2,
+     "total": 2
+    }
+   ],
+   "captures": []
+  },
+  {
+   "id": "C083",
+   "section": "27 G",
+   "text": "/projet : organisateur, date de fin, fils, archivage à 7 jours [#485]",
+   "doc": "oui",
+   "flag": "PROJECT_ORGANIZER_ENABLED (migration project_entries)",
+   "verdict": "NON TESTABLE EN LOCAL",
+   "scenario": "Logique simulée uniquement (clients Discord remplacés par des doublures) : src/lib/projects.integration.test.ts 10/10, src/lib/project-space-service.test.ts 11/11.",
+   "reason": "L'effet réel se produit dans Discord (serveur, rôles, salons, MP) : impossible sans appel Discord.",
+   "tests": [
+    {
+     "file": "src/lib/projects.integration.test.ts",
+     "status": "passed",
+     "passed": 10,
+     "total": 10
+    },
+    {
+     "file": "src/lib/project-space-service.test.ts",
+     "status": "passed",
+     "passed": 11,
+     "total": 11
+    }
+   ],
+   "captures": [
+    "docs/preuves/captures/nouveau-bureau-projets.png",
+    "docs/preuves/captures/actif-bureau-projets.png"
+   ]
+  },
+  {
+   "id": "C084",
+   "section": "27 H",
+   "text": "« Jouer maintenant » (Rejoindre / Intéressé, 2 h) et rivalités d'équipes [#487]",
+   "doc": "oui",
+   "flag": "TEAM_RIVALRIES_ENABLED (migration team_rivalries)",
+   "verdict": "FONCTIONNE",
+   "scenario": "Tests exécutés : src/lib/team-rivalries-rules.test.ts 10/10, src/lib/team-rivalries.integration.test.ts 16/16.",
+   "reason": "",
+   "tests": [
+    {
+     "file": "src/lib/team-rivalries-rules.test.ts",
+     "status": "passed",
+     "passed": 10,
+     "total": 10
+    },
+    {
+     "file": "src/lib/team-rivalries.integration.test.ts",
+     "status": "passed",
+     "passed": 16,
+     "total": 16
+    }
+   ],
+   "captures": [
+    "docs/preuves/captures/nouveau-bureau-jouer-maintenant.png",
+    "docs/preuves/captures/actif-bureau-jouer-maintenant.png"
+   ]
+  },
+  {
+   "id": "C085",
+   "section": "27 I",
+   "text": "Notifications : MP ciblés, pings de rôle opt-in, centre in-app, jamais @everyone [#474]",
+   "doc": "oui",
+   "flag": "NOTIFICATION_CENTER_ENABLED (migration notification_center)",
+   "verdict": "PARTIEL",
+   "scenario": "Prouvé : tests de la politique (notification-policy.test.ts) et de l'opt-in réussis. Vérification par grep : isDirectMessageAllowed: 0 usage(s) hors définition ; isPublicAnnouncementAllowed: 0 usage(s) hors définition ; buildGameRolePing: 0 usage(s) hors définition ; notifyGamePingOptIns: 0 usage(s) hors définition ; neutralizeEveryoneText: 0 usage(s) hors définition. Le ping de rôle de jeu et l'opt-in ne sont donc branchés à aucun flux ; la page /notifications existe (capture) mais la règle « MP seulement ciblés » n'est appliquée par aucun code.",
+   "reason": "Le centre in-app existe ; les pings de rôle opt-in et la règle de MP ne sont pas branchés.",
+   "tests": [
+    {
+     "file": "src/lib/notification-policy.test.ts",
+     "status": "passed",
+     "passed": 17,
+     "total": 17
+    },
+    {
+     "file": "src/lib/game-ping-optin.test.ts",
+     "status": "passed",
+     "passed": 7,
+     "total": 7
+    }
+   ],
+   "captures": [
+    "docs/preuves/captures/nouveau-bureau-notifications.png",
+    "docs/preuves/captures/actif-bureau-notifications.png"
+   ]
+  },
+  {
+   "id": "C086",
+   "section": "27 J",
+   "text": "Console : scope OAuth connections, identifiants préremplis, plateformes, crossplay [#481]",
+   "doc": "oui",
+   "flag": "DISCORD_CONNECTIONS_SCOPE_ENABLED ; GAME_PLATFORMS_ENABLED (migration platform_identities_crossplay)",
+   "verdict": "FONCTIONNE",
+   "scenario": "Tests exécutés : src/lib/discord-connections.test.ts 14/14, src/lib/game-platforms.test.ts 11/11.",
+   "reason": "",
+   "tests": [
+    {
+     "file": "src/lib/discord-connections.test.ts",
+     "status": "passed",
+     "passed": 14,
+     "total": 14
+    },
+    {
+     "file": "src/lib/game-platforms.test.ts",
+     "status": "passed",
+     "passed": 11,
+     "total": 11
+    }
+   ],
+   "captures": [
+    "docs/preuves/captures/nouveau-bureau-profil_parametres.png",
+    "docs/preuves/captures/actif-bureau-profil_parametres.png",
+    "docs/preuves/captures/nouveau-bureau-bibliotheque_plateformes.png",
+    "docs/preuves/captures/actif-bureau-bibliotheque_plateformes.png"
+   ]
+  },
+  {
+   "id": "C087",
+   "section": "27 K",
+   "text": "Niveau par jeu et matchmaking (Débutant / Intermédiaire / Confirmé / Compétitif) [#468, #482]",
+   "doc": "oui",
+   "flag": "GAME_LEVELS_ENABLED ; GAME_LEVELS_MATCHMAKING_ENABLED (migration user_game_levels)",
+   "verdict": "FONCTIONNE",
+   "scenario": "Tests exécutés : src/lib/game-levels-matchmaking.integration.test.ts 3/3.",
+   "reason": "",
+   "tests": [
+    {
+     "file": "src/lib/game-levels-matchmaking.integration.test.ts",
+     "status": "passed",
+     "passed": 3,
+     "total": 3
+    }
+   ],
+   "captures": [
+    "docs/preuves/captures/nouveau-bureau-profil_parametres.png",
+    "docs/preuves/captures/actif-bureau-profil_parametres.png",
+    "docs/preuves/captures/nouveau-bureau-joueurs.png",
+    "docs/preuves/captures/actif-bureau-joueurs.png"
+   ]
+  },
+  {
+   "id": "C088",
+   "section": "27 L",
+   "text": "Signalement contextuel : ticket privé staff, aucune sanction automatique [#478]",
+   "doc": "oui",
+   "flag": "DISCORD_REPORT_COMMAND_ENABLED (migration moderation_reports)",
+   "verdict": "NON TESTABLE EN LOCAL",
+   "scenario": "Logique simulée uniquement (clients Discord remplacés par des doublures) : src/lib/discord-report-command.test.ts 19/19.",
+   "reason": "L'effet réel se produit dans Discord (serveur, rôles, salons, MP) : impossible sans appel Discord.",
+   "tests": [
+    {
+     "file": "src/lib/discord-report-command.test.ts",
+     "status": "passed",
+     "passed": 19,
+     "total": 19
+    }
+   ],
+   "captures": []
+  },
+  {
+   "id": "C089",
+   "section": "27 M",
+   "text": "Boosters : rôle « Soutien de la Tour », mur des soutiens, salons boosters, retrait automatique [#483]",
+   "doc": "oui",
+   "flag": "DISCORD_BOOSTERS_ENABLED (migration booster_support)",
+   "verdict": "NON TESTABLE EN LOCAL",
+   "scenario": "Logique simulée uniquement (clients Discord remplacés par des doublures) : src/lib/booster-support.test.ts 18/18.",
+   "reason": "L'effet réel se produit dans Discord (serveur, rôles, salons, MP) : impossible sans appel Discord.",
+   "tests": [
+    {
+     "file": "src/lib/booster-support.test.ts",
+     "status": "passed",
+     "passed": 18,
+     "total": 18
+    }
+   ],
+   "captures": [
+    "docs/preuves/captures/nouveau-bureau-soutiens.png",
+    "docs/preuves/captures/actif-bureau-soutiens.png"
+   ]
+  },
+  {
+   "id": "C090",
+   "section": "27 N",
+   "text": "Personnalisation du profil (couleurs, thèmes, cadres, effets, vitrine, entitlement sans paiement) [#477]",
+   "doc": "oui",
+   "flag": "PROFILE_CUSTOMIZATION_ENABLED (migration profile_customization)",
+   "verdict": "FONCTIONNE",
+   "scenario": "Tests exécutés : src/lib/profile-customization.test.ts 27/27.",
+   "reason": "",
+   "tests": [
+    {
+     "file": "src/lib/profile-customization.test.ts",
+     "status": "passed",
+     "passed": 27,
+     "total": 27
+    }
+   ],
+   "captures": [
+    "docs/preuves/captures/nouveau-bureau-profil_personnalisation.png",
+    "docs/preuves/captures/actif-bureau-profil_personnalisation.png"
+   ]
+  },
+  {
+   "id": "C091",
+   "section": "27 O",
+   "text": "Tableau de bord staff v2 en lecture seule [#486]",
+   "doc": "oui",
+   "flag": "ADMIN_DASHBOARD_V2_ENABLED (sans migration)",
+   "verdict": "NON TESTABLE EN LOCAL",
+   "scenario": "Aucun test ni scénario exécutable trouvé pour cette ligne.",
+   "reason": "Aucune preuve exécutable.",
+   "tests": [],
+   "captures": [
+    "docs/preuves/captures/admin-bureau-admin_tableau-de-bord.png",
+    "docs/preuves/captures/actif-bureau-admin_tableau-de-bord.png"
+   ]
+  },
+  {
+   "id": "C092",
+   "section": "27.6",
+   "text": "Tous les interrupteurs sont OFF par défaut",
+   "doc": "oui",
+   "flag": "DISCORD_ROLE_SELF_CREATION_ENABLED (fermé sauf `true`)",
+   "verdict": "NON TESTABLE EN LOCAL",
+   "scenario": "Logique simulée uniquement (clients Discord remplacés par des doublures) : src/lib/discord-role-command.test.ts 24/24.",
+   "reason": "L'effet réel se produit dans Discord (serveur, rôles, salons, MP) : impossible sans appel Discord.",
+   "tests": [
+    {
+     "file": "src/lib/discord-role-command.test.ts",
+     "status": "passed",
+     "passed": 24,
+     "total": 24
+    }
+   ],
+   "captures": []
+  },
+  {
+   "id": "C093",
+   "section": "27.6",
+   "text": "Les écritures Discord passent par la file et l'executor, jamais en direct",
+   "doc": "partielle",
+   "flag": "DISCORD_ROLE_COMMAND_ENABLED",
+   "verdict": "NON TESTABLE EN LOCAL",
+   "scenario": "Logique simulée uniquement (clients Discord remplacés par des doublures) : src/lib/discord-role-command.test.ts 24/24.",
+   "reason": "L'effet réel se produit dans Discord (serveur, rôles, salons, MP) : impossible sans appel Discord.",
+   "tests": [
+    {
+     "file": "src/lib/discord-role-command.test.ts",
+     "status": "passed",
+     "passed": 24,
+     "total": 24
+    }
+   ],
+   "captures": []
+  },
+  {
+   "id": "C094",
+   "section": "27.6",
+   "text": "Aucune IA ne valide une preuve ; récompenses cosmétiques",
+   "doc": "oui",
+   "flag": "aucun",
+   "verdict": "NON TESTABLE EN LOCAL",
+   "scenario": "Aucun scénario local.",
+   "reason": "L'effet réel se produit dans Discord (serveur, rôles, salons, MP) : impossible sans appel Discord.",
+   "tests": [],
+   "captures": []
+  },
+  {
+   "id": "C095",
+   "section": "1.3",
+   "text": "Internationalisation (étapes à 10 000 puis 50 000 membres actifs)",
+   "doc": "reportée",
+   "flag": "",
+   "verdict": "NON TESTABLE EN LOCAL",
+   "scenario": "Aucun scénario : fonctionnalité reportée par décision (rien n'est livré à exécuter).",
+   "reason": "Reportée : « pourra être envisagée lors de la croissance »",
+   "tests": [],
+   "captures": []
+  },
+  {
+   "id": "C096",
+   "section": "20.1",
+   "text": "Concierge IA",
+   "doc": "reportée",
+   "flag": "",
+   "verdict": "NON TESTABLE EN LOCAL",
+   "scenario": "Aucun scénario : fonctionnalité reportée par décision (rien n'est livré à exécuter).",
+   "reason": "« Option future »",
+   "tests": [],
+   "captures": []
+  },
+  {
+   "id": "C097",
+   "section": "20.2",
+   "text": "IA pour les contenus",
+   "doc": "reportée",
+   "flag": "",
+   "verdict": "NON TESTABLE EN LOCAL",
+   "scenario": "Aucun scénario : fonctionnalité reportée par décision (rien n'est livré à exécuter).",
+   "reason": "« Optionnel »",
+   "tests": [],
+   "captures": []
+  },
+  {
+   "id": "C098",
+   "section": "20.3",
+   "text": "Validation IA des preuves",
+   "doc": "reportée",
+   "flag": "",
+   "verdict": "NON TESTABLE EN LOCAL",
+   "scenario": "Aucun scénario : fonctionnalité reportée par décision (rien n'est livré à exécuter).",
+   "reason": "« Non retenue pour la version initiale » (exclue, voir aussi 9.4)",
+   "tests": [],
+   "captures": []
+  },
+  {
+   "id": "C099",
+   "section": "20.4",
+   "text": "Discord Activities",
+   "doc": "reportée",
+   "flag": "",
+   "verdict": "NON TESTABLE EN LOCAL",
+   "scenario": "Aucun scénario : fonctionnalité reportée par décision (rien n'est livré à exécuter).",
+   "reason": "« Proposition future, non obligatoire »",
+   "tests": [],
+   "captures": []
+  },
+  {
+   "id": "C100",
+   "section": "20.5",
+   "text": "Améliorations visuelles Discord (tags, bannières, styles avancés)",
+   "doc": "reportée",
+   "flag": "",
+   "verdict": "NON TESTABLE EN LOCAL",
+   "scenario": "Aucun scénario : fonctionnalité reportée par décision (rien n'est livré à exécuter).",
+   "reason": "« Options futures »",
+   "tests": [],
+   "captures": []
+  },
+  {
+   "id": "C101",
+   "section": "27.3",
+   "text": "Bot gateway permanent (activité Discord, temps en vocal, « 3 membres jouent à X »)",
+   "doc": "reportée",
+   "flag": "",
+   "verdict": "NON TESTABLE EN LOCAL",
+   "scenario": "Aucun scénario : fonctionnalité reportée par décision (rien n'est livré à exécuter).",
+   "reason": "Reporté en v2 (documentation seulement)",
+   "tests": [],
+   "captures": []
+  },
+  {
+   "id": "C102",
+   "section": "27.3",
+   "text": "Rangs importés via API officielles (Riot, Hypixel)",
+   "doc": "reportée",
+   "flag": "",
+   "verdict": "NON TESTABLE EN LOCAL",
+   "scenario": "Aucun scénario : fonctionnalité reportée par décision (rien n'est livré à exécuter).",
+   "reason": "Reporté en v2 (l'interface `source` DECLARED \\",
+   "tests": [],
+   "captures": []
+  },
+  {
+   "id": "C103",
+   "section": "27.4",
+   "text": "VIP payant cosmétique et confort",
+   "doc": "reportée",
+   "flag": "",
+   "verdict": "NON TESTABLE EN LOCAL",
+   "scenario": "Aucun scénario : fonctionnalité reportée par décision (rien n'est livré à exécuter).",
+   "reason": "Reporté « plus tard » (le champ d'entitlement existe, aucun paiement)",
+   "tests": [],
+   "captures": []
+  },
+  {
+   "id": "C104",
+   "section": "1.1",
+   "text": "Vision : parcours complet du joueur (découvrir, partenaires, soirées, équipes, Tour, défis, grades, compétitions, réputation)",
+   "doc": "sans livrable code",
+   "flag": "",
+   "verdict": "NON TESTABLE EN LOCAL",
+   "scenario": "Aucun scénario exécutable : principe, contenu éditorial ou action hors dépôt.",
+   "reason": "Énoncé de vision : chaque capacité est comptée dans les lignes suivantes",
+   "tests": [],
+   "captures": []
+  },
+  {
+   "id": "C105",
+   "section": "1.2",
+   "text": "Multigaming : aucun jeu imposé",
+   "doc": "sans livrable code",
+   "flag": "",
+   "verdict": "NON TESTABLE EN LOCAL",
+   "scenario": "Aucun scénario exécutable : principe, contenu éditorial ou action hors dépôt.",
+   "reason": "Principe de positionnement",
+   "tests": [],
+   "captures": []
+  },
+  {
+   "id": "C106",
+   "section": "1.3",
+   "text": "Lancement prioritairement francophone",
+   "doc": "sans livrable code",
+   "flag": "",
+   "verdict": "NON TESTABLE EN LOCAL",
+   "scenario": "Aucun scénario exécutable : principe, contenu éditorial ou action hors dépôt.",
+   "reason": "Stratégie de lancement",
+   "tests": [],
+   "captures": []
+  },
+  {
+   "id": "C107",
+   "section": "1.3",
+   "text": "Ne pas annoncer le lancement comme terminé avant validation",
+   "doc": "sans livrable code",
+   "flag": "",
+   "verdict": "NON TESTABLE EN LOCAL",
+   "scenario": "Aucun scénario exécutable : principe, contenu éditorial ou action hors dépôt.",
+   "reason": "Règle de communication",
+   "tests": [],
+   "captures": []
+  },
+  {
+   "id": "C108",
+   "section": "3.2",
+   "text": "Principes d'organisation (noms, emojis, mobile, pas de salons vides, fils et panneaux)",
+   "doc": "sans livrable code",
+   "flag": "",
+   "verdict": "NON TESTABLE EN LOCAL",
+   "scenario": "Aucun scénario exécutable : principe, contenu éditorial ou action hors dépôt.",
+   "reason": "Configuration Discord",
+   "tests": [],
+   "captures": []
+  },
+  {
+   "id": "C109",
+   "section": "4.3",
+   "text": "Règlement et validation d'accès : vérifier le rôle Régulars, tester comme un vrai nouveau membre",
+   "doc": "sans livrable code",
+   "flag": "",
+   "verdict": "NON TESTABLE EN LOCAL",
+   "scenario": "Aucun scénario exécutable : principe, contenu éditorial ou action hors dépôt.",
+   "reason": "Vérification humaine sur Discord",
+   "tests": [],
+   "captures": []
+  },
+  {
+   "id": "C110",
+   "section": "4.4",
+   "text": "Onboarding natif Discord (option)",
+   "doc": "sans livrable code",
+   "flag": "",
+   "verdict": "NON TESTABLE EN LOCAL",
+   "scenario": "Aucun scénario exécutable : principe, contenu éditorial ou action hors dépôt.",
+   "reason": "Option de configuration Discord, non obligatoire",
+   "tests": [],
+   "captures": []
+  },
+  {
+   "id": "C111",
+   "section": "5.1",
+   "text": "Direction artistique (Tower of God, science-fiction, holographique, humour)",
+   "doc": "sans livrable code",
+   "flag": "",
+   "verdict": "NON TESTABLE EN LOCAL",
+   "scenario": "Aucun scénario exécutable : principe, contenu éditorial ou action hors dépôt.",
+   "reason": "Jugement de design, non vérifiable par le code",
+   "tests": [],
+   "captures": [
+    "docs/preuves/captures/visiteur-bureau-accueil.png",
+    "docs/preuves/captures/nouveau-bureau-accueil.png"
+   ]
+  },
+  {
+   "id": "C112",
+   "section": "5.2",
+   "text": "Éléments visuels à harmoniser (icône, bannière, cartes, classements, annonces)",
+   "doc": "sans livrable code",
+   "flag": "",
+   "verdict": "NON TESTABLE EN LOCAL",
+   "scenario": "Aucun scénario exécutable : principe, contenu éditorial ou action hors dépôt.",
+   "reason": "Ressources graphiques hors dépôt",
+   "tests": [],
+   "captures": [
+    "docs/preuves/captures/visiteur-bureau-accueil.png",
+    "docs/preuves/captures/nouveau-bureau-accueil.png"
+   ]
+  },
+  {
+   "id": "C113",
+   "section": "5.3",
+   "text": "Ton communautaire (convivial, bienveillant, sans humiliation)",
+   "doc": "sans livrable code",
+   "flag": "",
+   "verdict": "NON TESTABLE EN LOCAL",
+   "scenario": "Aucun scénario exécutable : principe, contenu éditorial ou action hors dépôt.",
+   "reason": "Rédaction et modération",
+   "tests": [],
+   "captures": []
+  },
+  {
+   "id": "C114",
+   "section": "6.3",
+   "text": "Suppression des 134 rôles Étage",
+   "doc": "sans livrable code",
+   "flag": "",
+   "verdict": "NON TESTABLE EN LOCAL",
+   "scenario": "Aucun scénario exécutable : principe, contenu éditorial ou action hors dépôt.",
+   "reason": "Action manuelle du propriétaire : déclarée faite le 20/11, non vérifiable depuis le dépôt",
+   "tests": [],
+   "captures": []
+  },
+  {
+   "id": "C115",
+   "section": "7.2",
+   "text": "Pas de deux sources concurrentes (arrêt de l'attribution d'étages d'Atlas)",
+   "doc": "sans livrable code",
+   "flag": "",
+   "verdict": "NON TESTABLE EN LOCAL",
+   "scenario": "Aucun scénario exécutable : principe, contenu éditorial ou action hors dépôt.",
+   "reason": "Action manuelle dans Atlas ; GameNight n'écrit aucun rôle d'étage",
+   "tests": [],
+   "captures": [
+    "docs/preuves/captures/visiteur-bureau-tower.png",
+    "docs/preuves/captures/nouveau-bureau-tower.png"
+   ]
+  },
+  {
+   "id": "C116",
+   "section": "8.1",
+   "text": "Les défis encouragent découverte, coopération, créativité, humour",
+   "doc": "sans livrable code",
+   "flag": "",
+   "verdict": "NON TESTABLE EN LOCAL",
+   "scenario": "Aucun scénario exécutable : principe, contenu éditorial ou action hors dépôt.",
+   "reason": "Contenu éditorial",
+   "tests": [],
+   "captures": []
+  },
+  {
+   "id": "C117",
+   "section": "18.1",
+   "text": "Réutiliser et améliorer avant de remplacer",
+   "doc": "sans livrable code",
+   "flag": "",
+   "verdict": "NON TESTABLE EN LOCAL",
+   "scenario": "Aucun scénario exécutable : principe, contenu éditorial ou action hors dépôt.",
+   "reason": "Principe",
+   "tests": [],
+   "captures": []
+  },
+  {
+   "id": "C118",
+   "section": "18.2",
+   "text": "YAGPDB : préserver et moderniser la validation et la sélection de rôles",
+   "doc": "sans livrable code",
+   "flag": "",
+   "verdict": "NON TESTABLE EN LOCAL",
+   "scenario": "Aucun scénario exécutable : principe, contenu éditorial ou action hors dépôt.",
+   "reason": "Bot tiers : audit documentaire seulement",
+   "tests": [],
+   "captures": []
+  },
+  {
+   "id": "C119",
+   "section": "18.3",
+   "text": "Atlas : préparer le remplacement de l'attribution des étages",
+   "doc": "sans livrable code",
+   "flag": "",
+   "verdict": "NON TESTABLE EN LOCAL",
+   "scenario": "Aucun scénario exécutable : principe, contenu éditorial ou action hors dépôt.",
+   "reason": "Bot tiers : pause manuelle",
+   "tests": [],
+   "captures": []
+  },
+  {
+   "id": "C120",
+   "section": "18.4",
+   "text": "Ticket Tool : réparer et réutiliser le panneau d'assistance",
+   "doc": "sans livrable code",
+   "flag": "",
+   "verdict": "NON TESTABLE EN LOCAL",
+   "scenario": "Aucun scénario exécutable : principe, contenu éditorial ou action hors dépôt.",
+   "reason": "Bot tiers : audit documentaire seulement",
+   "tests": [],
+   "captures": []
+  },
+  {
+   "id": "C121",
+   "section": "18.5",
+   "text": "Appy : conserver son rôle dans les candidatures",
+   "doc": "sans livrable code",
+   "flag": "",
+   "verdict": "NON TESTABLE EN LOCAL",
+   "scenario": "Aucun scénario exécutable : principe, contenu éditorial ou action hors dépôt.",
+   "reason": "Bot tiers",
+   "tests": [],
+   "captures": []
+  },
+  {
+   "id": "C122",
+   "section": "18.6",
+   "text": "Modération : auditer avant de choisir les mécanismes",
+   "doc": "sans livrable code",
+   "flag": "",
+   "verdict": "NON TESTABLE EN LOCAL",
+   "scenario": "Aucun scénario exécutable : principe, contenu éditorial ou action hors dépôt.",
+   "reason": "Audit humain ; le signalement contextuel est compté au sujet L",
+   "tests": [],
+   "captures": []
+  },
+  {
+   "id": "C123",
+   "section": "19.1",
+   "text": "Protection anti-raid, anti-spam serveur et contrôle des bots et applications",
+   "doc": "sans livrable code",
+   "flag": "",
+   "verdict": "NON TESTABLE EN LOCAL",
+   "scenario": "Aucun scénario exécutable : principe, contenu éditorial ou action hors dépôt.",
+   "reason": "Réglages Discord (AutoMod, vérification) et audit humain",
+   "tests": [],
+   "captures": []
+  },
+  {
+   "id": "C124",
+   "section": "21.1",
+   "text": "Pas de système parallèle de profils, équipes ou progression",
+   "doc": "sans livrable code",
+   "flag": "",
+   "verdict": "NON TESTABLE EN LOCAL",
+   "scenario": "Aucun scénario exécutable : principe, contenu éditorial ou action hors dépôt.",
+   "reason": "Principe d'architecture",
+   "tests": [],
+   "captures": []
+  },
+  {
+   "id": "C125",
+   "section": "22.1",
+   "text": "Exigences générales (testable, documenté, vérifiable, mobile, sans effet sur les autres communautés)",
+   "doc": "sans livrable code",
+   "flag": "",
+   "verdict": "NON TESTABLE EN LOCAL",
+   "scenario": "Aucun scénario exécutable : principe, contenu éditorial ou action hors dépôt.",
+   "reason": "Qualité transverse",
+   "tests": [],
+   "captures": []
+  },
+  {
+   "id": "C126",
+   "section": "22.3",
+   "text": "Vérification sur le résultat réel (code ≠ fonction active, déploiement ≠ commande Discord)",
+   "doc": "sans livrable code",
+   "flag": "",
+   "verdict": "NON TESTABLE EN LOCAL",
+   "scenario": "Aucun scénario exécutable : principe, contenu éditorial ou action hors dépôt.",
+   "reason": "Recette humaine",
+   "tests": [],
+   "captures": []
+  },
+  {
+   "id": "C127",
+   "section": "24",
+   "text": "Développement communautaire (soirées hebdomadaires, créateurs, partenariats, réseaux sociaux)",
+   "doc": "sans livrable code",
+   "flag": "",
+   "verdict": "NON TESTABLE EN LOCAL",
+   "scenario": "Aucun scénario exécutable : principe, contenu éditorial ou action hors dépôt.",
+   "reason": "Activité humaine",
+   "tests": [],
+   "captures": [
+    "docs/preuves/captures/nouveau-bureau-notifications.png",
+    "docs/preuves/captures/actif-bureau-notifications.png",
+    "docs/preuves/captures/nouveau-bureau-profil_parametres.png",
+    "docs/preuves/captures/actif-bureau-profil_parametres.png"
+   ]
+  }
+ ],
+ "decisions": [
+  {
+   "id": "D01",
+   "text": "Console : scope OAuth `connections` demandé seulement avec consentement explicite, facultatif",
+   "ref": "27 J",
+   "verdict": "NON TESTABLE EN LOCAL",
+   "scenario": "Logique simulée seulement : src/lib/discord-connections.test.ts 14/14, src/auth.connections.test.ts 11/11. L'effet réel dans Discord n'est pas testable.",
+   "tests": [
+    {
+     "file": "src/lib/discord-connections.test.ts",
+     "status": "passed",
+     "passed": 14,
+     "total": 14
+    },
+    {
+     "file": "src/auth.connections.test.ts",
+     "status": "passed",
+     "passed": 11,
+     "total": 11
+    }
+   ],
+   "captures": [
+    "docs/preuves/captures/nouveau-bureau-profil_parametres.png",
+    "docs/preuves/captures/actif-bureau-profil_parametres.png"
+   ]
+  },
+  {
+   "id": "D02",
+   "text": "Console : plateformes et identifiants préremplis depuis Discord, modifiables",
+   "ref": "27 J",
+   "verdict": "FONCTIONNE",
+   "scenario": "Tests exécutés : src/lib/discord-connections.test.ts 14/14, src/lib/game-platforms.test.ts 11/11.",
+   "tests": [
+    {
+     "file": "src/lib/discord-connections.test.ts",
+     "status": "passed",
+     "passed": 14,
+     "total": 14
+    },
+    {
+     "file": "src/lib/game-platforms.test.ts",
+     "status": "passed",
+     "passed": 11,
+     "total": 11
+    }
+   ],
+   "captures": [
+    "docs/preuves/captures/nouveau-bureau-profil_parametres.png",
+    "docs/preuves/captures/actif-bureau-profil_parametres.png"
+   ]
+  },
+  {
+   "id": "D03",
+   "text": "Console : ajout rapide de jeux par plateforme et « populaires sur ta plateforme »",
+   "ref": "27 J",
+   "verdict": "FONCTIONNE",
+   "scenario": "Tests exécutés : src/lib/game-platforms.test.ts 11/11.",
+   "tests": [
+    {
+     "file": "src/lib/game-platforms.test.ts",
+     "status": "passed",
+     "passed": 11,
+     "total": 11
+    }
+   ],
+   "captures": [
+    "docs/preuves/captures/nouveau-bureau-bibliotheque_plateformes.png",
+    "docs/preuves/captures/actif-bureau-bibliotheque_plateformes.png"
+   ]
+  },
+  {
+   "id": "D04",
+   "text": "Console : champ crossplay sur la fiche jeu",
+   "ref": "27 J",
+   "verdict": "FONCTIONNE",
+   "scenario": "Tests exécutés : src/lib/game-platforms.test.ts 11/11.",
+   "tests": [
+    {
+     "file": "src/lib/game-platforms.test.ts",
+     "status": "passed",
+     "passed": 11,
+     "total": 11
+    }
+   ],
+   "captures": [
+    "docs/preuves/captures/nouveau-bureau-bibliotheque_plateformes.png",
+    "docs/preuves/captures/actif-bureau-bibliotheque_plateformes.png"
+   ]
+  },
+  {
+   "id": "D05",
+   "text": "Défis : jamais de défi impossible sur les plateformes du joueur ; photo d'écran TV avec code acceptée",
+   "ref": "27 J",
+   "verdict": "FONCTIONNE",
+   "scenario": "Tests exécutés : src/lib/tower-challenge-proof-rules.test.ts 12/12, src/lib/tower-challenges.integration.test.ts 72/72.",
+   "tests": [
+    {
+     "file": "src/lib/tower-challenge-proof-rules.test.ts",
+     "status": "passed",
+     "passed": 12,
+     "total": 12
+    },
+    {
+     "file": "src/lib/tower-challenges.integration.test.ts",
+     "status": "passed",
+     "passed": 72,
+     "total": 72
+    }
+   ],
+   "captures": [
+    "docs/preuves/captures/nouveau-bureau-tower.png",
+    "docs/preuves/captures/actif-bureau-tower.png"
+   ]
+  },
+  {
+   "id": "D06",
+   "text": "Validation automatique : défis mesurables Steam validés par cron, profil privé = repli sur le vote, MP au joueur",
+   "ref": "27 C",
+   "verdict": "FONCTIONNE",
+   "scenario": "Tests exécutés : src/lib/tower-steam-measure.integration.test.ts 4/4.",
+   "tests": [
+    {
+     "file": "src/lib/tower-steam-measure.integration.test.ts",
+     "status": "passed",
+     "passed": 4,
+     "total": 4
+    }
+   ],
+   "captures": [
+    "docs/preuves/captures/nouveau-bureau-tower.png",
+    "docs/preuves/captures/actif-bureau-tower.png"
+   ]
+  },
+  {
+   "id": "D07",
+   "text": "Validation automatique : bouton « Signaler un doute » (membres éligibles) bascule en vote",
+   "ref": "27 C",
+   "verdict": "FONCTIONNE",
+   "scenario": "Tests exécutés : src/lib/tower-steam-measure.integration.test.ts 4/4, src/lib/tower-vote-eligibility.test.ts 3/3.",
+   "tests": [
+    {
+     "file": "src/lib/tower-steam-measure.integration.test.ts",
+     "status": "passed",
+     "passed": 4,
+     "total": 4
+    },
+    {
+     "file": "src/lib/tower-vote-eligibility.test.ts",
+     "status": "passed",
+     "passed": 3,
+     "total": 3
+    }
+   ],
+   "captures": [
+    "docs/preuves/captures/nouveau-bureau-tower.png",
+    "docs/preuves/captures/actif-bureau-tower.png"
+   ]
+  },
+  {
+   "id": "D08",
+   "text": "Notifications : MP uniquement pour ce qui vise personnellement le joueur",
+   "ref": "27 I",
+   "verdict": "NE FONCTIONNE PAS",
+   "scenario": "Contrôle exécuté : Vérification par grep : isDirectMessageAllowed: 0 usage(s) hors définition ; isPublicAnnouncementAllowed: 0 usage(s) hors définition ; buildGameRolePing: 0 usage(s) hors définition ; notifyGamePingOptIns: 0 usage(s) hors définition ; neutralizeEveryoneText: 0 usage(s) hors définition. Le ping de rôle de jeu et l'opt-in ne sont donc branchés à aucun flux ; la page /notifications existe (capture) mais la règle « MP seulement ciblés » n'est appliquée par aucun code. Mesure locale : un seul « Démarrer » de « Jouer maintenant » (31 membres cochés par défaut) met en file 31 MP + 1 annonce de salon (parcours D). Audit du code : MP « Bienvenue », rappels, validation et changement de date hors des 4 types autorisés (NOTIFICATIONS.md §4).",
+   "tests": [
+    {
+     "file": "src/lib/notification-policy.test.ts",
+     "status": "passed",
+     "passed": 17,
+     "total": 17
+    }
+   ],
+   "captures": [
+    "docs/preuves/captures/nouveau-bureau-notifications.png",
+    "docs/preuves/captures/actif-bureau-notifications.png"
+   ],
+   "reason": "La décision n'est pas appliquée par le code : MP hors liste et aucune garde branchée."
+  },
+  {
+   "id": "D09",
+   "text": "Notifications : pings de rôle de jeu en opt-in + centre de notifications dans l'app, jamais @everyone",
+   "ref": "27 I",
+   "verdict": "PARTIEL",
+   "scenario": "Prouvé : aucun chemin @everyone/@here (parse=everyone retiré, tests discord-rest/notification-policy) ; page /notifications présente. Non branché : Vérification par grep : isDirectMessageAllowed: 0 usage(s) hors définition ; isPublicAnnouncementAllowed: 0 usage(s) hors définition ; buildGameRolePing: 0 usage(s) hors définition ; notifyGamePingOptIns: 0 usage(s) hors définition ; neutralizeEveryoneText: 0 usage(s) hors définition. Le ping de rôle de jeu et l'opt-in ne sont donc branchés à aucun flux ; la page /notifications existe (capture) mais la règle « MP seulement ciblés » n'est appliquée par aucun code.",
+   "tests": [
+    {
+     "file": "src/lib/game-ping-optin.test.ts",
+     "status": "passed",
+     "passed": 7,
+     "total": 7
+    },
+    {
+     "file": "src/lib/notification-policy.test.ts",
+     "status": "passed",
+     "passed": 17,
+     "total": 17
+    }
+   ],
+   "captures": [
+    "docs/preuves/captures/nouveau-bureau-notifications.png",
+    "docs/preuves/captures/actif-bureau-notifications.png"
+   ],
+   "reason": "Le ping de rôle opt-in n'est appelé par aucun flux."
+  },
+  {
+   "id": "D10",
+   "text": "Notifications : annonces publiques seulement pour les moments marquants",
+   "ref": "27 I",
+   "verdict": "NE FONCTIONNE PAS",
+   "scenario": "Contrôle exécuté : Vérification par grep : isDirectMessageAllowed: 0 usage(s) hors définition ; isPublicAnnouncementAllowed: 0 usage(s) hors définition ; buildGameRolePing: 0 usage(s) hors définition ; notifyGamePingOptIns: 0 usage(s) hors définition ; neutralizeEveryoneText: 0 usage(s) hors définition. Le ping de rôle de jeu et l'opt-in ne sont donc branchés à aucun flux ; la page /notifications existe (capture) mais la règle « MP seulement ciblés » n'est appliquée par aucun code. Chaque passage de niveau et chaque badge sont annoncés dans le salon avec la mention <@id> (src/lib/discord-level-up.ts, src/lib/discord-badge-unlocked.ts) : pas seulement des moments marquants.",
+   "tests": [
+    {
+     "file": "src/lib/notification-policy.test.ts",
+     "status": "passed",
+     "passed": 17,
+     "total": 17
+    }
+   ],
+   "captures": [
+    "docs/preuves/captures/nouveau-bureau-notifications.png",
+    "docs/preuves/captures/actif-bureau-notifications.png"
+   ],
+   "reason": "La règle « annonces publiques seulement pour moments marquants » n'est pas appliquée."
+  },
+  {
+   "id": "D11",
+   "text": "Niveau par jeu : niveau déclaratif Débutant/Intermédiaire/Confirmé/Compétitif utilisé par matchmaking et équilibrage",
+   "ref": "27 K",
+   "verdict": "FONCTIONNE",
+   "scenario": "Tests exécutés : src/lib/game-levels-rules.test.ts 16/16, src/lib/game-levels-matchmaking.integration.test.ts 3/3.",
+   "tests": [
+    {
+     "file": "src/lib/game-levels-rules.test.ts",
+     "status": "passed",
+     "passed": 16,
+     "total": 16
+    },
+    {
+     "file": "src/lib/game-levels-matchmaking.integration.test.ts",
+     "status": "passed",
+     "passed": 3,
+     "total": 3
+    }
+   ],
+   "captures": [
+    "docs/preuves/captures/nouveau-bureau-profil_parametres.png",
+    "docs/preuves/captures/actif-bureau-profil_parametres.png",
+    "docs/preuves/captures/nouveau-bureau-joueurs.png",
+    "docs/preuves/captures/actif-bureau-joueurs.png"
+   ]
+  },
+  {
+   "id": "D12",
+   "text": "Niveau par jeu : interface prête pour un rang importé (source DECLARED|IMPORTED)",
+   "ref": "27 K",
+   "verdict": "FONCTIONNE",
+   "scenario": "Tests exécutés : src/lib/game-levels-rules.test.ts 16/16.",
+   "tests": [
+    {
+     "file": "src/lib/game-levels-rules.test.ts",
+     "status": "passed",
+     "passed": 16,
+     "total": 16
+    }
+   ],
+   "captures": [
+    "docs/preuves/captures/nouveau-bureau-profil_parametres.png",
+    "docs/preuves/captures/actif-bureau-profil_parametres.png"
+   ]
+  },
+  {
+   "id": "D13",
+   "text": "Groupes : 1 équipe principale ; projets et soirées illimités ; invité de tournoi d'une autre équipe",
+   "ref": "27 A",
+   "verdict": "FONCTIONNE",
+   "scenario": "Tests exécutés : src/lib/team-recruiters-rules.test.ts 25/25, src/lib/community-teams-rules.test.ts 8/8, src/lib/projects.integration.test.ts 10/10.",
+   "tests": [
+    {
+     "file": "src/lib/team-recruiters-rules.test.ts",
+     "status": "passed",
+     "passed": 25,
+     "total": 25
+    },
+    {
+     "file": "src/lib/community-teams-rules.test.ts",
+     "status": "passed",
+     "passed": 8,
+     "total": 8
+    },
+    {
+     "file": "src/lib/projects.integration.test.ts",
+     "status": "passed",
+     "passed": 10,
+     "total": 10
+    }
+   ],
+   "captures": [
+    "docs/preuves/captures/nouveau-bureau-equipes.png",
+    "docs/preuves/captures/actif-bureau-equipes.png",
+    "docs/preuves/captures/nouveau-bureau-projets.png",
+    "docs/preuves/captures/actif-bureau-projets.png"
+   ]
+  },
+  {
+   "id": "D14",
+   "text": "Modération : commande « Signaler » → ticket privé staff, aucune sanction automatique, journalisé",
+   "ref": "27 L",
+   "verdict": "NON TESTABLE EN LOCAL",
+   "scenario": "Logique simulée seulement : src/lib/discord-report-command.test.ts 19/19. L'effet réel dans Discord n'est pas testable.",
+   "tests": [
+    {
+     "file": "src/lib/discord-report-command.test.ts",
+     "status": "passed",
+     "passed": 19,
+     "total": 19
+    }
+   ],
+   "captures": []
+  },
+  {
+   "id": "D15",
+   "text": "Boosters : rôle « Soutien de la Tour » sans permission, badge, mur des soutiens, salons réservés, retrait automatique",
+   "ref": "27 M",
+   "verdict": "NON TESTABLE EN LOCAL",
+   "scenario": "Logique simulée seulement : src/lib/booster-support.test.ts 18/18. L'effet réel dans Discord n'est pas testable.",
+   "tests": [
+    {
+     "file": "src/lib/booster-support.test.ts",
+     "status": "passed",
+     "passed": 18,
+     "total": 18
+    }
+   ],
+   "captures": [
+    "docs/preuves/captures/nouveau-bureau-soutiens.png",
+    "docs/preuves/captures/actif-bureau-soutiens.png"
+   ]
+  },
+  {
+   "id": "D16",
+   "text": "V2 : bot gateway permanent et rangs importés (documentation seulement)",
+   "ref": "27.3",
+   "verdict": "NON TESTABLE EN LOCAL",
+   "scenario": "Reporté en v2 : rien à exécuter.",
+   "tests": [],
+   "captures": []
+  },
+  {
+   "id": "D17",
+   "text": "Plus tard : VIP payant cosmétique ; champ d'entitlement sans aucun paiement implémenté",
+   "ref": "27.4",
+   "verdict": "FONCTIONNE",
+   "scenario": "Tests exécutés : src/lib/profile-customization.test.ts 27/27.",
+   "tests": [
+    {
+     "file": "src/lib/profile-customization.test.ts",
+     "status": "passed",
+     "passed": 27,
+     "total": 27
+    }
+   ],
+   "captures": [
+    "docs/preuves/captures/nouveau-bureau-profil_personnalisation.png",
+    "docs/preuves/captures/actif-bureau-profil_personnalisation.png"
+   ]
+  },
+  {
+   "id": "D18",
+   "text": "Rappel : suppression des 134 rôles Étage avant la création automatique de rôles (action manuelle)",
+   "ref": "27.5",
+   "verdict": "NON TESTABLE EN LOCAL",
+   "scenario": "Logique simulée seulement : src/lib/tower-etage-roles.test.ts 17/17. L'effet réel dans Discord n'est pas testable.",
+   "tests": [
+    {
+     "file": "src/lib/tower-etage-roles.test.ts",
+     "status": "passed",
+     "passed": 17,
+     "total": 17
+    }
+   ],
+   "captures": []
+  },
+  {
+   "id": "D19",
+   "text": "Principe : tous les interrupteurs OFF par défaut, écritures Discord par la file et l'executor",
+   "ref": "27.6",
+   "verdict": "NON TESTABLE EN LOCAL",
+   "scenario": "Logique simulée seulement : src/lib/discord-role-command.test.ts 24/24, src/lib/notification-executor.integration.test.ts 24/24. L'effet réel dans Discord n'est pas testable.",
+   "tests": [
+    {
+     "file": "src/lib/discord-role-command.test.ts",
+     "status": "passed",
+     "passed": 24,
+     "total": 24
+    },
+    {
+     "file": "src/lib/notification-executor.integration.test.ts",
+     "status": "passed",
+     "passed": 24,
+     "total": 24
+    }
+   ],
+   "captures": []
+  },
+  {
+   "id": "D20",
+   "text": "Principe : aucune IA ne valide une preuve ; récompenses cosmétiques",
+   "ref": "27.6",
+   "verdict": "FONCTIONNE",
+   "scenario": "Contrôle statique : dépendances IA dans package.json : « aucune » ; fichiers de src/ (hors tests) mentionnant un fournisseur d'IA : « aucun »",
+   "tests": [],
+   "captures": []
+  }
+ ]
+}

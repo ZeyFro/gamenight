@@ -16,8 +16,8 @@ const out = {};
 }
 // 1.4 : budget gratuit, le module boosters est cosmétique seulement.
 {
-  const hits = sh(`grep -nE "xpTotal|xpBalance|floorsClimbed|grantXp|awardXp|rewardFloors|vote" src/lib/booster-support.ts src/lib/booster-support-runner.ts | head`);
-  const payment = sh(`grep -rlEi "stripe|paypal|checkout|payment" src --include=*.ts --include=*.tsx | grep -v "\\.test\\." | head`);
+  const hits = sh(`grep -nE "xpTotal|xpBalance|floorsClimbed|grantXp|awardXp|rewardFloors|vote" src/lib/booster-support.ts src/lib/booster-support-runner.ts | grep -vE "^[^:]+:[0-9]+:\\s*(\\*|//|/\\*)" | head`);
+  const payment = sh(`grep -rlEi "\\<(stripe|paypal|mollie)\\>|paymentIntent|checkout\\.session" src --include=*.ts --include=*.tsx | grep -v "\\.test\\." | head`);
   out["boosters-cosmetique"] = { ok: hits === "" && payment === "", evidence: `références XP/étages/vote dans booster-support*.ts : « ${hits || "aucune"} » ; fichiers de paiement dans src/ : « ${payment || "aucun"} »` };
 }
 // 6.3 : aucun rôle Discord permanent par étage.

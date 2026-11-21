@@ -1,5 +1,8 @@
 # Audit « pings et notifications côté application » — nouveau joueur
 
+> Rédigé par un sous-agent en lecture seule ; **cinq constats vérifiés ensuite par grep par l'auteur de la PR** : aucun `@everyone`/`@here` émis ; zéro appelant hors tests pour `buildGameRolePing`, `notifyGamePingOptIns`, `isDirectMessageAllowed`, `isPublicAnnouncementAllowed` ; mention `<@id>` dans `discord-level-up.ts:33` et `discord-badge-unlocked.ts:26` ; MP « Bienvenue » mis en file au rendu du layout (`src/app/layout.tsx:70`, `src/lib/onboarding-reminder.ts`). Le reste est « LU » ou « NON VÉRIFIABLE EN LOCAL » comme indiqué par section.
+
+
 Worktree `/home/user/gamenight/.claude/worktrees/preuves`, branche `preuves/20261121` (issue de main). Audit en lecture seule, 2026-11-21.
 
 ## Résumé (10 lignes)

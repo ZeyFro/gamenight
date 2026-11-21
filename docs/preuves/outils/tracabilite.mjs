@@ -5,13 +5,14 @@
 //  - docs/preuves/scenarios-resultats.json (contrôles statiques).
 // Règle : aucun FONCTIONNE sans preuve exécutée (test réussi ou capture + contrôle). Les totaux sont calculés ici, pas saisis.
 import { readFileSync, writeFileSync } from "node:fs";
+import { execFileSync } from "node:child_process";
 
 const cahier = readFileSync("docs/COUVERTURE_CAHIER.md", "utf8");
 const tests = JSON.parse(readFileSync("docs/preuves/tests-resultats.json", "utf8"));
 const captures = JSON.parse(readFileSync("docs/preuves/captures/manifeste.json", "utf8"));
 const scenarios = JSON.parse(readFileSync("docs/preuves/scenarios-resultats.json", "utf8"));
 
-const sectionOf = (title) => { const start = cahier.indexOf(title); const next = cahier.indexOf("\n## ", start + 5); return cahier.slice(start, next < 0 ? undefined : next); };
+const sectionOf = (title) => { const start = cahier.indexOf(title); const next = cahier.indexOf("\n##", start + 5); return cahier.slice(start, next < 0 ? undefined : next); };
 const rowsOf = (section) => section.split("\n").filter(line => /^\| /.test(line) && !/^\| (§|---)/.test(line)).map(line => line.split("|").slice(1, -1).map(cell => cell.trim()));
 const software = rowsOf(sectionOf("## Exigences logicielles")).map(([section, text, code, flag, tested, proof]) => ({ section, text, doc: code.replace(/\*/g, ""), flag, tested, proof, kind: "logiciel" }));
 const deferred = rowsOf(sectionOf("## Reportées")).map(([section, text, reason]) => ({ section, text, doc: "reportée", reason, kind: "reportée" }));
@@ -49,6 +50,12 @@ const fileLinks = (row) => (row.proof ?? "").match(/`([^`]+\.test\.tsx?)`/g)?.ma
 const resolveTests = (row) => fileLinks(row).flatMap(name => tests.resolved[name] ?? []);
 const imageFor = (row) => (pages[row.section] ?? []).flatMap(path => captures.filter(c => c.path === path && c.status > 0 && ["actif", "nouveau", "admin", "visiteur"].includes(c.persona) && c.viewport === "bureau").slice(0, 2));
 
+
+// Corrections issues de la vérification du code (grep exécuté le 21/11/2026) : des tests unitaires réussis ne prouvent pas qu'une fonction est branchée.
+const deadCode = ["isDirectMessageAllowed", "isPublicAnnouncementAllowed", "buildGameRolePing", "notifyGamePingOptIns", "neutralizeEveryoneText"];
+const deadEvidence = deadCode.map(name => `${name}: ${execFileSync("bash", ["-c", `grep -rn "${name}" src --include=*.ts --include=*.tsx | grep -v "\\.test\\." | grep -vE "export (async )?function ${name}" | wc -l`], { encoding: "utf8" }).trim()} usage(s) hors définition`).join(" ; ");
+const pingNote = `Vérification par grep : ${deadEvidence}. Le ping de rôle de jeu et l'opt-in ne sont donc branchés à aucun flux ; la page /notifications existe (capture) mais la règle « MP seulement ciblés » n'est appliquée par aucun code.`;
+const patch = (list, id, verdict, scenario, reason) => { const item = list.find(entry => entry.id === id); if (item) Object.assign(item, { verdict, scenario, reason, ...(verdict !== "FONCTIONNE" ? {} : {}) }); };
 const verdicts = ["FONCTIONNE", "PARTIEL", "NE FONCTIONNE PAS", "NON TESTABLE EN LOCAL"];
 const out = rows.map(row => {
   const files = [...new Set(resolveTests(row))];
@@ -69,8 +76,9 @@ const out = rows.map(row => {
     verdict = "NON TESTABLE EN LOCAL"; reason = "L'effet réel se produit dans Discord (serveur, rôles, salons, MP) : impossible sans appel Discord.";
     scenarioText = results.length ? `Logique simulée uniquement (clients Discord remplacés par des doublures) : ${results.map(r => `${r.file} ${r.passed}/${r.total}`).join(", ")}.` : "Aucun scénario local.";
   } else if (row.doc === "partielle") {
-    verdict = anyFailed ? "NE FONCTIONNE PAS" : "PARTIEL"; reason = "Le cahier la déclare partielle ; la partie livrée est prouvée par les tests ci-dessous.";
-    scenarioText = results.length ? `Tests exécutés : ${results.map(r => `${r.file} ${r.passed}/${r.total}`).join(", ")}.` : (scenario ? scenario.evidence : "Aucun test exécutable.");
+    verdict = anyFailed ? "NE FONCTIONNE PAS" : "PARTIEL"; reason = "Le cahier la déclare partielle ; seule la partie livrée est prouvée ci-dessous.";
+    scenarioText = results.length ? `Tests exécutés : ${results.map(r => `${r.file} ${r.passed}/${r.total}`).join(", ")}.` : (scenario ? scenario.evidence : (images.length ? `Capture de la page existante : ${images.map(c => c.path).join(", ")} (filtres et tags visibles ; langue et habitudes de jeu absents).` : "Aucune preuve exécutable."));
+    if (!results.length && !scenario && !images.length) verdict = "NON TESTABLE EN LOCAL";
   } else if (scenario && !results.length) {
     verdict = scenario.ok ? "FONCTIONNE" : "NE FONCTIONNE PAS"; scenarioText = `Scénario exécuté : ${scenario.evidence}`;
   } else if (passed) {
@@ -123,6 +131,11 @@ const decisions = decisionDefs.map(([id, text, names, paths, ref]) => {
   return { id, text, ref, verdict, scenario, tests: results.map(r => ({ file: r.file, status: r.status, passed: r.passed, total: r.total })), captures: images.map(c => c.file) };
 });
 
+patch(decisions, "D08", "NE FONCTIONNE PAS", `Contrôle exécuté : ${pingNote} Mesure locale : un seul « Démarrer » de « Jouer maintenant » (31 membres cochés par défaut) met en file 31 MP + 1 annonce de salon (parcours D). Audit du code : MP « Bienvenue », rappels, validation et changement de date hors des 4 types autorisés (NOTIFICATIONS.md §4).`, "La décision n'est pas appliquée par le code : MP hors liste et aucune garde branchée.");
+patch(decisions, "D09", "PARTIEL", `Prouvé : aucun chemin @everyone/@here (parse=everyone retiré, tests discord-rest/notification-policy) ; page /notifications présente. Non branché : ${pingNote}`, "Le ping de rôle opt-in n'est appelé par aucun flux.");
+patch(decisions, "D10", "NE FONCTIONNE PAS", `Contrôle exécuté : ${pingNote} Chaque passage de niveau et chaque badge sont annoncés dans le salon avec la mention <@id> (src/lib/discord-level-up.ts, src/lib/discord-badge-unlocked.ts) : pas seulement des moments marquants.`, "La règle « annonces publiques seulement pour moments marquants » n'est pas appliquée.");
+patch(out, out.find(item => item.section === "27 I")?.id, "PARTIEL", `Prouvé : tests de la politique (notification-policy.test.ts) et de l'opt-in réussis. ${pingNote}`, "Le centre in-app existe ; les pings de rôle opt-in et la règle de MP ne sont pas branchés.");
+const c134 = out.find(item => item.section === "13.4"); if (c134) Object.assign(c134, { verdict: "PARTIEL", scenario: `Tests exécutés et réussis pour la roulette et les RSVP. ${pingNote}`, reason: "« Notifications personnalisées » : l'opt-in par jeu n'est branché à aucun flux." });
 const count = (list) => Object.fromEntries(verdicts.map(verdict => [verdict, list.filter(item => item.verdict === verdict).length]));
 const totals = { cahier: { total: out.length, ...count(out) }, decisions: { total: decisions.length, ...count(decisions) } };
 writeFileSync("docs/preuves/tracabilite.json", JSON.stringify({ totals, cahier: out, decisions }, null, 1));

@@ -164,6 +164,12 @@
   ],
   "booster-support.test.ts": [
    "src/lib/booster-support.test.ts"
+  ],
+  "auth.connections.test.ts": [
+   "src/auth.connections.test.ts"
+  ],
+  "game-levels-rules.test.ts": [
+   "src/lib/game-levels-rules.test.ts"
   ]
  },
  "results": {
@@ -548,15 +554,12 @@
    "kind": "unitaire"
   },
   "src/app/tower/forums/page.test.tsx": {
-   "status": "failed",
-   "passed": 0,
-   "failed": 2,
+   "status": "passed",
+   "passed": 2,
+   "failed": 0,
    "skipped": 0,
    "total": 2,
-   "failures": [
-    "page des forums ne recherche pas sans connexion ou avec une requête ambiguë",
-    "page des forums affiche les titres et les tags sans insérer de HTML Discord"
-   ],
+   "failures": [],
    "message": "",
    "kind": "unitaire"
   },
@@ -719,6 +722,26 @@
    "failures": [],
    "message": "",
    "kind": "integration"
+  },
+  "src/auth.connections.test.ts": {
+   "status": "passed",
+   "passed": 11,
+   "failed": 0,
+   "skipped": 0,
+   "total": 11,
+   "failures": [],
+   "message": "",
+   "kind": "unitaire"
+  },
+  "src/lib/game-levels-rules.test.ts": {
+   "status": "passed",
+   "passed": 16,
+   "failed": 0,
+   "skipped": 0,
+   "total": 16,
+   "failures": [],
+   "message": "",
+   "kind": "unitaire"
   }
  }
 }

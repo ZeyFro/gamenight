@@ -11,13 +11,17 @@ for (const name of cited) {
   const hit = all.filter(file => file === name || file.endsWith("/" + name));
   resolved[name] = hit;
 }
-const files = [...new Set(Object.values(resolved).flat())];
+const EXTRA = ["auth.connections.test.ts", "discord-connections.test.ts", "game-platforms.test.ts", "tower-challenge-proof-rules.test.ts", "notification-policy.test.ts", "game-ping-optin.test.ts", "game-levels-rules.test.ts", "game-levels-matchmaking.integration.test.ts", "team-recruiters-rules.test.ts", "community-teams-rules.test.ts", "projects.integration.test.ts", "discord-report-command.test.ts", "booster-support.test.ts", "profile-customization.test.ts", "tower-etage-roles.test.ts", "discord-role-command.test.ts", "notification-executor.integration.test.ts", "tower-steam-measure.integration.test.ts", "tower-vote-eligibility.test.ts", "src/app/tower/forums/page.test.tsx"];
+for (const name of EXTRA) resolved[name] = all.filter(file => file === name || file.endsWith("/" + name));
+const complement = process.argv.includes("--complement");
+const previous = complement ? JSON.parse(readFileSync("docs/preuves/tests-resultats.json", "utf8")) : null;
+const files = [...new Set(Object.values(resolved).flat())].filter(file => !complement || !previous.results[file] || process.argv.includes("--force:" + file));
 const integration = files.filter(file => file.includes(".integration.") || file.includes(".regression.integration"));
 const unit = files.filter(file => !integration.includes(file));
 console.log(`citations : ${cited.length}, fichiers : ${files.length} (unitaires ${unit.length}, intégration ${integration.length})`);
 mkdirSync("logs", { recursive: true });
 
-const results = {};
+const results = complement ? previous.results : {};
 function run(list, label, env) {
   if (!list.length) return;
   const outputFile = `logs/vitest-${label}.json`;
@@ -37,6 +41,6 @@ function run(list, label, env) {
 }
 run(unit, "unitaire", {});
 run(integration, "integration", { TEST_DATABASE_URL: "postgresql://postgres:test@127.0.0.1:55439/gamenight_test" });
-writeFileSync("docs/preuves/tests-resultats.json", JSON.stringify({ resolved, results }, null, 1));
+writeFileSync("docs/preuves/tests-resultats.json", JSON.stringify({ resolved: { ...(previous?.resolved ?? {}), ...resolved }, results }, null, 1));
 const summary = Object.values(results);
 console.log(`fichiers exécutés : ${summary.length}, réussis : ${summary.filter(r => r.status === "passed").length}, échoués : ${summary.filter(r => r.status === "failed").length}`);
