@@ -68,7 +68,7 @@ jobs:
           test -f prisma/migrations/20261104140000_tower_team_membership_policy/migration.sql
           test -f prisma/migrations/20261105120000_tower_launch_channels_appeals_matchmaking/migration.sql
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
           cache: npm
