@@ -38,23 +38,23 @@ jobs:
     timeout-minutes: 30
     environment: neon-migration-test
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           persist-credentials: false
       - name: Checkout the sealed 118-migration operator baseline
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           ref: 6d6e30e76f4f96acb25c37fa6f97f08f42dca6c7
           path: operator
           persist-credentials: false
       - name: Checkout the chronological runner and first SQL
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           ref: 4a18b7491d1887cfc4fe38c7f1e68eb77a7571cb
           path: migration-370
           persist-credentials: false
       - name: Checkout only the pinned second SQL source
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           ref: 1a495ede501784167b597c43438c1527b2d58082
           path: migration-406
