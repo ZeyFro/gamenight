@@ -4349,3 +4349,16 @@ model GamePingOptIn {
   @@id([userId, communityId, gameId])
   @@index([communityId, gameId])
 }
+
+// Journal de suppression de compte (ACCOUNT_DELETION_ENABLED, docs/SUPPRESSION_COMPTE.md) : preuve durable qu'un
+// compte a été effacé, SANS donnée personnelle (identifiant opaque du compte anonymisé et compteurs de lignes par
+// table). Volontairement sans clé étrangère vers User : aucune relation à classer, aucune cascade.
+model AccountDeletionLog {
+  id        String   @id @default(cuid())
+  userId    String
+  summary   Json
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@index([createdAt])
+}

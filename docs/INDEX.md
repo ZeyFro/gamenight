@@ -17,6 +17,7 @@
 - [Jeux communs des participants](JEUX_COMMUNS_PARTICIPANTS.md) et [préférences de suggestions](PREFERENCES_SUGGESTIONS_JEUX.md).
 - [Annulation des séries](ANNULATION_SERIES.md) et [places de session](SESSION_PLACES.md).
 - [Abonnements calendrier](ABONNEMENT_CALENDRIER.md) — flux iCal privé.
+- [Suppression et export de compte](SUPPRESSION_COMPTE.md) — anonymisation, classement des relations vers `User`, export JSON, activation et limites.
 - [Réponses Discord aux soirées](DISCORD_REPONSES_SOIREES.md).
 - [Commandes Discord The Tower (403, invitation, enregistrement)](DISCORD_COMMANDES.md).
 - [Défis Discord The Tower](tower-challenges.md) — lot préparé en brouillon, activation et enregistrement des commandes séparés.

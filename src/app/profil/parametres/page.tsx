@@ -38,6 +38,7 @@ import { leadingGameStyles } from "@/lib/game-style-quiz";
 import { NotificationChannelPreferences } from "@/components/NotificationChannelPreferences";
 import { GameLevelsSettings } from "@/components/GameLevelsSettings";
 import { isGameLevelsEnabled } from "@/lib/game-levels-rules";
+import { isAccountDeletionEnabled } from "@/lib/account-deletion-flag";
 
 export const metadata = pageMetadata("Paramètres");
 
@@ -509,6 +510,20 @@ export default async function ProfilParametresPage({
           <CursorTrailToggle />
         </Card>
       </StaggerItem>
+
+      {isAccountDeletionEnabled() && (
+        <StaggerItem>
+          <Card className="flex flex-col gap-4">
+            <h2 className="font-semibold text-foreground">Mon compte et mes données</h2>
+            <p className="text-sm text-muted">
+              Télécharge une copie de tes données, ou supprime ton compte (définitif).
+            </p>
+            <ButtonLink href="/profil/compte" variant="secondary" fullWidthOnMobile>
+              Gérer mon compte
+            </ButtonLink>
+          </Card>
+        </StaggerItem>
+      )}
 
       <StaggerItem>
         <Card className="flex flex-col gap-4">

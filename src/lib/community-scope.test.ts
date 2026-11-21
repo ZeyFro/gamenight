@@ -43,7 +43,9 @@ const COLLECTIVE_MODELS = [
 
 /** Modules autorisés à accéder directement aux modèles collectifs (point de contrôle). */
 // xp-shop verrouille communauté + appartenance avant toute écriture et filtre chaque lecture/écriture par communityId.
-const SCOPED_MODULES = new Set(["src/lib/community-access.ts", "src/lib/xp-shop.ts"]);
+// account-deletion et account-export (droits d'effacement, d'accès et de portabilité) lisent ou suppriment les lignes d'UNE
+// personne, toutes communautés, filtrées par son identifiant (jamais par communauté, jamais les lignes d'un autre membre).
+const SCOPED_MODULES = new Set(["src/lib/community-access.ts", "src/lib/xp-shop.ts", "src/lib/account-deletion.ts", "src/lib/account-export.ts"]);
 
 /**
  * Accès directs existants à la PR A — à retirer au fil des PR B1 (soirées),
