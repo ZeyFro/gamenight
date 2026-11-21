@@ -1,0 +1,10 @@
+import { createRequire } from "node:module";import { readFileSync } from "node:fs";import { PrismaClient } from "@prisma/client";import { encode } from "next-auth/jwt";
+const { chromium } = createRequire(import.meta.url)("playwright");
+const origin="http://127.0.0.1:3102";const db=new PrismaClient({datasourceUrl:process.env.TEST_DATABASE_URL});const user=await db.user.findUniqueOrThrow({where:{discordId:"p-nouveau"}});
+const secret=readFileSync("/tmp/preuves-auth-secret","utf8").trim();const b=await chromium.launch();const c=await b.newContext({viewport:{width:1280,height:800}});
+await c.addCookies([{name:"authjs.session-token",value:await encode({secret,salt:"authjs.session-token",maxAge:7200,token:{discordId:user.discordId,sessionCreatedAt:Date.now()}}),url:origin,httpOnly:true,sameSite:"Lax"}]);
+await c.addInitScript(id=>sessionStorage.setItem(`gn:onboarding-prompt:${id}`,"later"),user.id);const p=await c.newPage();await p.goto(origin+"/",{waitUntil:"load"});
+const bell=p.getByRole("button",{name:/notif/i}).or(p.locator("button:has-text('🔔')")).first();console.log("cloche trouvée:",await bell.count());
+await bell.click({timeout:5000}).catch(e=>console.log("clic cloche KO",String(e).slice(0,100)));await p.waitForTimeout(800);
+console.log("liens après clic cloche:",JSON.stringify(await p.evaluate(()=>[...document.querySelectorAll("a[href]")].map(a=>a.getAttribute("href")).filter(h=>/notif|projets|soutiens/.test(h)))));
+await b.close();await db.$disconnect();

@@ -1,0 +1,522 @@
+{
+ "depuis": "/",
+ "profil": "nouveau (sans donnée), bureau, invite d'onboarding repoussée",
+ "pages": {
+  "/": {
+   "clicks": 0,
+   "via": []
+  },
+  "/sessions": {
+   "clicks": 1,
+   "via": [
+    "/ → « Soirées »"
+   ]
+  },
+  "/roulette": {
+   "clicks": 1,
+   "via": [
+    "/ → « Roulette »"
+   ]
+  },
+  "/tournois": {
+   "clicks": 1,
+   "via": [
+    "/ → « Tournois »"
+   ]
+  },
+  "/calendrier": {
+   "clicks": 1,
+   "via": [
+    "/ → « Calendrier »"
+   ]
+  },
+  "/bibliotheque": {
+   "clicks": 1,
+   "via": [
+    "/ → « Ma bibliothèque »"
+   ]
+  },
+  "/bibliotheque/groupe": {
+   "clicks": 1,
+   "via": [
+    "/ → « Bibliothèque du groupe »"
+   ]
+  },
+  "/tierlist": {
+   "clicks": 1,
+   "via": [
+    "/ → « Tierlist »"
+   ]
+  },
+  "/wishlist": {
+   "clicks": 1,
+   "via": [
+    "/ → « À acheter »"
+   ]
+  },
+  "/bibliotheque/a-verifier": {
+   "clicks": 1,
+   "via": [
+    "/ → « À vérifier »"
+   ]
+  },
+  "/potes": {
+   "clicks": 1,
+   "via": [
+    "/ → « Potes »"
+   ]
+  },
+  "/tower": {
+   "clicks": 1,
+   "via": [
+    "/ → « The Tower »"
+   ]
+  },
+  "/classement": {
+   "clicks": 1,
+   "via": [
+    "/ → « Classement »"
+   ]
+  },
+  "/profil": {
+   "clicks": 1,
+   "via": [
+    "/ → « Mon profil »"
+   ]
+  },
+  "/guide": {
+   "clicks": 1,
+   "via": [
+    "/ → « ↗ Le guide GameNight »"
+   ]
+  },
+  "/tower/forums": {
+   "clicks": 1,
+   "via": [
+    "/ → « Trouver des joueurs »"
+   ]
+  },
+  "/tournois/creer": {
+   "clicks": 1,
+   "via": [
+    "/ → « 🏆Lancer un tournoiQui ira jusqu’au bout ? »"
+   ]
+  },
+  "/jouer-maintenant": {
+   "clicks": 1,
+   "via": [
+    "/ → « ▷Pas besoin d’attendre ce soir.Lance une partie et »"
+   ]
+  },
+  "/saisons": {
+   "clicks": 1,
+   "via": [
+    "/ → « 🏆 Saison 1 — Jour 21/30 »"
+   ]
+  },
+  "/tournois/:id": {
+   "clicks": 1,
+   "via": [
+    "/ → « 🏆 Inscriptions ouvertes : Tournoi des équipesIt T »"
+   ]
+  },
+  "/disponibilites": {
+   "clicks": 1,
+   "via": [
+    "/ → « Mes dispos »"
+   ]
+  },
+  "/mentions-legales": {
+   "clicks": 1,
+   "via": [
+    "/ → « Mentions légales »"
+   ]
+  },
+  "/confidentialite": {
+   "clicks": 1,
+   "via": [
+    "/ → « Politique de confidentialité »"
+   ]
+  },
+  "/conditions": {
+   "clicks": 1,
+   "via": [
+    "/ → « Conditions d’utilisation »"
+   ]
+  },
+  "/sessions/sondages": {
+   "clicks": 2,
+   "via": [
+    "/ → « Soirées »",
+    "/sessions → « Préparer une soirée »"
+   ]
+  },
+  "/tournois/equipes": {
+   "clicks": 2,
+   "via": [
+    "/ → « Tournois »",
+    "/tournois → « Tournois d’équipes »"
+   ]
+  },
+  "/bibliotheque/ajouter": {
+   "clicks": 2,
+   "via": [
+    "/ → « Ma bibliothèque »",
+    "/bibliotheque → « + Ajouter un jeu »"
+   ]
+  },
+  "/bibliotheque/suggestions": {
+   "clicks": 2,
+   "via": [
+    "/ → « Ma bibliothèque »",
+    "/bibliotheque → « Suggestions »"
+   ]
+  },
+  "/jeux/preuve-game-9": {
+   "clicks": 2,
+   "via": [
+    "/ → « Bibliothèque du groupe »",
+    "/bibliotheque/groupe → « ADGJ+7Deep Rock GalacticManuel2–5 joueurs11 potes  »"
+   ]
+  },
+  "/jeux/preuve-game-6": {
+   "clicks": 2,
+   "via": [
+    "/ → « Bibliothèque du groupe »",
+    "/bibliotheque/groupe → « ADGJ+7MinecraftManuel2–6 joueurs11 potes : Alice,  »"
+   ]
+  },
+  "/jeux/preuve-game-0": {
+   "clicks": 2,
+   "via": [
+    "/ → « Bibliothèque du groupe »",
+    "/bibliotheque/groupe → « ADGJ+7Overcooked 2Manuel2–4 joueurs11 potes : Alic »"
+   ]
+  },
+  "/jeux/preuve-game-3": {
+   "clicks": 2,
+   "via": [
+    "/ → « Bibliothèque du groupe »",
+    "/bibliotheque/groupe → « ADGJ+7ValheimManuel2–7 joueurs11 potes : Alice, Do »"
+   ]
+  },
+  "/jeux/preuve-game-2": {
+   "clicks": 2,
+   "via": [
+    "/ → « Bibliothèque du groupe »",
+    "/bibliotheque/groupe → « CFIL+6Among UsManuel2–6 joueurs10 potes : Camille, »"
+   ]
+  },
+  "/jeux/preuve-game-7": {
+   "clicks": 2,
+   "via": [
+    "/ → « Bibliothèque du groupe »",
+    "/bibliotheque/groupe → « BEHK+6Fall GuysManuel2–7 joueurs10 potes : Bastien »"
+   ]
+  },
+  "/jeux/preuve-game-11": {
+   "clicks": 2,
+   "via": [
+    "/ → « Bibliothèque du groupe »",
+    "/bibliotheque/groupe → « CFIL+6Gartic PhoneManuel2–7 joueurs10 potes : Cami »"
+   ]
+  },
+  "/jeux/preuve-game-8": {
+   "clicks": 2,
+   "via": [
+    "/ → « Bibliothèque du groupe »",
+    "/bibliotheque/groupe → « CFIL+6Helldivers 2Manuel2–4 joueurs10 potes : Cami »"
+   ]
+  },
+  "/jeux/preuve-game-5": {
+   "clicks": 2,
+   "via": [
+    "/ → « Bibliothèque du groupe »",
+    "/bibliotheque/groupe → « CFIL+6It Takes TwoManuel2–5 joueurs10 potes : Cami »"
+   ]
+  },
+  "/jeux/preuve-game-4": {
+   "clicks": 2,
+   "via": [
+    "/ → « Bibliothèque du groupe »",
+    "/bibliotheque/groupe → « BEHK+6Mario Kart 8Manuel2–4 joueurs10 potes : Bast »"
+   ]
+  },
+  "/jeux/preuve-game-1": {
+   "clicks": 2,
+   "via": [
+    "/ → « Bibliothèque du groupe »",
+    "/bibliotheque/groupe → « BEHK+6Rocket LeagueManuel2–5 joueurs10 potes : Bas »"
+   ]
+  },
+  "/jeux/preuve-game-10": {
+   "clicks": 2,
+   "via": [
+    "/ → « Bibliothèque du groupe »",
+    "/bibliotheque/groupe → « BEHK+6Stardew ValleyManuel2–6 joueurs10 potes : Ba »"
+   ]
+  },
+  "/jeux-gratuits": {
+   "clicks": 2,
+   "via": [
+    "/ → « À acheter »",
+    "/wishlist → « Sélection Steam/Epic du groupe → »"
+   ]
+  },
+  "/potes/:id": {
+   "clicks": 2,
+   "via": [
+    "/ → « Potes »",
+    "/potes → « A1Admin TourBronze0soirées0XP1🔥streak🎮 4jeuxStea »"
+   ]
+  },
+  "/tower/propositions": {
+   "clicks": 2,
+   "via": [
+    "/ → « The Tower »",
+    "/tower → « Proposer un défi (Ranker et plus) »"
+   ]
+  },
+  "/ascension": {
+   "clicks": 2,
+   "via": [
+    "/ → « The Tower »",
+    "/tower → « Voir le détail de l’ascension → »"
+   ]
+  },
+  "/equipes": {
+   "clicks": 2,
+   "via": [
+    "/ → « The Tower »",
+    "/tower → « Équipes »"
+   ]
+  },
+  "/profil/parametres": {
+   "clicks": 2,
+   "via": [
+    "/ → « Mon profil »",
+    "/profil → « ⚙️ Modifier »"
+   ]
+  },
+  "/tower/palmares": {
+   "clicks": 2,
+   "via": [
+    "/ → « Mon profil »",
+    "/profil → « Palmarès Tower »"
+   ]
+  },
+  "/profil/historique": {
+   "clicks": 2,
+   "via": [
+    "/ → « Mon profil »",
+    "/profil → « Historique soirées »"
+   ]
+  },
+  "/profil/superlatifs": {
+   "clicks": 2,
+   "via": [
+    "/ → « Mon profil »",
+    "/profil → « Récompenses gagnées »"
+   ]
+  },
+  "/profil/lore": {
+   "clicks": 2,
+   "via": [
+    "/ → « Mon profil »",
+    "/profil → « Lore du groupe »"
+   ]
+  },
+  "/profil/badges": {
+   "clicks": 2,
+   "via": [
+    "/ → « Mon profil »",
+    "/profil → « Badges »"
+   ]
+  },
+  "/profil/boutique": {
+   "clicks": 2,
+   "via": [
+    "/ → « Mon profil »",
+    "/profil → « Boutique XP »"
+   ]
+  },
+  "/profil/tierlist": {
+   "clicks": 2,
+   "via": [
+    "/ → « Mon profil »",
+    "/profil → « Tierlist »"
+   ]
+  },
+  "/profil/saisons": {
+   "clicks": 2,
+   "via": [
+    "/ → « Mon profil »",
+    "/profil → « Saisons »"
+   ]
+  },
+  "/profil/personnalisation": {
+   "clicks": 2,
+   "via": [
+    "/ → « Mon profil »",
+    "/profil → « Personnalisation »"
+   ]
+  },
+  "/bienvenue": {
+   "clicks": 2,
+   "via": [
+    "/ → « ↗ Le guide GameNight »",
+    "/guide → « Reprendre le guide pas à pas »"
+   ]
+  },
+  "/charte": {
+   "clicks": 2,
+   "via": [
+    "/ → « ↗ Le guide GameNight »",
+    "/guide → « Lire la charte de fair-play du serveur »"
+   ]
+  },
+  "/joueurs": {
+   "clicks": 2,
+   "via": [
+    "/ → « Trouver des joueurs »",
+    "/tower/forums → « Voir les annonces GameNight »"
+   ]
+  },
+  "/sessions/sondages/nouveau": {
+   "clicks": 3,
+   "via": [
+    "/ → « Soirées »",
+    "/sessions → « Préparer une soirée »",
+    "/sessions/sondages → « Nouveau sondage »"
+   ]
+  },
+  "/tournois/equipes/:id": {
+   "clicks": 3,
+   "via": [
+    "/ → « Tournois »",
+    "/tournois → « Tournois d’équipes »",
+    "/tournois/equipes → « Tournoi des équipesIt Takes Two · Inscriptions ouv »"
+   ]
+  },
+  "/potes/:id/bibliotheque": {
+   "clicks": 3,
+   "via": [
+    "/ → « Potes »",
+    "/potes → « A1Admin TourBronze0soirées0XP1🔥streak🎮 4jeuxStea »",
+    "/potes/:id → « Bibliothèque »"
+   ]
+  },
+  "/potes/:id/tierlist": {
+   "clicks": 3,
+   "via": [
+    "/ → « Potes »",
+    "/potes → « A1Admin TourBronze0soirées0XP1🔥streak🎮 4jeuxStea »",
+    "/potes/:id → « Tierlist »"
+   ]
+  },
+  "/potes/:id/badges": {
+   "clicks": 3,
+   "via": [
+    "/ → « Potes »",
+    "/potes → « A1Admin TourBronze0soirées0XP1🔥streak🎮 4jeuxStea »",
+    "/potes/:id → « Badges »"
+   ]
+  },
+  "/potes/:id/superlatifs": {
+   "clicks": 3,
+   "via": [
+    "/ → « Potes »",
+    "/potes → « A1Admin TourBronze0soirées0XP1🔥streak🎮 4jeuxStea »",
+    "/potes/:id → « Récompenses »"
+   ]
+  },
+  "/equipes/candidatures": {
+   "clicks": 3,
+   "via": [
+    "/ → « The Tower »",
+    "/tower → « Équipes »",
+    "/equipes → « Candidatures d’équipe → »"
+   ]
+  },
+  "/equipes/:id/rivalites": {
+   "clicks": 3,
+   "via": [
+    "/ → « The Tower »",
+    "/tower → « Équipes »",
+    "/equipes → « ⚔️ Rivalités et historique »"
+   ]
+  },
+  "/admin": {
+   "clicks": 3,
+   "via": [
+    "/ → « Mon profil »",
+    "/profil → « ⚙️ Modifier »",
+    "/profil/parametres → « Gérer les messages de rappel → »"
+   ]
+  },
+  "/profil/compte": {
+   "clicks": 3,
+   "via": [
+    "/ → « Mon profil »",
+    "/profil → « ⚙️ Modifier »",
+    "/profil/parametres → « Gérer mon compte »"
+   ]
+  },
+  "/profil/lore/chroniques": {
+   "clicks": 3,
+   "via": [
+    "/ → « Mon profil »",
+    "/profil → « Lore du groupe »",
+    "/profil/lore → « 📖 Chroniques de mes soirées »"
+   ]
+  },
+  "/profil/lore/devine-jeu": {
+   "clicks": 3,
+   "via": [
+    "/ → « Mon profil »",
+    "/profil → « Lore du groupe »",
+    "/profil/lore → « 🕵️ Devine le jeu »"
+   ]
+  },
+  "/profil/lore/sondages": {
+   "clicks": 3,
+   "via": [
+    "/ → « Mon profil »",
+    "/profil → « Lore du groupe »",
+    "/profil/lore → « Sondages éclair du serveur »"
+   ]
+  },
+  "/profil/lore/cimetiere": {
+   "clicks": 3,
+   "via": [
+    "/ → « Mon profil »",
+    "/profil → « Lore du groupe »",
+    "/profil/lore → « Cimetière des jeux du serveur »"
+   ]
+  },
+  "/profil/lore/expressions": {
+   "clicks": 3,
+   "via": [
+    "/ → « Mon profil »",
+    "/profil → « Lore du groupe »",
+    "/profil/lore → « Expressions et running gags du serveur »"
+   ]
+  },
+  "/profil/lore/musee": {
+   "clicks": 3,
+   "via": [
+    "/ → « Mon profil »",
+    "/profil → « Lore du groupe »",
+    "/profil/lore → « Exploits et fails du serveur → »"
+   ]
+  },
+  "/ce-soir": {
+   "clicks": 3,
+   "via": [
+    "/ → « Trouver des joueurs »",
+    "/tower/forums → « Voir les annonces GameNight »",
+    "/joueurs → « Qui joue ce soir ? → »"
+   ]
+  }
+ }
+}

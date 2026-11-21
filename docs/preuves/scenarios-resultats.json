@@ -1,0 +1,42 @@
+{
+ "ia": {
+  "ok": true,
+  "evidence": "dépendances IA dans package.json : « aucune » ; fichiers de src/ (hors tests) mentionnant un fournisseur d'IA : « aucun »"
+ },
+ "boosters-cosmetique": {
+  "ok": true,
+  "evidence": "références XP/étages/vote dans booster-support*.ts : « aucune » ; fichiers de paiement dans src/ : « aucun »"
+ },
+ "roles-etage": {
+  "ok": true,
+  "evidence": "appels de création de rôle : 5 ; créations de rôle liées aux étages : « aucune »\nsrc/lib/booster-support-runner.ts:68:    createRole: (guildId) => createGuildRole({ guildId, name: BOOSTER_ROLE_NAME, color: BOOSTER_ROLE_COLOR, deadline }),\nsrc/lib/discord-rest.ts:1594:export async function createGuildRole(input: {\nsrc/lib/discord-team-space-api.ts:51:      return unwrap(await createGuildRole({ guildId, name, deadline: deadline() })).id;\nsrc/lib/discord-role-autocreate.ts:337:    createRole: (guildId, name) => createGuildRole({ guildId, name, deadline }),\nsrc/lib/discord-role-command.ts:289:  const created = await createGuildRole({ guildId: input.guildId, name: input.name, deadline: deadline() });"
+ },
+ "compteur-zero": {
+  "ok": true,
+  "evidence": "capture docs/preuves/captures/nouveau-bureau-tower.png (HTTP 200) ; extrait du texte : \"Aller au contenu\\nGameNight\\n\\nJOUER ENSEMBLE\\n\\nAccueil\\nSoirées\\nRoulette\\nTournois\\nCalendrier\\n\\nLES JEUX\\n\\nMa bibliothèque\\nBibliothèque du groupe\\nTierlist\\nÀ acheter\\nÀ vérifier\\n\\nLA COMMUNAUTÉ\\n\\nPotes\\nThe Tower\\nClassement\\nMon profil\\n↗ Le guide GameNight\\n✦\\nAnimations activées\\nN\\nNouveau Joueur\\nNiveau 1 · 0 XP\\nSERVEUR ACTUEL\\nGameNight\\n✦ Niveau 1\\n· 0 XP\\n💬\\n🔔\\n\\nGAMENIGHT · GAMENIGHT\\n\\nThe Tower\\n\\nDéfis solo et d’é\""
+ },
+ "admin-refuse": {
+  "ok": true,
+  "evidence": "actif /admin → HTTP 200, page finale / ; nouveau /admin → HTTP 200, page finale / ; actif /admin/tableau-de-bord → HTTP 200, page finale /"
+ },
+ "absent-preuves-anciennes": {
+  "ok": true,
+  "evidence": "champs de TowerChallengeDefinition : id communityId community mode title instructions rewardFloors gameId active createdAt measureKind measureAppId measureTarget measureAchievement attempts ; recherche « ancienne preuve / preuve antérieure » dans les définitions : « aucun résultat »"
+ },
+ "absent-identite-equipe": {
+  "ok": true,
+  "evidence": "champs de CommunityTeam : id communityId gameId createdById captainId name description platform maxMembers isRecruiting captainLastActivityAt createdAt updatedAt community game createdBy captain members towerChallengeAttempts sessions applications tournamentEntries recruiters tournamentGuests recruitmentCriteria discordSpaces challengesSent challengesReceived ; champs logo/bannière/couleur : « aucun »"
+ },
+ "absent-partenaires": {
+  "ok": true,
+  "evidence": "recherche d'une suggestion automatique de partenaires : « aucun résultat »"
+ },
+ "absent-classement-equipes": {
+  "ok": true,
+  "evidence": "recherche d'un classement d'équipes Tower : « aucun résultat » ; pages tower : src/app/tower: actions.ts forums page.launch.test.tsx page.tsx palmares propositions  src/app/tower/palmares: page.test.tsx page.tsx"
+ },
+ "absent-bascule": {
+  "ok": true,
+  "evidence": "recherche d'une bascule des anciens étages : « aucun résultat »"
+ }
+}

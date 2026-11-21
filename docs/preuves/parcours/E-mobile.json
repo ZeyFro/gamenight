@@ -1,0 +1,90 @@
+[
+ {
+  "n": 1,
+  "label": "Arrivée",
+  "ok": true,
+  "clicks": 0,
+  "url": "/",
+  "changedPage": false,
+  "file": "docs/preuves/parcours/E-mobile-01.png",
+  "h1": "Ce soir, on joue à quoi ?Ce soir, on joue à quoi ?",
+  "dialog": true,
+  "actions": [
+   "+ Créer une soirée",
+   "Trouver des joueurs",
+   "Rejoindre une soirée",
+   "Commencer l'Ascension",
+   "ARang : Bronze — accédé au niveau 1",
+   "📖 Guide",
+   "Prochaine soiréelundi 23 novembre à 12:44Overcooked 2Prévue",
+   "☾Créer une soiréeUn rendez-vous avec les potes",
+   "🎲Roulette instantanéeChoisir un jeu maintenant",
+   "🏆Lancer un tournoiQui ira jusqu’au bout ?",
+   "▦Trouver une dateCalendrier & dispos↗",
+   "🎮Les jeux du groupeVotre bibliothèque↗",
+   "✦Classer mes jeuxMa tierlist↗",
+   "▷Pas besoin d’attendre ce soir.Lance une partie et invite le"
+  ],
+  "text": "Aller au contenu\n☰\nGameNight\n💬\n🔔\n\nENSEMBLE, C’EST TOUJOURS MIEUX\n\nCe soir, on joue à quoi ?\nCe soir, on joue à quoi ?\n\nUn jeu à choisir. Des potes à retrouver. Une bonne soirée à lancer.\n\n+ Créer une soirée\nTrouver des joueurs\nRejoindre une soirée\nCommencer l'Ascension\nA\n1\n\nSalut,\n\nNouveau Joueur \n\nNiveau 1 · Victime · Bronze\n\n📖 Guide\n\nProchaine soirée\n\nLundi 23 Novembre À 12:44\n\nOvercooked 2\n\nPrévue\n☾\nCréer une soirée\nUn rendez-vous avec les potes\n🎲\nRoulette instantanée\nChoisir un jeu maintenant\n🏆\nLancer un tournoi\nQui ira jusqu’au bout ?\n▦\nTrouver une date\nCalendrier & dispos\n↗\n🎮\nLes jeux du groupe\nVotre bibliothèque\n↗\n✦\nClasser mes jeux\nMa tierlist\n↗\n▷\nPas besoin d’attendre ce soir.\n\nLance une partie et invite les potes maintenant.\n\nJouer maintenant →\n0%\nBRONZE\nNiveau 1\n0 XP\n\n0 / 50 XP vers le niveau 2\n\nStats du groupe\n\n0\n\nsoirées jouées\n\n3\n\njoueurs actifs\n\n🔥 Nouveau Joueur\n\nMeilleur streak actif · 1 jour\n\n🎯 Défi de la semaine\n\nJouer à deux jeux différents pendant la semaine\n\nLa progression est suivie automatiquement à la clôture des soirées.\n\nActivité récente\n\n📡\n\nL'activité du groupe apparaîtra ici\n\nDispos de la semaine\n\nLUN\n0/32\nMAR\n0/32\nMER\n0/32\nJEU\n0/32\nVEN\n0/32\nSAM\n0/32\nDIM\n0/32\n\n🏆 Saison 1 — Jour 21/30\n\n🏆 Inscriptions ouvertes : Tournoi des équipes\n\nIt Takes Two\n\n→\n\n🏅 Trophées du groupe\n\n🎮\nPremière soirée\n👥\nSquad\n🏃\nMarathoniens\n🎲\nDiversité\n📅\nRéguliers\n🌙\nNoctambules\n💯\nCentury\n📚\nCollectionneur collectif\n🏠\nFull House\n👑\nLégendaire\n\n💀 Dettes du grou"
+ },
+ {
+  "n": 2,
+  "label": "Configurer mon profil pas à pas",
+  "ok": true,
+  "clicks": 1,
+  "url": "/bienvenue",
+  "changedPage": true,
+  "file": "docs/preuves/parcours/E-mobile-02.png",
+  "h1": "Bienvenue sur GameNight",
+  "dialog": false,
+  "actions": [
+   "1. Steam",
+   "2. Ton planning",
+   "3. Tes jeux et ceux du groupe",
+   "4. Soirées et calendrier",
+   "5. Roulette ou partie immédiate",
+   "6. Tournois et progression",
+   "Renseigner mon planning",
+   "Vérifier mon avancée",
+   "Précédent",
+   "Suivant",
+   "tes disponibilités",
+   "Revenir à l’application — mes étapes restent à terminer"
+  ],
+  "text": "Aller au contenu\n☰\nGameNight\n💬\n🔔\n\nTON AVENTURE COMMENCE ICI\n\nBienvenue sur GameNight\n\nDeux réglages pour jouer ensemble, puis une visite guidée. Ils restent valables quand tu changes de serveur.\n\nProfil prêt : 1/2\n\n✓ Steam (non utilisé)\n○ Planning à renseigner\n1. Steam\n2. Ton planning\n3. Tes jeux et ceux du groupe\n4. Soirées et calendrier\n5. Roulette ou partie immédiate\n6. Tournois et progression\n📅\nTon planning\n\nIndique tes créneaux habituels et tes exceptions. Le calendrier du groupe aide ensuite à choisir une date commune.\n\nRenseigner mon planning\n\nCette étape se valide quand le réglage est enregistré. Vérifier mon avancée\n\nPrécédent\nSuivant\n\nÀ terminer : tes disponibilités.\n\nRevenir à l’application — mes étapes restent à terminer\nMentions légales\nPolitique de confidentialité\nConditions d’utilisation\nAccueil\nSoirées\nJeux\n, Bibliothèque\nCalendrier\nPotes\nProfil\n?"
+ },
+ {
+  "n": 3,
+  "label": "Je n'utilise pas Steam",
+  "ok": false,
+  "error": "locator.click: Timeout 8000ms exceeded.",
+  "clicks": 1,
+  "url": "http://127.0.0.1:3102/bienvenue"
+ },
+ {
+  "n": 4,
+  "label": "Suivant",
+  "ok": true,
+  "clicks": 2,
+  "url": "/bienvenue",
+  "changedPage": false,
+  "file": "docs/preuves/parcours/E-mobile-04.png",
+  "h1": "Bienvenue sur GameNight",
+  "dialog": false,
+  "actions": [
+   "1. Steam",
+   "2. Ton planning",
+   "3. Tes jeux et ceux du groupe",
+   "4. Soirées et calendrier",
+   "5. Roulette ou partie immédiate",
+   "6. Tournois et progression",
+   "Voir les jeux du groupe",
+   "Ma tierlist",
+   "Précédent",
+   "Suivant",
+   "tes disponibilités",
+   "Revenir à l’application — mes étapes restent à terminer"
+  ],
+  "text": "Aller au contenu\n☰\nGameNight\n💬\n🔔\n\nTON AVENTURE COMMENCE ICI\n\nBienvenue sur GameNight\n\nDeux réglages pour jouer ensemble, puis une visite guidée. Ils restent valables quand tu changes de serveur.\n\nProfil prêt : 1/2\n\n✓ Steam (non utilisé)\n○ Planning à renseigner\n1. Steam\n2. Ton planning\n3. Tes jeux et ceux du groupe\n4. Soirées et calendrier\n5. Roulette ou partie immédiate\n6. Tournois et progression\n🎮\nTes jeux et ceux du groupe\n\nSteam importe les jeux accessibles de ta bibliothèque. Tu peux aussi ajouter des jeux à la main, consulter la bibliothèque du groupe et organiser ta tierlist.\n\nVoir les jeux du groupe\nMa tierlist\nPrécédent\nSuivant\n\nÀ terminer : tes disponibilités.\n\nRevenir à l’application — mes étapes restent à terminer\nMentions légales\nPolitique de confidentialité\nConditions d’utilisation\nAccueil\nSoirées\nJeux\n, Bibliothèque\nCalendrier\nPotes\nProfil\n?"
+ }
+]

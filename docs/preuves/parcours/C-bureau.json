@@ -1,0 +1,76 @@
+[
+ {
+  "n": 1,
+  "label": "Arrivée",
+  "ok": true,
+  "clicks": 0,
+  "url": "/",
+  "changedPage": false,
+  "file": "docs/preuves/parcours/C-bureau-01.png",
+  "h1": "Ce soir, on joue à quoi ?Ce soir, on joue à quoi ?",
+  "dialog": true,
+  "actions": [
+   "+ Créer une soirée",
+   "Trouver des joueurs",
+   "Rejoindre une soirée",
+   "Commencer l'Ascension",
+   "ARang : Bronze — accédé au niveau 1",
+   "📖 Guide",
+   "+ Proposer une soirée",
+   "☾Créer une soiréeUn rendez-vous avec les potes",
+   "🎲Roulette instantanéeChoisir un jeu maintenant",
+   "🏆Lancer un tournoiQui ira jusqu’au bout ?",
+   "▦Trouver une dateCalendrier & dispos↗",
+   "🎮Les jeux du groupeVotre bibliothèque↗",
+   "✦Classer mes jeuxMa tierlist↗",
+   "▷Pas besoin d’attendre ce soir.Lance une partie et invite le"
+  ],
+  "text": "Aller au contenu\nGameNight\n\nJOUER ENSEMBLE\n\nAccueil\nSoirées\nRoulette\nTournois\nCalendrier\n\nLES JEUX\n\nMa bibliothèque\nBibliothèque du groupe\nTierlist\nÀ acheter\nÀ vérifier\n\nLA COMMUNAUTÉ\n\nPotes\nThe Tower\nClassement\nMon profil\n↗ Le guide GameNight\n✦\nAnimations activées\nN\nNouveau Joueur\nNiveau 1 · 0 XP\nSERVEUR ACTUEL\nGameNight\n✦ Niveau 1\n· 0 XP\n💬\n🔔\n\nENSEMBLE, C’EST TOUJOURS MIEUX\n\nCe soir, on joue à quoi ?\nCe soir, on joue à quoi ?\n\nUn jeu à choisir. Des potes à retrouver. Une bonne soirée à lancer.\n\n+ Créer une soirée\nTrouver des joueurs\nRejoindre une soirée\nCommencer l'Ascension\nA\n1\n\nSalut,\n\nNouveau Joueur \n\nNiveau 1 · Victime · Bronze\n\n📖 Guide\n✦\n\nÀ VOUS DE JOUER\n\nLa prochaine soirée\ncommence ici.\n\nAucun rendez-vous prévu. Choisis un jeu, invite les potes et lance la suite.\n\n+ Proposer une soirée\n☾\nCréer une soirée\nUn rendez-vous avec les potes\n🎲\nRoulette instantanée\nChoisir un jeu maintenant\n🏆\nLancer un tournoi\nQui ira jusqu’au bout ?\n▦\nTrouver une date\nCalendrier & dispos\n↗\n🎮\nLes jeux du groupe\nVotre bibliothèque\n↗\n✦\nClasser mes jeux\nMa tierlist\n↗\n▷\nPas besoin d’attendre ce soir.\n\nLance une partie et invite les potes maintenant.\n\nJouer maintenant →\n0%\nBRONZE\nNiveau 1\n0 XP\n\n0 / 50 XP vers le niveau 2\n\nStats du groupe\n\n0\n\nsoirées jouées\n\n3\n\njoueurs actifs\n\n🔥 Nouveau Joueur\n\nMeilleur streak actif · 1 jour\n\n🎯 Défi de la semaine\n\nJouer à deux jeux différents pendant la semaine\n\nLa progression est suivie automatiquement à la clôture des soirées.\n\nActivité récente\n\n📡\n\nL'acti"
+ },
+ {
+  "n": 2,
+  "label": "Plus tard",
+  "ok": true,
+  "clicks": 1,
+  "url": "/",
+  "changedPage": false,
+  "file": "docs/preuves/parcours/C-bureau-02.png",
+  "h1": "Ce soir, on joue à quoi ?Ce soir, on joue à quoi ?",
+  "dialog": false,
+  "actions": [
+   "+ Créer une soirée",
+   "Trouver des joueurs",
+   "Rejoindre une soirée",
+   "Commencer l'Ascension",
+   "ARang : Bronze — accédé au niveau 1",
+   "📖 Guide",
+   "+ Proposer une soirée",
+   "☾Créer une soiréeUn rendez-vous avec les potes",
+   "🎲Roulette instantanéeChoisir un jeu maintenant",
+   "🏆Lancer un tournoiQui ira jusqu’au bout ?",
+   "▦Trouver une dateCalendrier & dispos↗",
+   "🎮Les jeux du groupeVotre bibliothèque↗",
+   "✦Classer mes jeuxMa tierlist↗",
+   "▷Pas besoin d’attendre ce soir.Lance une partie et invite le"
+  ],
+  "text": "Aller au contenu\nGameNight\n\nJOUER ENSEMBLE\n\nAccueil\nSoirées\nRoulette\nTournois\nCalendrier\n\nLES JEUX\n\nMa bibliothèque\nBibliothèque du groupe\nTierlist\nÀ acheter\nÀ vérifier\n\nLA COMMUNAUTÉ\n\nPotes\nThe Tower\nClassement\nMon profil\n↗ Le guide GameNight\n✦\nAnimations activées\nN\nNouveau Joueur\nNiveau 1 · 0 XP\nSERVEUR ACTUEL\nGameNight\n✦ Niveau 1\n· 0 XP\n💬\n🔔\n\nENSEMBLE, C’EST TOUJOURS MIEUX\n\nCe soir, on joue à quoi ?\nCe soir, on joue à quoi ?\n\nUn jeu à choisir. Des potes à retrouver. Une bonne soirée à lancer.\n\n+ Créer une soirée\nTrouver des joueurs\nRejoindre une soirée\nCommencer l'Ascension\nA\n1\n\nSalut,\n\nNouveau Joueur \n\nNiveau 1 · Victime · Bronze\n\n📖 Guide\n✦\n\nÀ VOUS DE JOUER\n\nLa prochaine soirée\ncommence ici.\n\nAucun rendez-vous prévu. Choisis un jeu, invite les potes et lance la suite.\n\n+ Proposer une soirée\n☾\nCréer une soirée\nUn rendez-vous avec les potes\n🎲\nRoulette instantanée\nChoisir un jeu maintenant\n🏆\nLancer un tournoi\nQui ira jusqu’au bout ?\n▦\nTrouver une date\nCalendrier & dispos\n↗\n🎮\nLes jeux du groupe\nVotre bibliothèque\n↗\n✦\nClasser mes jeux\nMa tierlist\n↗\n▷\nPas besoin d’attendre ce soir.\n\nLance une partie et invite les potes maintenant.\n\nJouer maintenant →\n0%\nBRONZE\nNiveau 1\n0 XP\n\n0 / 50 XP vers le niveau 2\n\nStats du groupe\n\n0\n\nsoirées jouées\n\n3\n\njoueurs actifs\n\n🔥 Nouveau Joueur\n\nMeilleur streak actif · 1 jour\n\n🎯 Défi de la semaine\n\nJouer à deux jeux différents pendant la semaine\n\nLa progression est suivie automatiquement à la clôture des soirées.\n\nActivité récente\n\n📡\n\nL'acti"
+ },
+ {
+  "n": 3,
+  "label": "The Tower",
+  "ok": true,
+  "clicks": 2,
+  "url": "/tower",
+  "changedPage": true,
+  "file": "docs/preuves/parcours/C-bureau-03.png",
+  "h1": "The Tower",
+  "dialog": false,
+  "actions": [
+   "Proposer un défi (Ranker et plus)",
+   "Voir le détail de l’ascension →",
+   "Toutes les saisons →",
+   "Équipes"
+  ],
+  "text": "Aller au contenu\nGameNight\n\nJOUER ENSEMBLE\n\nAccueil\nSoirées\nRoulette\nTournois\nCalendrier\n\nLES JEUX\n\nMa bibliothèque\nBibliothèque du groupe\nTierlist\nÀ acheter\nÀ vérifier\n\nLA COMMUNAUTÉ\n\nPotes\nThe Tower\nClassement\nMon profil\n↗ Le guide GameNight\n✦\nAnimations activées\nN\nNouveau Joueur\nNiveau 1 · 0 XP\nSERVEUR ACTUEL\nGameNight\n✦ Niveau 1\n· 0 XP\n💬\n🔔\n\nGAMENIGHT · GAMENIGHT\n\nThe Tower\n\nDéfis solo et d’équipe, étages personnels, saisons et classement réunis au même endroit.\n\nProposer un défi (Ranker et plus)\n\nAscension · XP GameNight\n\nÉtage 1\n\nNiveau 1 · 0 % vers le prochain étage\n\nVoir le détail de l’ascension →\n\nÉtages remportés par les défis\n\nÉtage 1\n\nCe compteur alimente le classement Tower. Il reste distinct de l’ascension XP afin de ne pas compter deux fois une réussite.\n\nTon niveau, ton étage XP et ton rang XP sont conservés ; tes étages Tower repartent de zéro et se gagnent par les défis, et ton grade Tower (Régulars, Irregular, Ranker, High Ranker) repart avec eux.\n\nDéfi solo\n\nAucun défi solo en cours. Choisis-en un avec /tower defi sur Discord.\n\nDéfis d’équipe · aujourd’hui\n\nAucune équipe active pour ton compte.\n\nUne réussite confirmée ajoute des étages personnels aux participants inscrits ; aucun score ni étage d’équipe supplémentaire n’est créé.\n\nSaison communautaire\n\nS3 · 2026\n\nSaison en cours\n\nDu 1 sept. 2026 au 1 déc. 2026 · fuseau Europe/Paris.\n\nCalendrier Tower commun : S1 de décembre à mars, S2 d’avril à juin, Été en juillet-août, S3 de septembre à novembre. Chaque"
+ }
+]
