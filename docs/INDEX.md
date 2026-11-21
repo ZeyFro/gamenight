@@ -7,6 +7,7 @@
 - [Migrations Prisma](MIGRATIONS.md) — méthode standard : PR, CI, fusion, application automatique.
 - [Activation de la Tour](ACTIVATION_TOUR.md) — les 4 interrupteurs en une soirée, plan de la soirée et retour arrière.
 - [Soirée d'activation, pas-à-pas](SOIREE_ACTIVATION.md) — ordre de la soirée (Atlas, variables Vercel, redéploiement, import du catalogue, commandes du bot, test), retours arrière en une minute.
+- [Phase de test avant l’annonce](PHASE_TEST.md) — six groupes d’activation du moins au plus risqué, tests Discord et application, vocal temporaire, droits minimaux du bot (retrait d’Administrateur) et valeurs à renseigner avant les pages légales.
 - [Lancement : textes Discord](LANCEMENT_DISCORD.md), [conditions de réussite](CONDITIONS_REUSSITE_LANCEMENT.md) et [présentation de recrutement](PRESENTATION_RECRUTEMENT.md) — étiquetés disponible / après activation / prévue.
 - [.env.example](../.env.example) — noms des variables et interrupteurs ; aucune valeur réelle.
 - [Brief initial](../SPEC-gamenight.md) — intention de départ, document historique qui ne décrit pas tout l’état actuel.
