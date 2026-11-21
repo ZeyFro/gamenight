@@ -67,6 +67,7 @@ import { SessionGallery } from "@/components/sessions/SessionGallery";
 import { isSessionVideoEnabled } from "@/lib/session-gallery";
 import { canManageSessionContent } from "@/lib/session-content-access";
 import { readSessionVoicePresence } from "@/lib/session-voice-presence";
+import { isLaunchTextsEnabled, shouldShowSessionGallery, shouldShowVoicePresence } from "@/lib/launch-texts";
 import { SessionVoicePresencePanel } from "@/components/sessions/SessionVoicePresencePanel";
 
 export const metadata = pageMetadata("Soirée");
@@ -134,6 +135,7 @@ export default async function SessionDetailPage({
   const galleryCommunity = await prisma.community.findUnique({ where: { id: galleryCommunityId }, select: { sessionGalleryEnabled: true } });
   const galleryEnabled = galleryCommunity?.sessionGalleryEnabled ?? false;
   const galleryStorageReady = !!process.env.SESSION_MEDIA_BLOB_TOKEN;
+  const launchTexts = isLaunchTextsEnabled();
   const galleryVideosEnabled = isSessionVideoEnabled();
   const canManageContent = await canManageSessionContent(user.id, session.id);
   const galleryImages = galleryEnabled && galleryStorageReady
@@ -385,7 +387,7 @@ export default async function SessionDetailPage({
         </section>
       )}
       {seatState && <SessionSeatsPanel sessionId={session.id} userId={user.id} isCreator={accessRole === "creator"} open={session.date > wallClockNow()} capacity={seatState.attendanceCapacity} maxPlayers={session.decidedGame?.maxPlayers ?? null} seats={seatState.seats} />}
-      {voicePresence && <SessionVoicePresencePanel sessionId={session.id} presence={voicePresence} result={voice} />}
+      {voicePresence && shouldShowVoicePresence(voicePresence, launchTexts) && <SessionVoicePresencePanel sessionId={session.id} presence={voicePresence} result={voice} />}
 
       {deadlineAdjusted && (
         <p className="rounded-lg bg-warning/10 p-3 text-sm text-warning">
@@ -858,7 +860,7 @@ export default async function SessionDetailPage({
 
       {preparation && <SessionPreparationPanel sessionId={session.id} userId={user.id} participants={preparation} />}
 
-      {galleryEnabled && (
+      {shouldShowSessionGallery({ galleryEnabled, storageReady: galleryStorageReady, canManage: canManageContent, launchTexts }) && (
         <SessionGallery
           sessionId={session.id}
           canManage={canManageContent}
@@ -866,6 +868,7 @@ export default async function SessionDetailPage({
           result={gallery}
           storageReady={galleryStorageReady}
           videosEnabled={galleryVideosEnabled}
+          plainTexts={launchTexts}
         />
       )}
 

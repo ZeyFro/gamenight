@@ -50,4 +50,16 @@ describe("session gallery video clips", () => {
     expect(screen.getByLabelText("Ajouter un média")).toBeTruthy();
     expect(screen.getAllByRole("button", { name: "Supprimer" })).toHaveLength(2);
   });
+
+  // V3-18 : sans stockage configuré, le message technique n'est conservé que flag éteint.
+  it("keeps the historical storage message while plainTexts is off", () => {
+    render(<SessionGallery sessionId="session-1" canManage images={[]} storageReady={false} videosEnabled={false} />);
+    expect(screen.getByText("Le stockage Blob privé n’est pas configuré.")).toBeTruthy();
+  });
+
+  it("replaces the storage jargon with a plain sentence when plainTexts is on", () => {
+    render(<SessionGallery sessionId="session-1" canManage images={[]} storageReady={false} videosEnabled={false} plainTexts />);
+    expect(screen.getByText("Les photos ne sont pas encore disponibles.")).toBeTruthy();
+    expect(document.body.textContent).not.toMatch(/Blob/);
+  });
 });

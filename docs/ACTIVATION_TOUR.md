@@ -167,6 +167,7 @@ Interrupteurs Tower qui s'ajoutent à ces quatre, tous conditionnés par `TOWER_
 | --- | --- | --- | --- |
 | `ADMIN_DASHBOARD_V2_ENABLED` | `/admin/tableau-de-bord` : candidatures en attente, opérations Discord échouées, espaces archivés, contestations, rôles/salons contre les limites Discord ; **lecture seule**, admins ; éteint = 404. Sert à surveiller la suite | aucune | aucune |
 | `PROFILE_VISIBILITY_ENABLED` | Masquer son profil dans Potes | — | `20261118103100_profile_visibility` |
+| `LAUNCH_TEXTS_ENABLED` · `NAV_TOWER_ENABLED` | Textes et navigation d'ouverture : phrase « accès réservé » et lien d'invitation sur la connexion, phrase sur les étages Tower (`/tower`, `/ascension`), blocs vocal et galerie de `/sessions/[id]` masqués si éteints ou non configurés ; lien « The Tower » dans la barre latérale et le menu mobile. Lecture seule, aucune écriture Discord (voir [SOIREE_ACTIVATION.md](SOIREE_ACTIVATION.md) § 9 ter) | `DISCORD_INVITE_URL` pour le lien d'invitation (facultatif) | — |
 | `GAME_LEVELS_ENABLED` | Niveau de jeu auto-déclaré par jeu, dans le profil | — | `20261118123100_user_game_levels` |
 | `TEAM_RECRUITMENT_CRITERIA_ENABLED` | Objectifs et critères de recrutement d'une équipe | `communityTeamsEnabled` | `20261118123000_team_recruitment_criteria` |
 | `TOWER_IRREGULAR_GRANTS_ENABLED` | Irregular attribué à la main par le staff (`/admin/tower-irregular`), prestige sans droit | `TOWER_CHALLENGES_ENABLED` | `20261118122000_tower_irregular_grants` |
