@@ -252,5 +252,47 @@ describe("session gallery video uploads", () => {
     expect(mocks.del).toHaveBeenCalledOnce();
   });
 
+  describe("accord des personnes visibles ou audibles (MEDIA_PRIVACY_ENABLED)", () => {
+    const upload = (people?: string, consent: string | null = "on") => {
+      const form = new FormData();
+      form.set("sessionId", "session-1");
+      form.set("media", mp4);
+      if (consent) form.set("consent", consent);
+      if (people) form.set("consentPeople", people);
+      return uploadSessionGalleryImageAction(form);
+    };
+
+    it("flag éteint : la case des personnes n'est pas exigée (comportement historique)", async () => {
+      vi.stubEnv("SESSION_VIDEO_ENABLED", "true");
+      vi.stubEnv("MEDIA_PRIVACY_ENABLED", "false");
+      await expect(upload()).rejects.toThrow("REDIRECT:/sessions/session-1?gallery=ok");
+      expect(mocks.put).toHaveBeenCalledOnce();
+    });
+
+    it("flag allumé : refus côté serveur sans la confirmation, rien n'est stocké", async () => {
+      vi.stubEnv("SESSION_VIDEO_ENABLED", "true");
+      vi.stubEnv("MEDIA_PRIVACY_ENABLED", "true");
+      await expect(upload()).resolves.toBeUndefined();
+      expect(mocks.put).not.toHaveBeenCalled();
+      expect(mocks.galleryCreate).not.toHaveBeenCalled();
+    });
+
+    it("flag allumé : le consentement d'accès seul ne suffit pas, la confirmation seule non plus", async () => {
+      vi.stubEnv("SESSION_VIDEO_ENABLED", "true");
+      vi.stubEnv("MEDIA_PRIVACY_ENABLED", "true");
+      await expect(upload("yes")).resolves.toBeUndefined();
+      await expect(upload("on", null)).resolves.toBeUndefined();
+      expect(mocks.put).not.toHaveBeenCalled();
+    });
+
+    it("flag allumé : accepté avec les deux consentements", async () => {
+      vi.stubEnv("SESSION_VIDEO_ENABLED", "true");
+      vi.stubEnv("MEDIA_PRIVACY_ENABLED", "true");
+      await expect(upload("on")).rejects.toThrow("REDIRECT:/sessions/session-1?gallery=ok");
+      expect(mocks.put).toHaveBeenCalledOnce();
+      expect(mocks.galleryCreate).toHaveBeenCalledOnce();
+    });
+  });
+
   afterEach(() => { vi.unstubAllGlobals(); vi.unstubAllEnvs(); });
 });

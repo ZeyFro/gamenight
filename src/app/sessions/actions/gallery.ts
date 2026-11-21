@@ -17,6 +17,7 @@ import {
   SESSION_GALLERY_MAX_BYTES,
   SESSION_GALLERY_MAX_ITEMS,
 } from "@/lib/session-gallery";
+import { isMediaPrivacyEnabled, isSessionGalleryPeopleConsent } from "@/lib/media-privacy";
 
 const token = () => process.env.SESSION_MEDIA_BLOB_TOKEN;
 
@@ -27,6 +28,7 @@ export async function uploadSessionGalleryImageAction(formData: FormData): Promi
   const file = formData.get("media");
   if (typeof sessionId !== "string" || !sessionId || !(file instanceof File) || file.size === 0) return;
   if (!isSessionGalleryConsent(formData.get("consent"))) return;
+  if (isMediaPrivacyEnabled() && !isSessionGalleryPeopleConsent(formData.get("consentPeople"))) return;
   const blobToken = token();
   if (!blobToken || !checkRateLimit(user.id, "uploadSessionGalleryImage", { limit: 3 })) {
     redirect(`/sessions/${sessionId}?gallery=indisponible`);

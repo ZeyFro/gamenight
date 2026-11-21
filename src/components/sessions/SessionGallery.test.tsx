@@ -45,6 +45,40 @@ describe("session gallery video clips", () => {
     expect(screen.queryByRole("button", { name: "Supprimer" })).toBeNull();
   });
 
+  describe("MEDIA_PRIVACY_ENABLED", () => {
+    afterEach(() => vi.unstubAllEnvs());
+
+    it("flag éteint : une seule case de consentement, markup du formulaire inchangé", () => {
+      vi.stubEnv("MEDIA_PRIVACY_ENABLED", "");
+      const { container } = render(<SessionGallery sessionId="session-1" canManage images={[]} storageReady videosEnabled />);
+      expect(container.querySelectorAll('input[type="checkbox"]')).toHaveLength(1);
+      expect(container.querySelector('input[name="consentPeople"]')).toBeNull();
+      expect(container.textContent).not.toContain("personnes reconnaissables");
+      expect(container.textContent).not.toContain("retrait");
+    });
+
+    it("flag allumé : case obligatoire des personnes reconnaissables et rappel du retrait", () => {
+      vi.stubEnv("MEDIA_PRIVACY_ENABLED", "true");
+      const { container } = render(<SessionGallery sessionId="session-1" canManage images={[]} storageReady videosEnabled />);
+      const people = container.querySelector('input[name="consentPeople"]') as HTMLInputElement;
+      expect(people.type).toBe("checkbox");
+      expect(people.required).toBe(true);
+      expect((container.querySelector('input[name="consent"]') as HTMLInputElement).required).toBe(true);
+      expect(container.textContent).toContain(
+        "Je confirme avoir l’accord des personnes reconnaissables ou audibles ; elles peuvent demander le retrait du média.",
+      );
+      expect(container.textContent).toContain("créateur de la soirée ou à un administrateur");
+      expect(container.querySelector('a[href="/mentions-legales"]')).toBeNull();
+    });
+
+    it("flag allumé et pages légales actives : lien vers les mentions légales", () => {
+      vi.stubEnv("MEDIA_PRIVACY_ENABLED", "true");
+      vi.stubEnv("LEGAL_PAGES_ENABLED", "true");
+      const { container } = render(<SessionGallery sessionId="session-1" canManage images={[]} storageReady videosEnabled />);
+      expect(container.querySelector('a[href="/mentions-legales"]')).not.toBeNull();
+    });
+  });
+
   it("offers upload and deletion to an authorized community moderator", () => {
     render(<SessionGallery sessionId="session-1" canManage images={media} storageReady videosEnabled />);
     expect(screen.getByLabelText("Ajouter un média")).toBeTruthy();
