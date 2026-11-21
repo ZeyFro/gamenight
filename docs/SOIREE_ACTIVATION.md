@@ -416,6 +416,17 @@ Vérifie sur Discord avec un compte membre et un compte modérateur que `/tower`
 
 Arrêt immédiat si : donnée d'une autre communauté, récompense double, annonce en boucle, erreur 5xx persistante. **Ne supprime rien** (défis, étages, preuves, rôles, messages) : défais dans l'ordre inverse, en commençant par le SQL. Un message erroné déjà parti sur Discord se supprime à la main, sans rejouer la file. Les migrations ne se défont pas par ce plan : voir [MIGRATIONS.md](MIGRATIONS.md) et [TOWER_SNAPSHOT_RESTORE_PROCEDURE.md](TOWER_SNAPSHOT_RESTORE_PROCEDURE.md).
 
+## 9 bis. Option — Pages légales (à faire avant l’ouverture publique)
+
+Aucune action Discord ni Neon. Les pages sont éteintes tant que `LEGAL_PAGES_ENABLED` n’est pas exactement `true` (404, aucun lien).
+
+1. [ ] Vercel → Settings → Environment Variables → **Production** : ajoute `LEGAL_PUBLISHER` (nom et coordonnées, ou association), `LEGAL_PUBLICATION_DIRECTOR`, `LEGAL_CONTACT_EMAIL` (adresse dédiée) et `LEGAL_MIN_AGE` (13, 15 ou 16). Aucune n’est un secret.
+2. [ ] Fais relire les trois textes (`src/app/mentions-legales`, `confidentialite`, `conditions`) par un professionnel du droit : chaque page porte « Version provisoire, à faire relire par un professionnel du droit ».
+3. [ ] Renseigne aussi ce qui reste « À COMPLÉTER » dans la politique : région du stockage de fichiers Vercel Blob, garanties de transfert hors UE, durée de conservation des preuves et des signalements, date de mise à jour des conditions.
+4. [ ] Ajoute `LEGAL_PAGES_ENABLED` = `true` puis **Redeploy**.
+5. [ ] Contrôle : `/mentions-legales`, `/confidentialite`, `/conditions` répondent (sans te connecter), les trois liens sont au bas de la page de connexion et de chaque page, et aucun « À COMPLÉTER » ne s’affiche.
+6. Retour arrière : supprime `LEGAL_PAGES_ENABLED` puis **Redeploy** (les pages redeviennent 404).
+
 ## 10. Ce que ce document ne garantit pas
 
 - Les écrans d'**Atlas** ne sont pas lisibles depuis le dépôt : ils sont décrits par leur rôle, pas par leur nom. Le projet Neon de Production (`gamenight`, `misty-tooth-45335023`, branche `production`) a été relevé en lecture seule le 20/11/2026.

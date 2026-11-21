@@ -1,4 +1,6 @@
 import type { ReactNode } from "react";
+import Link from "next/link";
+import { LEGAL_LINKS, isLegalPagesEnabled } from "@/lib/legal-pages";
 import { AuroraText } from "@/components/magicui/aurora-text";
 import { ShineBorder } from "@/components/magicui/shine-border";
 
@@ -10,6 +12,7 @@ export function LoginLanding({ children }: { children: ReactNode }) {
       <p className="gn-eyebrow text-accent">Bienvenue dans GameNight</p><h2>Ta prochaine partie<br />commence ici.</h2>
       <p className="mb-7 text-sm text-muted">Connecte-toi avec Discord pour retrouver tes communautés.</p>
       {children}
+      {isLegalPagesEnabled() && <nav aria-label="Informations légales" className="mt-4 flex flex-wrap gap-x-3 gap-y-1 text-xs text-muted">{LEGAL_LINKS.map((link) => <Link key={link.href} href={link.href} className="underline underline-offset-2 hover:text-foreground">{link.label}</Link>)}</nav>}
       <ul className="gn-login-benefits"><li>Des soirées et roulettes à organiser ensemble</li><li>Une bibliothèque commune et vos tierlists</li><li>Une progression propre à chaque serveur</li></ul>
     </section>
   </div>;

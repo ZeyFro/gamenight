@@ -171,6 +171,7 @@ Interrupteurs Tower qui s'ajoutent à ces quatre, tous conditionnés par `TOWER_
 | `TEAM_RECRUITMENT_CRITERIA_ENABLED` | Objectifs et critères de recrutement d'une équipe | `communityTeamsEnabled` | `20261118123000_team_recruitment_criteria` |
 | `TOWER_IRREGULAR_GRANTS_ENABLED` | Irregular attribué à la main par le staff (`/admin/tower-irregular`), prestige sans droit | `TOWER_CHALLENGES_ENABLED` | `20261118122000_tower_irregular_grants` |
 | `TOWER_SEASON_AWARDS_ENABLED` | Titres et cadres cosmétiques saisonniers pour les 3 premiers du palmarès (cron `notification-executor`) | `TOWER_CHALLENGES_ENABLED` | `20261118122300_tower_season_awards` |
+| `LEGAL_PAGES_ENABLED` + `LEGAL_PUBLISHER`, `LEGAL_PUBLICATION_DIRECTOR`, `LEGAL_CONTACT_EMAIL`, `LEGAL_MIN_AGE` | Pages publiques `/mentions-legales`, `/confidentialite`, `/conditions` et liens dans le pied de page de chaque page et sur la page de connexion ; éteint = 404 et aucun lien. **À allumer avant l’ouverture publique, après avoir renseigné les 4 variables** (sinon la mention « À COMPLÉTER » reste visible) et fait relire les textes par un professionnel du droit | aucune (variables non secrètes) | aucune |
 | `PROFILE_CUSTOMIZATION_ENABLED` | Pseudo, cartes, cadres, bannières, effets, titre, vitrine de badges ; décoratif uniquement | à placer après les titres et cadres saisonniers qu'il met en valeur | `20261118131300_profile_customization` |
 
 Retour arrière : retirer la variable ; l'affichage disparaît, les choix des membres restent en base.
