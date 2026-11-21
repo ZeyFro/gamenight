@@ -31,6 +31,8 @@
 
 ## Exploitation et sécurité
 
+- [Runbook : retour arrière et incidents](RUNBOOK.md) — couper un interrupteur, revenir au déploiement précédent, restauration Neon, migration en échec, incident Discord, fuite de secret, contacts à compléter.
+- [Checklist de lancement](CHECKLIST_LANCEMENT.md) — points à prouver avant l'annonce publique (pages légales, portail Discord, saison 1, catalogue, alertes, sauvegardes, tests de compte), avec la preuve attendue pour chacun.
 - [Routes cron et backfill](CRONS.md) — routes, méthodes et garde d’authentification ; les cadences sont hors dépôt.
 - [Réconciliation sécurité du travail de Claude](SECURITE_CLAUDE.md) — constats, preuves, correctifs et limites restant à vérifier.
 - [Déploiement multi-communautés](COMMUNITY_ROLLOUT.md) — ordre de configuration et limites opérationnelles.
