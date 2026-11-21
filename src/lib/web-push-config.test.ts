@@ -2,14 +2,21 @@ import { createECDH } from "node:crypto";
 import { describe, expect, it } from "vitest";
 import { webPushConfig, webPushConfigIssue } from "./web-push-config";
 
-function vapidPair() {
+/**
+ * Paires de clés FIXES. Une paire aléatoire échouait de temps en temps : `getPrivateKey()` renvoie
+ * moins de 32 octets quand la clé commence par un octet nul, et la configuration refuse alors une
+ * paire pourtant valide. Une clé privée de 32 octets identiques est valide pour P-256 et ne dépend
+ * d'aucun hasard.
+ */
+function vapidPair(fill: number) {
   const ecdh = createECDH("prime256v1");
-  ecdh.generateKeys();
-  return { publicKey: ecdh.getPublicKey().toString("base64url"), privateKey: ecdh.getPrivateKey().toString("base64url") };
+  const privateBytes = Buffer.alloc(32, fill);
+  ecdh.setPrivateKey(privateBytes);
+  return { publicKey: ecdh.getPublicKey().toString("base64url"), privateKey: privateBytes.toString("base64url") };
 }
 
 describe("configuration Web Push", () => {
-  const pair = vapidPair();
+  const pair = vapidPair(7);
   const configured = {
     WEB_PUSH_ENABLED: "true",
     WEB_PUSH_VAPID_SUBJECT: "mailto:admin@example.test",
@@ -35,7 +42,7 @@ describe("configuration Web Push", () => {
   });
 
   it("refuse des clés invalides ou dépareillées, sans jamais citer leur valeur", () => {
-    const other = vapidPair();
+    const other = vapidPair(9);
     const cases = [
       { ...configured, WEB_PUSH_VAPID_PUBLIC_KEY: "public", WEB_PUSH_VAPID_PRIVATE_KEY: "private-secret-value" },
       { ...configured, WEB_PUSH_VAPID_PRIVATE_KEY: other.privateKey },
