@@ -442,6 +442,24 @@ Aucune action Discord ni Neon, aucune migration. Deux interrupteurs indépendant
 4. Limites connues : la phrase d'accès réservé s'ajoute au message de refus (`?error=AccessDenied`) sans le remplacer ; les libellés « Étage » côte à côte sur `/tower` (V3-11) relèvent d'une décision de nom non prise et ne sont pas touchés.
 5. Retour arrière : supprime la variable puis **Redeploy**.
 
+## 9 quater. Option — Vie privée des médias
+
+Aucune action Discord ni Neon, aucune migration. Interrupteur unique `MEDIA_PRIVACY_ENABLED` (éteint tant que la valeur n’est pas exactement `true`).
+
+Ce que ça change une fois allumé :
+
+- **Fiche d’un jeu** : la vidéo YouTube fournie par IGDB ne s’affiche plus d’office. Un bloc dit « Cette vidéo vient de YouTube (Google) ; ton adresse IP lui sera transmise » ; l’iframe (`youtube-nocookie.com`) n’est chargée qu’après le clic sur « Afficher la vidéo ». Avant le clic, aucune requête ne part vers YouTube ni `i.ytimg.com`.
+- **Galerie des soirées** : une seconde case obligatoire, « Je confirme avoir l’accord des personnes reconnaissables ou audibles ; elles peuvent demander le retrait du média », s’ajoute au consentement d’accès existant ; le serveur refuse l’envoi sans elle. Un rappel indique comment demander un retrait : le créateur de la soirée, un administrateur, ou le contact des mentions légales (lien affiché seulement si `LEGAL_PAGES_ENABLED` est allumé).
+
+Étapes :
+
+1. [ ] Vercel → Settings → Environment Variables → **Production** : ajoute `MEDIA_PRIVACY_ENABLED` = `true`, puis **Redeploy**.
+2. [ ] Contrôle sur une fiche jeu avec trailer : le bloc d’information s’affiche, l’onglet Réseau des outils du navigateur ne montre aucune requête YouTube avant le clic, la vidéo se lance après le clic.
+3. [ ] Contrôle sur une soirée dont la galerie est activée (créateur) : les deux cases sont cochables et obligatoires, le texte de retrait est visible.
+4. Retour arrière : supprime `MEDIA_PRIVACY_ENABLED` puis **Redeploy** (iframe immédiate, case unique).
+
+Limite : l’accord des personnes visibles n’est pas vérifié par l’application ; la confirmation du téléverseur n’est pas stockée séparément (aucune colonne ajoutée), le consentement existant reste la seule preuve.
+
 ## 9 quinquies. Action GitHub — Dependabot (alertes et mises à jour de sécurité)
 
 Le fichier `.github/dependabot.yml` propose chaque lundi (6 h, Paris) des PULL REQUESTS de mise à jour (npm : 3 ouvertes au plus, montées majeures de Next et Prisma ignorées ; GitHub Actions : 2). Rien n’est fusionné ni déployé sans revue. Les alertes et les mises à jour de SÉCURITÉ se règlent dans GitHub, pas dans le dépôt :
@@ -450,7 +468,6 @@ Le fichier `.github/dependabot.yml` propose chaque lundi (6 h, Paris) des PULL R
 2. [ ] Vérifie dans **Insights → Dependency graph → Dependabot** que le fichier est lu sans erreur.
 3. [ ] À chaque PR Dependabot : attends la CI verte, lis le changelog, fusionne toi-même (jamais de fusion automatique).
 4. Retour arrière : supprime `.github/dependabot.yml` (les alertes de sécurité restent actives dans les réglages).
-
 
 ## 10. Ce que ce document ne garantit pas
 

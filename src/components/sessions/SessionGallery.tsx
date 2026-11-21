@@ -1,4 +1,7 @@
 import Image from "next/image";
+import Link from "next/link";
+import { isLegalPagesEnabled } from "@/lib/legal-pages";
+import { isMediaPrivacyEnabled } from "@/lib/media-privacy";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { deleteSessionGalleryImageAction, uploadSessionGalleryImageAction } from "@/app/sessions/actions/gallery";
@@ -44,6 +47,8 @@ export function SessionGallery({
       : result === "pleine" && videosEnabled
         ? "La galerie de cette soirée est pleine (8 médias maximum)."
         : result ? RESULT[result] : undefined;
+  const mediaPrivacy = isMediaPrivacyEnabled();
+  const legalPages = isLegalPagesEnabled();
   return (
     <section className="flex flex-col gap-3">
       <h2 className="text-lg font-semibold text-foreground">📸 Galerie de la soirée</h2>
@@ -97,6 +102,18 @@ export function SessionGallery({
               <input type="checkbox" name="consent" required className="mt-1" />
               <span>{videosEnabled ? "J’accepte que les membres invités de cette soirée puissent consulter cette photo ou ce clip." : "J’accepte que les membres invités de cette soirée puissent consulter cette image."}</span>
             </label>
+            {mediaPrivacy && (
+              <>
+                <label className="flex items-start gap-2 text-sm text-muted">
+                  <input type="checkbox" name="consentPeople" required className="mt-1" />
+                  <span>Je confirme avoir l’accord des personnes reconnaissables ou audibles ; elles peuvent demander le retrait du média.</span>
+                </label>
+                <p className="text-xs text-muted">
+                  Pour demander le retrait d’un média, adresse-toi au créateur de la soirée ou à un administrateur
+                  {legalPages && (<>, ou utilise le contact des <Link href="/mentions-legales" className="text-accent underline">mentions légales</Link></>)}.
+                </p>
+              </>
+            )}
             <Button type="submit" size="sm">Partager dans la galerie</Button>
           </form>
         )}

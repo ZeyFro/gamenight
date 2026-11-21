@@ -6,6 +6,7 @@ import { getCurrentUser } from "@/lib/current-user";
 import { prisma } from "@/lib/prisma";
 import { getGameDetails } from "@/lib/game-details";
 import { getGameOwners } from "@/lib/game-library";
+import { GameTrailer } from "@/components/GameTrailer";
 import { Card } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
 import { Skeleton } from "@/components/ui/Skeleton";
@@ -121,15 +122,7 @@ async function GameIgdbSection({ game }: { game: Game }) {
       {details && details.youtubeVideoIds.length > 0 && (
         <section className="flex flex-col gap-2">
           <h2 className="font-semibold text-foreground">Trailer</h2>
-          <div className="aspect-video w-full overflow-hidden rounded-lg bg-surface-hover">
-            <iframe
-              src={`https://www.youtube-nocookie.com/embed/${details.youtubeVideoIds[0]}`}
-              title={`Trailer de ${game.name}`}
-              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-              allowFullScreen
-              className="h-full w-full"
-            />
-          </div>
+          <GameTrailer videoId={details.youtubeVideoIds[0]} gameName={game.name} />
         </section>
       )}
 
