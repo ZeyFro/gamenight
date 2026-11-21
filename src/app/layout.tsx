@@ -10,6 +10,7 @@ import { logger } from "@/lib/logger";
 import { Toaster } from "sonner";
 import { getCurrentUser } from "@/lib/current-user";
 import { Header } from "@/components/Header";
+import { LegalFooter } from "@/components/legal/LegalFooter";
 import { BottomNav } from "@/components/BottomNav";
 import { OfflineBanner } from "@/components/OfflineBanner";
 import { GuideFab } from "@/components/GuideFab";
@@ -90,6 +91,7 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
           >
             <PageTransition>{children}</PageTransition>
           </main>
+          <LegalFooter raised={Boolean(user)} />
           {user && <BottomNav />}
           <OfflineBanner raised={Boolean(user)} />
           {user && <GuideFab />}
