@@ -432,3 +432,27 @@ Aucune action Discord ni Neon. Les pages sont éteintes tant que `LEGAL_PAGES_EN
 - Les écrans d'**Atlas** ne sont pas lisibles depuis le dépôt : ils sont décrits par leur rôle, pas par leur nom. Le projet Neon de Production (`gamenight`, `misty-tooth-45335023`, branche `production`) a été relevé en lecture seule le 20/11/2026.
 - L'état réel des variables Vercel, de la base de Production et de Discord n'a **pas** été vérifié (aucune action Vercel, Neon ou Discord n'a été faite pour préparer ce document).
 - Le test minimal n'est pas une recette : le parcours réel (défi, preuve, 3 votes distincts, récompense, quota) avec des testeurs réels reste à faire et conditionne le go/no-go ([CONDITIONS_REUSSITE_LANCEMENT.md](CONDITIONS_REUSSITE_LANCEMENT.md), 0 / 17 cases cochées à ce jour).
+
+## 11. Option — Suppression et export de compte (`ACCOUNT_DELETION_ENABLED`), **facultatif**
+
+Hors des 4 interrupteurs Tower, à faire **un autre jour** que la soirée d'activation, de préférence avant l'ouverture publique (constat V1-02 de l'audit). Guide complet : [SUPPRESSION_COMPTE.md](SUPPRESSION_COMPTE.md).
+
+### 11.1 Avant (ordre impératif : la migration, puis la variable)
+
+1. La PR est fusionnée dans `main` ; le run **« Migrations Production »** (GitHub Actions) est approuvé et vert ; le résumé du run montre `20261121100000_account_deletion_log` appliquée. Cette migration ne crée qu'**une table de journal** (`AccountDeletionLog`), sans toucher à une table existante.
+2. Vercel → Production : `SESSION_MEDIA_BLOB_TOKEN` présent (médias de galerie privés supprimés avec le compte).
+
+### 11.2 Activer
+
+Vercel → Settings → Environment Variables (**Production** seulement) : `ACCOUNT_DELETION_ENABLED` = `true`, puis **Redeploy**.
+
+### 11.3 Vérifier (compte de test, jamais un compte réel)
+
+1. `/profil/parametres` affiche la carte « Mon compte et mes données » ; `/profil/compte` s'ouvre.
+2. « Télécharger mes données » livre un fichier JSON : il contient le profil, la bibliothèque, les soirées créées… et **aucun** jeton ni identifiant d'un autre membre.
+3. Un compte de test qui est le **seul OWNER** d'une communauté voit le refus « dernier propriétaire » et rien n'est supprimé.
+4. Supprimer un compte de test (pseudo ou « SUPPRIMER ») : retour à l'accueil avec le message de suppression ; se reconnecter donne un compte neuf et vide ; un autre compte et un autre serveur sont inchangés.
+
+### 11.4 Revenir en arrière en une minute
+
+Retirer `ACCOUNT_DELETION_ENABLED` (ou une valeur autre que `true`) puis **Redeploy** : la page, l'export et l'action répondent 404. Les suppressions déjà faites sont **irréversibles** (voir [SUPPRESSION_COMPTE.md](SUPPRESSION_COMPTE.md) pour la restauration Neon). La migration ne se défait pas ; la table reste sans effet.

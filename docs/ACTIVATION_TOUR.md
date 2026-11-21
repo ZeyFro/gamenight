@@ -185,10 +185,21 @@ Retour arrière : retirer la variable ; l'affichage disparaît, les choix des me
 | `TOWER_CHALLENGE_PROPOSALS_ENABLED` | Propositions de défis par les Ranker / High Ranker, validées par le staff | `TOWER_CHALLENGES_ENABLED` | `20261118122200_tower_rank_challenge_proposals` |
 | `GAME_LEVELS_MATCHMAKING_ENABLED` | Niveau par jeu dans le matchmaking et l'équilibrage des tournois | `GAME_LEVELS_ENABLED` | aucune |
 | `TOURNAMENT_TEAMS_ENABLED` | Tournois par équipes inscrites (résultat confirmé par les deux capitaines) | `communityTeamsEnabled` (MP : aussi executor et bot) | `20261118130400_tournament_teams` |
+| `ACCOUNT_DELETION_ENABLED` | Suppression (anonymisation) et export du compte sur `/profil/compte` ; irréversible pour la personne ; refus du dernier propriétaire d'une communauté | migration appliquée **avant** ; `SESSION_MEDIA_BLOB_TOKEN` si des médias de galerie existent | `20261121100000_account_deletion_log` |
 | `TEAM_RIVALRIES_ENABLED` | Rivalités entre équipes et « Jouer maintenant » (Rejoindre / Intéressé, expiration 2 h) | — | `20261118130700_team_rivalries` |
 | `GAME_PLATFORMS_ENABLED` | Plateformes et crossplay des jeux, ajout rapide par plateforme, défis jamais impossibles | — | `20261118130900_platform_identities_crossplay` |
 
 Retour arrière : retirer la variable ; candidatures, propositions et tournois en cours restent en base mais ne sont plus accessibles.
+
+**`ACCOUNT_DELETION_ENABLED` : étapes détaillées** (guide complet : [SUPPRESSION_COMPTE.md](SUPPRESSION_COMPTE.md))
+
+1. **Migration d'abord** : fusion de la PR, run « Migrations Production » vert, `20261121100000_account_deletion_log` parmi les migrations appliquées (table `AccountDeletionLog`, additive). Sans elle, la suppression échoue avant toute écriture (`P2021`).
+2. Vérifier que `SESSION_MEDIA_BLOB_TOKEN` est défini en Production (les médias de galerie privés sont supprimés avec le compte ; sans le jeton la suppression est refusée pour ceux qui en ont).
+3. Mettre `ACCOUNT_DELETION_ENABLED=true` en Production (jamais sur Preview) et redéployer.
+4. **Vérification** : avec un compte de test dont la communauté a un autre OWNER, ouvrir `/profil/parametres` (carte « Mon compte et mes données »), télécharger l'export (fichier JSON sans jeton), puis supprimer le compte de test : retour à l'accueil avec « Ton compte a été supprimé », reconnexion possible avec un compte neuf et vide. Contrôler un second compte et un second serveur : inchangés. Ne jamais essayer sur un compte réel.
+5. Rappeler à l'équipe d'administration que les messages déjà publiés sur Discord (annonces, preuves, MP) ne sont pas effacés par l'application.
+
+**Retour arrière** : retirer la variable ou la passer à une valeur différente de `true` puis redéployer : la page, l'export et l'action répondent 404. **Une suppression déjà faite est irréversible** (seule une restauration Neon à une date antérieure la défait, voir [MIGRATIONS.md](MIGRATIONS.md)). La table de journal reste en base sans effet.
 
 ## Groupe 4 — Notifications et votes Discord (via la file)
 
