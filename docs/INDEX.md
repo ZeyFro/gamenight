@@ -39,6 +39,9 @@
 - [Feuille de route GameNight et The Tower 2.0](ROADMAP.md) — suivi vivant et découpage en PR.
 - [État factuel Neon Test et pile Tower](NEON_TEST_ETAT_20261117.md) — constats du 17/11 et opérations soumises à autorisation.
 - [Plan J-14 vers le 1er décembre](PLAN-J14-20261201.md) — périmètre, calendrier et chemin critique du sprint.
+- [Guide de modération](GUIDE_MODERATION.md) — brouillon : rôles réels (application et Discord), échelle de sanctions, escalade, contestations Tower, contenu illégal, mineurs, journal des décisions.
+- [Semaine 1 du lancement](SEMAINE_1.md) — brouillon : calendrier du 30 novembre au 6 décembre 2026, vagues d'invités, points de contrôle, critères d'arrêt et go/no-go.
+- [Messages de lancement](MESSAGES_LANCEMENT.md) — brouillon : annonce, accueil, consigne Steam, correction du guide sur les étages, panne et fin d'incident.
 
 ## Recettes et documents de référence
 
