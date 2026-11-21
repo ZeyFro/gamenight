@@ -2,7 +2,7 @@
 // Sessions : JWT Auth.js signés avec le secret éphémère du serveur local (aucun OAuth Discord réel).
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
-import { mkdirSync, writeFileSync, readFileSync } from "node:fs";
+import { mkdirSync, writeFileSync, readFileSync, existsSync } from "node:fs";
 import { PrismaClient } from "@prisma/client";
 import { encode } from "next-auth/jwt";
 import sharp from "sharp";
@@ -60,7 +60,9 @@ async function compress(buffer, file) {
   return data.length;
 }
 
+const previousManifest = (() => { try { return JSON.parse(readFileSync(`${out}/manifeste.json`, "utf8")); } catch { return []; } })();
 const manifest = [];
+const withTimeout = (promise, ms, label) => Promise.race([promise, new Promise((_, reject) => setTimeout(() => reject(new Error(`délai dépassé : ${label}`)), ms))]);
 const browser = await chromium.launch();
 try {
   const contexts = {};
@@ -82,7 +84,10 @@ try {
     if (only && !only.test(`${persona} ${path}`)) continue;
     for (const vpName of Object.keys(viewports)) {
       const context = contexts[`${persona}:${vpName}`];
+      const targetFile = `${out}/${persona}-${vpName}-${slugOf(path)}.png`;
+      if (!process.env.FORCE && existsSync(targetFile) && previousManifest.some(item => item.file === targetFile)) continue;
       const page = await context.newPage();
+      page.setDefaultTimeout(45_000);
       const errors = [];
       page.on("pageerror", error => errors.push(String(error.message).slice(0, 200)));
       page.on("console", message => { if (message.type() === "error") errors.push(String(message.text()).slice(0, 200)); });
@@ -90,8 +95,9 @@ try {
       let status = 0;
       let finalPath = path;
       try {
-        const response = await page.goto(origin + path, { waitUntil: "load", timeout: 120_000 });
+        const response = await withTimeout(page.goto(origin + path, { waitUntil: "load", timeout: 100_000 }), 110_000, "navigation");
         status = response?.status() ?? 0;
+        await page.waitForLoadState("networkidle", { timeout: 4_000 }).catch(() => {});
         await page.waitForTimeout(700);
         finalPath = new URL(page.url()).pathname;
         const text = (await page.evaluate(() => document.body.innerText)).replace(/\n{3,}/g, "\n\n");
@@ -99,14 +105,14 @@ try {
         const h1 = await page.evaluate(() => document.querySelector("h1")?.textContent?.trim() ?? "");
         const height = await page.evaluate(() => document.documentElement.scrollHeight);
         const file = `${out}/${persona}-${vpName}-${slugOf(path)}.png`;
-        const png = await page.screenshot({ fullPage: true, clip: undefined, ...(height > 3200 ? { fullPage: false } : {}) });
+        const png = await withTimeout(page.screenshot({ fullPage: height <= 3200, timeout: 40_000, animations: "disabled" }), 50_000, "capture");
         const size = await compress(png, file);
         manifest.push({ persona, viewport: vpName, path, state, status, finalPath, title, h1, scrollHeight: height, file, bytes: size, errors, ms: Date.now() - started, text: text.slice(0, 2500) });
         console.log(persona, vpName, path, status, finalPath !== path ? `→ ${finalPath}` : "", `${Math.round(size / 1000)} ko`, errors.length ? `${errors.length} err` : "");
       } catch (error) {
         manifest.push({ persona, viewport: vpName, path, state, status: -1, error: String(error.message).slice(0, 200) });
         console.log("ÉCHEC", persona, vpName, path, String(error.message).slice(0, 100));
-      } finally { await page.close(); }
+      } finally { await page.close().catch(() => {}); }
     }
   }
 } finally {

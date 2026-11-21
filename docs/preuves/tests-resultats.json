@@ -1,0 +1,724 @@
+{
+ "resolved": {
+  "discord-role-command.test.ts": [
+   "src/lib/discord-role-command.test.ts"
+  ],
+  "discord-commands-manifest.test.ts": [
+   "src/lib/discord-commands-manifest.test.ts"
+  ],
+  "notification-executor.integration.test.ts": [
+   "src/lib/notification-executor.integration.test.ts"
+  ],
+  "s0-access-controls.integration.test.ts": [
+   "src/lib/s0-access-controls.integration.test.ts"
+  ],
+  "tower-layout-dryrun.test.ts": [
+   "src/lib/tower-layout-dryrun.test.ts"
+  ],
+  "tower-onboarding-panel.test.ts": [
+   "src/lib/tower-onboarding-panel.test.ts"
+  ],
+  "tower-ranks.test.ts": [
+   "src/lib/tower-ranks.test.ts"
+  ],
+  "tower-etage-roles.test.ts": [
+   "src/lib/tower-etage-roles.test.ts"
+  ],
+  "tower-challenges.integration.test.ts": [
+   "src/lib/tower-challenges.integration.test.ts"
+  ],
+  "tower-s1-catalogue.test.ts": [
+   "src/lib/tower-s1-catalogue.test.ts"
+  ],
+  "tower-standings.test.ts": [
+   "src/lib/tower-standings.test.ts"
+  ],
+  "tower-challenge-rules.test.ts": [
+   "src/lib/tower-challenge-rules.test.ts"
+  ],
+  "tower-team-daily.regression.integration.test.ts": [
+   "src/lib/tower-team-daily.regression.integration.test.ts"
+  ],
+  "tower-challenge-replacement.integration.test.ts": [
+   "src/lib/tower-challenge-replacement.integration.test.ts"
+  ],
+  "tower-challenge-proposals.integration.test.ts": [
+   "src/lib/tower-challenge-proposals.integration.test.ts"
+  ],
+  "tower-challenge-proof-rules.test.ts": [
+   "src/lib/tower-challenge-proof-rules.test.ts"
+  ],
+  "tower-challenge-voting.test.ts": [
+   "src/lib/tower-challenge-voting.test.ts"
+  ],
+  "tower-challenge-appeal-rules.test.ts": [
+   "src/lib/tower-challenge-appeal-rules.test.ts"
+  ],
+  "tower-challenge-announcements.test.ts": [
+   "src/lib/tower-challenge-announcements.test.ts"
+  ],
+  "community-highlights.test.ts": [
+   "src/lib/community-highlights.test.ts"
+  ],
+  "team-recruiters-rules.test.ts": [
+   "src/lib/team-recruiters-rules.test.ts"
+  ],
+  "community-teams-rules.test.ts": [
+   "src/lib/community-teams-rules.test.ts"
+  ],
+  "tower-forums.test.ts": [
+   "src/lib/tower-forums.test.ts"
+  ],
+  "src/app/tower/forums/page.test.tsx": [
+   "src/app/tower/forums/page.test.tsx"
+  ],
+  "tonight.integration.test.ts": [
+   "src/lib/tonight.integration.test.ts"
+  ],
+  "profile-visibility.test.ts": [
+   "src/lib/profile-visibility.test.ts"
+  ],
+  "game-platforms.test.ts": [
+   "src/lib/game-platforms.test.ts"
+  ],
+  "session-announce.integration.test.ts": [
+   "src/lib/session-announce.integration.test.ts"
+  ],
+  "calendar-feed.integration.test.ts": [
+   "src/lib/calendar-feed.integration.test.ts"
+  ],
+  "tournament-announce.integration.test.ts": [
+   "src/lib/tournament-announce.integration.test.ts"
+  ],
+  "tower-challenge-seasons.test.ts": [
+   "src/lib/tower-challenge-seasons.test.ts"
+  ],
+  "profile-customization.test.ts": [
+   "src/lib/profile-customization.test.ts"
+  ],
+  "session-visibility.integration.test.ts": [
+   "src/lib/session-visibility.integration.test.ts"
+  ],
+  "tower-layout-permissions.test.ts": [
+   "src/lib/tower-layout-permissions.test.ts"
+  ],
+  "discord-report-command.test.ts": [
+   "src/lib/discord-report-command.test.ts"
+  ],
+  "community-scope.test.ts": [
+   "src/lib/community-scope.test.ts"
+  ],
+  "discord-tower-challenges.test.ts": [
+   "src/lib/discord-tower-challenges.test.ts"
+  ],
+  "migrations-immutable.test.ts": [
+   "src/lib/migrations-immutable.test.ts"
+  ],
+  "notification-executor.preview.test.ts": [
+   "src/lib/notification-executor.preview.test.ts"
+  ],
+  "notification-preferences.test.ts": [
+   "src/lib/notification-preferences.test.ts"
+  ],
+  "game-ping-optin.test.ts": [
+   "src/lib/game-ping-optin.test.ts"
+  ],
+  "tower-vote-eligibility.test.ts": [
+   "src/lib/tower-vote-eligibility.test.ts"
+  ],
+  "tower-discord-votes.integration.test.ts": [
+   "src/lib/tower-discord-votes.integration.test.ts"
+  ],
+  "tower-steam-measure.integration.test.ts": [
+   "src/lib/tower-steam-measure.integration.test.ts"
+  ],
+  "session-visibility.test.ts": [
+   "src/lib/session-visibility.test.ts"
+  ],
+  "tournament-teams-rules.test.ts": [
+   "src/lib/tournament-teams-rules.test.ts"
+  ],
+  "notification-executor-role-autocreate.test.ts": [
+   "src/lib/notification-executor-role-autocreate.test.ts"
+  ],
+  "projects.integration.test.ts": [
+   "src/lib/projects.integration.test.ts"
+  ],
+  "project-space-service.test.ts": [
+   "src/lib/project-space-service.test.ts"
+  ],
+  "team-rivalries-rules.test.ts": [
+   "src/lib/team-rivalries-rules.test.ts"
+  ],
+  "team-rivalries.integration.test.ts": [
+   "src/lib/team-rivalries.integration.test.ts"
+  ],
+  "notification-policy.test.ts": [
+   "src/lib/notification-policy.test.ts"
+  ],
+  "discord-connections.test.ts": [
+   "src/lib/discord-connections.test.ts"
+  ],
+  "game-levels-matchmaking.integration.test.ts": [
+   "src/lib/game-levels-matchmaking.integration.test.ts"
+  ],
+  "booster-support.test.ts": [
+   "src/lib/booster-support.test.ts"
+  ]
+ },
+ "results": {
+  "src/lib/booster-support.test.ts": {
+   "status": "passed",
+   "passed": 18,
+   "failed": 0,
+   "skipped": 0,
+   "total": 18,
+   "failures": [],
+   "message": "",
+   "kind": "unitaire"
+  },
+  "src/lib/community-highlights.test.ts": {
+   "status": "passed",
+   "passed": 11,
+   "failed": 0,
+   "skipped": 0,
+   "total": 11,
+   "failures": [],
+   "message": "",
+   "kind": "unitaire"
+  },
+  "src/lib/community-scope.test.ts": {
+   "status": "passed",
+   "passed": 7,
+   "failed": 0,
+   "skipped": 0,
+   "total": 7,
+   "failures": [],
+   "message": "",
+   "kind": "unitaire"
+  },
+  "src/lib/community-teams-rules.test.ts": {
+   "status": "passed",
+   "passed": 8,
+   "failed": 0,
+   "skipped": 0,
+   "total": 8,
+   "failures": [],
+   "message": "",
+   "kind": "unitaire"
+  },
+  "src/lib/discord-commands-manifest.test.ts": {
+   "status": "passed",
+   "passed": 4,
+   "failed": 0,
+   "skipped": 0,
+   "total": 4,
+   "failures": [],
+   "message": "",
+   "kind": "unitaire"
+  },
+  "src/lib/discord-connections.test.ts": {
+   "status": "passed",
+   "passed": 14,
+   "failed": 0,
+   "skipped": 0,
+   "total": 14,
+   "failures": [],
+   "message": "",
+   "kind": "unitaire"
+  },
+  "src/lib/discord-report-command.test.ts": {
+   "status": "passed",
+   "passed": 19,
+   "failed": 0,
+   "skipped": 0,
+   "total": 19,
+   "failures": [],
+   "message": "",
+   "kind": "unitaire"
+  },
+  "src/lib/discord-role-command.test.ts": {
+   "status": "passed",
+   "passed": 24,
+   "failed": 0,
+   "skipped": 0,
+   "total": 24,
+   "failures": [],
+   "message": "",
+   "kind": "unitaire"
+  },
+  "src/lib/discord-tower-challenges.test.ts": {
+   "status": "passed",
+   "passed": 30,
+   "failed": 0,
+   "skipped": 0,
+   "total": 30,
+   "failures": [],
+   "message": "",
+   "kind": "unitaire"
+  },
+  "src/lib/game-ping-optin.test.ts": {
+   "status": "passed",
+   "passed": 7,
+   "failed": 0,
+   "skipped": 0,
+   "total": 7,
+   "failures": [],
+   "message": "",
+   "kind": "unitaire"
+  },
+  "src/lib/game-platforms.test.ts": {
+   "status": "passed",
+   "passed": 11,
+   "failed": 0,
+   "skipped": 0,
+   "total": 11,
+   "failures": [],
+   "message": "",
+   "kind": "unitaire"
+  },
+  "src/lib/migrations-immutable.test.ts": {
+   "status": "passed",
+   "passed": 38,
+   "failed": 0,
+   "skipped": 1,
+   "total": 39,
+   "failures": [],
+   "message": "",
+   "kind": "unitaire"
+  },
+  "src/lib/notification-executor-role-autocreate.test.ts": {
+   "status": "passed",
+   "passed": 2,
+   "failed": 0,
+   "skipped": 0,
+   "total": 2,
+   "failures": [],
+   "message": "",
+   "kind": "unitaire"
+  },
+  "src/lib/notification-executor.preview.test.ts": {
+   "status": "passed",
+   "passed": 1,
+   "failed": 0,
+   "skipped": 0,
+   "total": 1,
+   "failures": [],
+   "message": "",
+   "kind": "unitaire"
+  },
+  "src/lib/notification-policy.test.ts": {
+   "status": "passed",
+   "passed": 17,
+   "failed": 0,
+   "skipped": 0,
+   "total": 17,
+   "failures": [],
+   "message": "",
+   "kind": "unitaire"
+  },
+  "src/lib/notification-preferences.test.ts": {
+   "status": "passed",
+   "passed": 9,
+   "failed": 0,
+   "skipped": 0,
+   "total": 9,
+   "failures": [],
+   "message": "",
+   "kind": "unitaire"
+  },
+  "src/lib/profile-customization.test.ts": {
+   "status": "passed",
+   "passed": 27,
+   "failed": 0,
+   "skipped": 0,
+   "total": 27,
+   "failures": [],
+   "message": "",
+   "kind": "unitaire"
+  },
+  "src/lib/profile-visibility.test.ts": {
+   "status": "passed",
+   "passed": 10,
+   "failed": 0,
+   "skipped": 0,
+   "total": 10,
+   "failures": [],
+   "message": "",
+   "kind": "unitaire"
+  },
+  "src/lib/project-space-service.test.ts": {
+   "status": "passed",
+   "passed": 11,
+   "failed": 0,
+   "skipped": 0,
+   "total": 11,
+   "failures": [],
+   "message": "",
+   "kind": "unitaire"
+  },
+  "src/lib/session-visibility.test.ts": {
+   "status": "passed",
+   "passed": 21,
+   "failed": 0,
+   "skipped": 0,
+   "total": 21,
+   "failures": [],
+   "message": "",
+   "kind": "unitaire"
+  },
+  "src/lib/team-recruiters-rules.test.ts": {
+   "status": "passed",
+   "passed": 25,
+   "failed": 0,
+   "skipped": 0,
+   "total": 25,
+   "failures": [],
+   "message": "",
+   "kind": "unitaire"
+  },
+  "src/lib/team-rivalries-rules.test.ts": {
+   "status": "passed",
+   "passed": 10,
+   "failed": 0,
+   "skipped": 0,
+   "total": 10,
+   "failures": [],
+   "message": "",
+   "kind": "unitaire"
+  },
+  "src/lib/tournament-teams-rules.test.ts": {
+   "status": "passed",
+   "passed": 30,
+   "failed": 0,
+   "skipped": 0,
+   "total": 30,
+   "failures": [],
+   "message": "",
+   "kind": "unitaire"
+  },
+  "src/lib/tower-challenge-announcements.test.ts": {
+   "status": "passed",
+   "passed": 6,
+   "failed": 0,
+   "skipped": 0,
+   "total": 6,
+   "failures": [],
+   "message": "",
+   "kind": "unitaire"
+  },
+  "src/lib/tower-challenge-appeal-rules.test.ts": {
+   "status": "passed",
+   "passed": 8,
+   "failed": 0,
+   "skipped": 0,
+   "total": 8,
+   "failures": [],
+   "message": "",
+   "kind": "unitaire"
+  },
+  "src/lib/tower-challenge-proof-rules.test.ts": {
+   "status": "passed",
+   "passed": 12,
+   "failed": 0,
+   "skipped": 0,
+   "total": 12,
+   "failures": [],
+   "message": "",
+   "kind": "unitaire"
+  },
+  "src/lib/tower-challenge-rules.test.ts": {
+   "status": "passed",
+   "passed": 34,
+   "failed": 0,
+   "skipped": 0,
+   "total": 34,
+   "failures": [],
+   "message": "",
+   "kind": "unitaire"
+  },
+  "src/lib/tower-challenge-seasons.test.ts": {
+   "status": "passed",
+   "passed": 17,
+   "failed": 0,
+   "skipped": 0,
+   "total": 17,
+   "failures": [],
+   "message": "",
+   "kind": "unitaire"
+  },
+  "src/lib/tower-challenge-voting.test.ts": {
+   "status": "passed",
+   "passed": 25,
+   "failed": 0,
+   "skipped": 0,
+   "total": 25,
+   "failures": [],
+   "message": "",
+   "kind": "unitaire"
+  },
+  "src/lib/tower-etage-roles.test.ts": {
+   "status": "passed",
+   "passed": 17,
+   "failed": 0,
+   "skipped": 0,
+   "total": 17,
+   "failures": [],
+   "message": "",
+   "kind": "unitaire"
+  },
+  "src/lib/tower-forums.test.ts": {
+   "status": "passed",
+   "passed": 6,
+   "failed": 0,
+   "skipped": 0,
+   "total": 6,
+   "failures": [],
+   "message": "",
+   "kind": "unitaire"
+  },
+  "src/lib/tower-layout-dryrun.test.ts": {
+   "status": "passed",
+   "passed": 15,
+   "failed": 0,
+   "skipped": 0,
+   "total": 15,
+   "failures": [],
+   "message": "",
+   "kind": "unitaire"
+  },
+  "src/lib/tower-layout-permissions.test.ts": {
+   "status": "passed",
+   "passed": 6,
+   "failed": 0,
+   "skipped": 0,
+   "total": 6,
+   "failures": [],
+   "message": "",
+   "kind": "unitaire"
+  },
+  "src/lib/tower-onboarding-panel.test.ts": {
+   "status": "passed",
+   "passed": 2,
+   "failed": 0,
+   "skipped": 0,
+   "total": 2,
+   "failures": [],
+   "message": "",
+   "kind": "unitaire"
+  },
+  "src/lib/tower-ranks.test.ts": {
+   "status": "passed",
+   "passed": 24,
+   "failed": 0,
+   "skipped": 0,
+   "total": 24,
+   "failures": [],
+   "message": "",
+   "kind": "unitaire"
+  },
+  "src/lib/tower-s1-catalogue.test.ts": {
+   "status": "passed",
+   "passed": 15,
+   "failed": 0,
+   "skipped": 0,
+   "total": 15,
+   "failures": [],
+   "message": "",
+   "kind": "unitaire"
+  },
+  "src/lib/tower-standings.test.ts": {
+   "status": "passed",
+   "passed": 50,
+   "failed": 0,
+   "skipped": 0,
+   "total": 50,
+   "failures": [],
+   "message": "",
+   "kind": "unitaire"
+  },
+  "src/lib/tower-vote-eligibility.test.ts": {
+   "status": "passed",
+   "passed": 3,
+   "failed": 0,
+   "skipped": 0,
+   "total": 3,
+   "failures": [],
+   "message": "",
+   "kind": "unitaire"
+  },
+  "src/app/tower/forums/page.test.tsx": {
+   "status": "failed",
+   "passed": 0,
+   "failed": 2,
+   "skipped": 0,
+   "total": 2,
+   "failures": [
+    "page des forums ne recherche pas sans connexion ou avec une requête ambiguë",
+    "page des forums affiche les titres et les tags sans insérer de HTML Discord"
+   ],
+   "message": "",
+   "kind": "unitaire"
+  },
+  "src/lib/calendar-feed.integration.test.ts": {
+   "status": "passed",
+   "passed": 3,
+   "failed": 0,
+   "skipped": 0,
+   "total": 3,
+   "failures": [],
+   "message": "",
+   "kind": "integration"
+  },
+  "src/lib/game-levels-matchmaking.integration.test.ts": {
+   "status": "passed",
+   "passed": 3,
+   "failed": 0,
+   "skipped": 0,
+   "total": 3,
+   "failures": [],
+   "message": "",
+   "kind": "integration"
+  },
+  "src/lib/notification-executor.integration.test.ts": {
+   "status": "passed",
+   "passed": 24,
+   "failed": 0,
+   "skipped": 0,
+   "total": 24,
+   "failures": [],
+   "message": "",
+   "kind": "integration"
+  },
+  "src/lib/projects.integration.test.ts": {
+   "status": "passed",
+   "passed": 10,
+   "failed": 0,
+   "skipped": 0,
+   "total": 10,
+   "failures": [],
+   "message": "",
+   "kind": "integration"
+  },
+  "src/lib/s0-access-controls.integration.test.ts": {
+   "status": "passed",
+   "passed": 22,
+   "failed": 0,
+   "skipped": 0,
+   "total": 22,
+   "failures": [],
+   "message": "",
+   "kind": "integration"
+  },
+  "src/lib/session-announce.integration.test.ts": {
+   "status": "passed",
+   "passed": 82,
+   "failed": 0,
+   "skipped": 0,
+   "total": 82,
+   "failures": [],
+   "message": "",
+   "kind": "integration"
+  },
+  "src/lib/session-visibility.integration.test.ts": {
+   "status": "passed",
+   "passed": 23,
+   "failed": 0,
+   "skipped": 0,
+   "total": 23,
+   "failures": [],
+   "message": "",
+   "kind": "integration"
+  },
+  "src/lib/team-rivalries.integration.test.ts": {
+   "status": "passed",
+   "passed": 16,
+   "failed": 0,
+   "skipped": 0,
+   "total": 16,
+   "failures": [],
+   "message": "",
+   "kind": "integration"
+  },
+  "src/lib/tonight.integration.test.ts": {
+   "status": "passed",
+   "passed": 7,
+   "failed": 0,
+   "skipped": 0,
+   "total": 7,
+   "failures": [],
+   "message": "",
+   "kind": "integration"
+  },
+  "src/lib/tournament-announce.integration.test.ts": {
+   "status": "passed",
+   "passed": 65,
+   "failed": 0,
+   "skipped": 0,
+   "total": 65,
+   "failures": [],
+   "message": "",
+   "kind": "integration"
+  },
+  "src/lib/tower-challenge-proposals.integration.test.ts": {
+   "status": "passed",
+   "passed": 9,
+   "failed": 0,
+   "skipped": 0,
+   "total": 9,
+   "failures": [],
+   "message": "",
+   "kind": "integration"
+  },
+  "src/lib/tower-challenge-replacement.integration.test.ts": {
+   "status": "passed",
+   "passed": 7,
+   "failed": 0,
+   "skipped": 0,
+   "total": 7,
+   "failures": [],
+   "message": "",
+   "kind": "integration"
+  },
+  "src/lib/tower-challenges.integration.test.ts": {
+   "status": "passed",
+   "passed": 72,
+   "failed": 0,
+   "skipped": 0,
+   "total": 72,
+   "failures": [],
+   "message": "",
+   "kind": "integration"
+  },
+  "src/lib/tower-discord-votes.integration.test.ts": {
+   "status": "passed",
+   "passed": 6,
+   "failed": 0,
+   "skipped": 0,
+   "total": 6,
+   "failures": [],
+   "message": "",
+   "kind": "integration"
+  },
+  "src/lib/tower-steam-measure.integration.test.ts": {
+   "status": "passed",
+   "passed": 4,
+   "failed": 0,
+   "skipped": 0,
+   "total": 4,
+   "failures": [],
+   "message": "",
+   "kind": "integration"
+  },
+  "src/lib/tower-team-daily.regression.integration.test.ts": {
+   "status": "passed",
+   "passed": 4,
+   "failed": 0,
+   "skipped": 0,
+   "total": 4,
+   "failures": [],
+   "message": "",
+   "kind": "integration"
+  }
+ }
+}
