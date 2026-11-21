@@ -427,6 +427,15 @@ Aucune action Discord ni Neon. Les pages sont éteintes tant que `LEGAL_PAGES_EN
 5. [ ] Contrôle : `/mentions-legales`, `/confidentialite`, `/conditions` répondent (sans te connecter), les trois liens sont au bas de la page de connexion et de chaque page, et aucun « À COMPLÉTER » ne s’affiche.
 6. Retour arrière : supprime `LEGAL_PAGES_ENABLED` puis **Redeploy** (les pages redeviennent 404).
 
+## 9 quinquies. Action GitHub — Dependabot (alertes et mises à jour de sécurité)
+
+Le fichier `.github/dependabot.yml` propose chaque lundi (6 h, Paris) des PULL REQUESTS de mise à jour (npm : 3 ouvertes au plus, montées majeures de Next et Prisma ignorées ; GitHub Actions : 2). Rien n’est fusionné ni déployé sans revue. Les alertes et les mises à jour de SÉCURITÉ se règlent dans GitHub, pas dans le dépôt :
+
+1. [ ] GitHub → le dépôt → **Settings → Advanced Security** (ou **Code security**) → active **Dependency graph**, **Dependabot alerts** et **Dependabot security updates**.
+2. [ ] Vérifie dans **Insights → Dependency graph → Dependabot** que le fichier est lu sans erreur.
+3. [ ] À chaque PR Dependabot : attends la CI verte, lis le changelog, fusionne toi-même (jamais de fusion automatique).
+4. Retour arrière : supprime `.github/dependabot.yml` (les alertes de sécurité restent actives dans les réglages).
+
 ## 10. Ce que ce document ne garantit pas
 
 - Les écrans d'**Atlas** ne sont pas lisibles depuis le dépôt : ils sont décrits par leur rôle, pas par leur nom. Le projet Neon de Production (`gamenight`, `misty-tooth-45335023`, branche `production`) a été relevé en lecture seule le 20/11/2026.
