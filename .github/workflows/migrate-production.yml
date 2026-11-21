@@ -24,7 +24,7 @@ jobs:
     environment: production-migrations
     # Le secret n'est exposé qu'aux étapes qui parlent à la base : jamais à npm ci ni à ses scripts d'installation.
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           persist-credentials: false
       - name: Vérifier le secret et l'URL directe
