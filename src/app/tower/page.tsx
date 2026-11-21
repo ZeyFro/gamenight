@@ -13,6 +13,7 @@ import { getTowerReplacementOffer } from "@/lib/tower-challenge-replacement";
 import { replaceTowerChallengeAction } from "./actions";
 import { TowerChallengeAppealForm } from "@/components/tower/TowerChallengeAppealForm";
 import { isTowerChallengeAppealWindowOpen } from "@/lib/tower-challenge-appeal-rules";
+import { TOWER_FLOORS_RESET_NOTICE, isLaunchTextsEnabled } from "@/lib/launch-texts";
 
 export const metadata = pageMetadata("The Tower");
 
@@ -96,6 +97,7 @@ export default async function TowerPage({ searchParams }: { searchParams: Promis
         <h2 className="text-2xl font-semibold text-foreground">Étage {challenges.status === "STATE" ? challenges.floor : "1"}</h2>
         <p className="text-sm text-muted">Ce compteur alimente le classement Tower. Il reste distinct de l’ascension XP afin de ne pas compter deux fois une réussite.</p>
       </Card>
+      {isLaunchTextsEnabled() && <p className="text-xs text-muted md:col-span-2">{TOWER_FLOORS_RESET_NOTICE}</p>}
     </section>
 
     {remplacement && replacementResult[remplacement] ? <p role="status" className="rounded-lg bg-accent/10 p-3 text-sm text-foreground">{replacementResult[remplacement]}</p> : null}

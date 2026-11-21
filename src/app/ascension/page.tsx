@@ -8,6 +8,7 @@ import { pageMetadata } from "@/lib/page-title";
 import { resolveActiveCommunityId } from "@/lib/community-isolation";
 import { prisma } from "@/lib/prisma";
 import { getMemberStats } from "@/lib/member-stats";
+import { TOWER_FLOORS_RESET_NOTICE, isLaunchTextsEnabled } from "@/lib/launch-texts";
 
 export const metadata = pageMetadata("Ascension");
 
@@ -36,6 +37,7 @@ export default async function AscensionPage() {
         <p className="text-sm font-medium text-accent">The Tower · Ta progression</p>
         <h1 className="mt-1 text-2xl font-semibold text-foreground sm:text-3xl">Étage {progress.floor}</h1>
         <p className="mt-2 text-sm text-muted">Niveau {progress.level} · {titleForLevel(progress.level)} · Rang {rank.name}</p>
+        {isLaunchTextsEnabled() && <p className="mt-2 text-xs text-muted">{TOWER_FLOORS_RESET_NOTICE}</p>}
       </header>
 
       <Card className="flex flex-col gap-3">

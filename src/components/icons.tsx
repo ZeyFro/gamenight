@@ -96,3 +96,12 @@ export function TrophyIcon(props: SVGProps<SVGSVGElement>) {
     </Icon>
   );
 }
+
+export function TowerIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <Icon {...props}>
+      <path d="M7 21V9l-1.5-1.5V4h3v1.5h2V4h3v1.5h2V4h3v3.5L17 9v12" />
+      <path d="M5 21h14M10 21v-4a2 2 0 0 1 4 0v4M10 11.5h4" />
+    </Icon>
+  );
+}

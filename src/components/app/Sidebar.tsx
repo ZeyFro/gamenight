@@ -5,7 +5,7 @@ import { usePathname } from "next/navigation";
 import * as Dialog from "@radix-ui/react-dialog";
 import { Logo } from "@/components/Logo";
 import { Avatar } from "@/components/ui/Avatar";
-import { CalendarIcon, DiceIcon, HomeIcon, LibraryIcon, MoonIcon, TrophyIcon, UserIcon, UsersIcon } from "@/components/icons";
+import { CalendarIcon, DiceIcon, HomeIcon, LibraryIcon, MoonIcon, TowerIcon, TrophyIcon, UserIcon, UsersIcon } from "@/components/icons";
 import { MotionToggle } from "@/components/app/MotionBackground";
 
 export const SIDEBAR_GROUPS = [
@@ -32,19 +32,33 @@ export const SIDEBAR_GROUPS = [
   ] },
 ] as const;
 
+// V3-15 : « The Tower » n'entre dans la navigation que derrière `NAV_TOWER_ENABLED`
+// (lu côté serveur par le Header, transmis par `towerLink`) : éteint, les groupes
+// sont exactement `SIDEBAR_GROUPS`. La barre basse mobile reste à six onglets
+// (sept ne tiennent pas à 320 px, voir nav-links.tsx) : le lien est dans le tiroir.
+const TOWER_LINK = { href: "/tower", label: "The Tower", icon: TowerIcon } as const;
+
+export function sidebarGroups(towerLink = false): ReadonlyArray<{ label: string; links: ReadonlyArray<{ href: string; label: string; icon: typeof HomeIcon }> }> {
+  if (!towerLink) return SIDEBAR_GROUPS;
+  return SIDEBAR_GROUPS.map((group) => group.label === "La communauté"
+    ? { label: group.label, links: [group.links[0], TOWER_LINK, ...group.links.slice(1)] }
+    : group);
+}
+
 // Le lien le plus précis gagne : « Ma bibliothèque » ne reste pas actif
 // sur la bibliothèque du groupe. Pas de préchargement massif de toutes
 // les routes collectives simplement parce que le menu est visible.
-export function activeSidebarHref(pathname: string): string | undefined {
-  return SIDEBAR_GROUPS.flatMap((group) => [...group.links])
+export function activeSidebarHref(pathname: string, groups: ReturnType<typeof sidebarGroups> = SIDEBAR_GROUPS): string | undefined {
+  return groups.flatMap((group) => [...group.links])
     .filter(({ href }) => pathname === href || (href !== "/" && pathname.startsWith(`${href}/`)))
     .sort((a, b) => b.href.length - a.href.length)[0]?.href;
 }
 
 interface SidebarUser { name: string; avatar: string | null; level: number; xp: number }
 
-export function Sidebar({ user }: { user: SidebarUser }) {
-  const active = activeSidebarHref(usePathname());
+export function Sidebar({ user, towerLink = false }: { user: SidebarUser; towerLink?: boolean }) {
+  const groups = sidebarGroups(towerLink);
+  const active = activeSidebarHref(usePathname(), groups);
   function content(mobile: boolean) {
     const link = (href: string, children: React.ReactNode, className: string, current = false) => {
       const element = <Link href={href} prefetch={false} className={className} aria-current={current ? "page" : undefined}>{children}</Link>;
@@ -54,7 +68,7 @@ export function Sidebar({ user }: { user: SidebarUser }) {
       {link("/", <Logo className="text-xl" />, "gn-sidebar-brand")}
       <div className="gn-sidebar-scroll">
         <nav aria-label={mobile ? "Navigation mobile" : "Navigation principale"}>
-          {SIDEBAR_GROUPS.map((group) => <div className="gn-nav-group" key={group.label}>
+          {groups.map((group) => <div className="gn-nav-group" key={group.label}>
             <p className="gn-eyebrow">{group.label}</p>
             {group.links.map(({ href, label, icon: Icon }) => <div key={href}>
               {link(href, <><Icon className="h-5 w-5 shrink-0" /><span>{label}</span></>, "gn-nav-link", active === href)}

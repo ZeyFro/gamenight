@@ -427,6 +427,21 @@ Aucune action Discord ni Neon. Les pages sont éteintes tant que `LEGAL_PAGES_EN
 5. [ ] Contrôle : `/mentions-legales`, `/confidentialite`, `/conditions` répondent (sans te connecter), les trois liens sont au bas de la page de connexion et de chaque page, et aucun « À COMPLÉTER » ne s’affiche.
 6. Retour arrière : supprime `LEGAL_PAGES_ENABLED` puis **Redeploy** (les pages redeviennent 404).
 
+## 9 ter. Option — Textes et navigation d'ouverture (à faire avant l'ouverture publique)
+
+Aucune action Discord ni Neon, aucune migration. Deux interrupteurs indépendants (valeur exacte `true`, lus côté serveur) ; éteints, le rendu est identique à celui d'avant. Constats de l'audit du 20/11/2026 : V3-02, V3-12, V3-15, V3-18.
+
+| Interrupteur | Ce qui change |
+| --- | --- |
+| `LAUNCH_TEXTS_ENABLED` | **Connexion** : « L'accès est réservé aux membres du serveur Discord The Tower. » sous le bouton, avec un lien « Rejoindre le serveur » si `DISCORD_INVITE_URL` est un lien `https://discord.gg/…` ou `https://discord.com/invite/…` valide (même validation que le message de refus ; sans la variable, la phrase seule). **Étages** : la phrase du § 4 bis (niveau, étage XP et rang XP conservés ; étages Tower repartis de zéro) apparaît une fois, discrète, sur `/tower` et `/ascension`. **`/sessions/[id]`** : « Présence vocale Discord » n'est plus rendue tant que `VOICE_PRESENCE_ENABLED` est éteint ; la galerie n'est plus rendue aux membres ordinaires quand `SESSION_MEDIA_BLOB_TOKEN` manque (le créateur et les admins invités voient « Les photos ne sont pas encore disponibles. » au lieu du message sur le stockage Blob). |
+| `NAV_TOWER_ENABLED` | Lien « The Tower » (`/tower`) dans la barre latérale (groupe « La communauté ») et le menu mobile (☰). La barre basse mobile reste à six onglets : sept ne tiennent pas à 320 px. |
+
+1. [ ] (Facultatif) Vercel → Production : vérifie que `DISCORD_INVITE_URL` est renseignée (lien d'invitation permanent du serveur The Tower, non secret).
+2. [ ] Ajoute `LAUNCH_TEXTS_ENABLED` = `true` et/ou `NAV_TOWER_ENABLED` = `true`, puis **Redeploy**.
+3. [ ] Contrôle : déconnecté, la page d'accueil affiche la phrase d'accès réservé et le lien « Rejoindre le serveur » ; connecté, `/tower` et `/ascension` affichent la phrase sur les étages, le menu ☰ et la barre latérale contiennent « The Tower », `/sessions/<id>` n'affiche plus « Présence vocale Discord » ni message sur le stockage Blob.
+4. Limites connues : la phrase d'accès réservé s'ajoute au message de refus (`?error=AccessDenied`) sans le remplacer ; les libellés « Étage » côte à côte sur `/tower` (V3-11) relèvent d'une décision de nom non prise et ne sont pas touchés.
+5. Retour arrière : supprime la variable puis **Redeploy**.
+
 ## 9 quinquies. Action GitHub — Dependabot (alertes et mises à jour de sécurité)
 
 Le fichier `.github/dependabot.yml` propose chaque lundi (6 h, Paris) des PULL REQUESTS de mise à jour (npm : 3 ouvertes au plus, montées majeures de Next et Prisma ignorées ; GitHub Actions : 2). Rien n’est fusionné ni déployé sans revue. Les alertes et les mises à jour de SÉCURITÉ se règlent dans GitHub, pas dans le dépôt :
@@ -435,6 +450,7 @@ Le fichier `.github/dependabot.yml` propose chaque lundi (6 h, Paris) des PULL R
 2. [ ] Vérifie dans **Insights → Dependency graph → Dependabot** que le fichier est lu sans erreur.
 3. [ ] À chaque PR Dependabot : attends la CI verte, lis le changelog, fusionne toi-même (jamais de fusion automatique).
 4. Retour arrière : supprime `.github/dependabot.yml` (les alertes de sécurité restent actives dans les réglages).
+
 
 ## 10. Ce que ce document ne garantit pas
 

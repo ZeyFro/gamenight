@@ -6,6 +6,7 @@ import { Logo } from "@/components/Logo";
 import { Sidebar } from "@/components/app/Sidebar";
 import { Avatar } from "@/components/ui/Avatar";
 import { levelForXp } from "@/lib/xp";
+import { isNavTowerEnabled } from "@/lib/launch-texts";
 import { isNotificationCenterEnabled } from "@/lib/game-ping-optin";
 import { NotificationBell, type NotificationItem } from "@/components/NotificationBell";
 import { ChatPanel } from "@/components/chat/ChatPanel";
@@ -62,7 +63,7 @@ async function renderHeader() {
     <header className={`gn-topbar ${user ? "gn-topbar-authenticated" : ""} ${pickerEnabled ? "gn-topbar-with-picker" : ""}`}>
       <div className="gn-topbar-inner">
         <div className="flex min-w-0 items-center gap-3">
-          {user && <Sidebar user={{ name: user.discordName, avatar: user.discordAvatar, level: levelForXp(user.xpTotal), xp: user.xpTotal }} />}
+          {user && <Sidebar user={{ name: user.discordName, avatar: user.discordAvatar, level: levelForXp(user.xpTotal), xp: user.xpTotal }} towerLink={isNavTowerEnabled()} />}
           <Link href="/" className={`shrink-0 ${user ? "lg:hidden" : ""}`} aria-label="GameNight — accueil"><Logo /></Link>
           {pickerEnabled && <CommunitySwitcher communities={communities} currentId={communityId} />}
           {user && !pickerEnabled && <span className="gn-eyebrow hidden lg:block">Ton prochain bon moment</span>}

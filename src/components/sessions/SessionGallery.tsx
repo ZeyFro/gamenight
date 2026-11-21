@@ -3,6 +3,7 @@ import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { deleteSessionGalleryImageAction, uploadSessionGalleryImageAction } from "@/app/sessions/actions/gallery";
 import { SESSION_GALLERY_MAX_ITEMS } from "@/lib/session-gallery";
+import { GALLERY_UNAVAILABLE_NOTICE } from "@/lib/launch-texts";
 
 type GalleryMedia = { id: string; uploadedById: string; mimeType: string; createdAt: Date };
 
@@ -24,6 +25,7 @@ export function SessionGallery({
   result,
   storageReady,
   videosEnabled,
+  plainTexts = false,
 }: {
   sessionId: string;
   canManage: boolean;
@@ -31,6 +33,8 @@ export function SessionGallery({
   result?: string;
   storageReady: boolean;
   videosEnabled: boolean;
+  /** `LAUNCH_TEXTS_ENABLED` : message clair à la place du jargon de stockage. */
+  plainTexts?: boolean;
 }) {
   const visibleMedia = images.filter((media) => videosEnabled || media.mimeType !== "video/mp4");
   const resultText = result === "trop-lourd" && videosEnabled
@@ -50,7 +54,7 @@ export function SessionGallery({
             : "Photos JPEG, PNG, GIF ou WebP : 4 Mo maximum par image, 8 images par soirée. Seuls les invités actifs et le créateur peuvent les voir. Les clips vidéo sont désactivés pour le moment."}
         </p>
         {resultText && <p role="status" className="text-sm text-muted">{resultText}</p>}
-        {!storageReady && <p role="status" className="text-sm text-muted">Le stockage Blob privé n’est pas configuré.</p>}
+        {!storageReady && <p role="status" className="text-sm text-muted">{plainTexts ? GALLERY_UNAVAILABLE_NOTICE : "Le stockage Blob privé n’est pas configuré."}</p>}
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
           {visibleMedia.map((item) => (
             <figure key={item.id} className="flex flex-col gap-2">
