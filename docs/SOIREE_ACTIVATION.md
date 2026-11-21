@@ -323,6 +323,8 @@ Le test est volontairement **en lecture seule** : il ne crée aucun défi réel 
 
 Les commandes ci-dessous se **tapent une à une dans un terminal** : ce n'est pas un script à enregistrer.
 
+> **Sans PC et sans manipuler le jeton** : voir la [section 9 sexies](#9-sexies-option--enregistrer-les-commandes-du-bot-depuis-le-serveur-sans-voir-le-jeton) (route serveur protégée, le jeton reste dans Vercel).
+
 ### 8.1 Ce qu'il te faut
 
 - **Node.js 18 ou plus** : `node --version`. (Le script utilise `fetch`, intégré à Node, et aucune dépendance : pas besoin de `npm install`.)
@@ -468,6 +470,48 @@ Le fichier `.github/dependabot.yml` propose chaque lundi (6 h, Paris) des PULL R
 2. [ ] Vérifie dans **Insights → Dependency graph → Dependabot** que le fichier est lu sans erreur.
 3. [ ] À chaque PR Dependabot : attends la CI verte, lis le changelog, fusionne toi-même (jamais de fusion automatique).
 4. Retour arrière : supprime `.github/dependabot.yml` (les alertes de sécurité restent actives dans les réglages).
+
+## 9 sexies. Option — Enregistrer les commandes du bot depuis le serveur (sans voir le jeton)
+
+Alternative à la section 8 : le jeton du bot **reste dans Vercel**. Tu n'as besoin ni de PowerShell, ni du jeton, ni du dépôt sur ton PC. La route `POST /api/admin/discord-commands` exécute **la même logique** que `scripts/register-tower-guild-commands.mjs` (un seul GET, puis un POST d'upsert par commande ; jamais de PUT global, jamais de suppression, aucune commande hors manifeste touchée).
+
+**Quatre verrous cumulés** (il en manque un : la route répond 404 ou 401 et n'appelle jamais Discord) :
+
+| Verrou | Détail |
+| --- | --- |
+| Interrupteur | `DISCORD_COMMAND_REGISTRATION_ENABLED=true` (éteint ou absent : **404**, même pour toi) |
+| Secret dédié | `DISCORD_COMMAND_REGISTRATION_SECRET`, envoyé en en-tête `x-registration-secret` (absent côté serveur : **404** ; faux ou manquant : **401** ; `CRON_SECRET` ne marche pas) |
+| Administrateur | Tu dois être connecté au site avec un compte administrateur (`ADMIN_DISCORD_IDS`) : sinon **401** |
+| Jamais sur Preview | Production seulement |
+
+La réponse ne contient **que** : pour chaque commande, `présente`, `absente`, `différente` ou `enregistrée` ; le nombre de commandes du serveur hors manifeste ; en cas d'échec, l'étape, le statut HTTP et le code Discord numérique avec une explication. **Jamais** le jeton, le secret ni un identifiant d'application.
+
+### Étapes
+
+1. **Créer le secret.** Génère une valeur aléatoire d'au moins 32 caractères (gestionnaire de mots de passe, ou PowerShell 7 : `[Convert]::ToHexString([Security.Cryptography.RandomNumberGenerator]::GetBytes(24))`). Garde-la sous la main : tu la saisiras toi-même à l'étape 4.
+2. **Poser les deux variables** dans Vercel → Settings → Environment Variables → **Production** seulement : `DISCORD_COMMAND_REGISTRATION_SECRET` (type **Sensitive**) et `DISCORD_COMMAND_REGISTRATION_ENABLED` = `true`. Puis **Redeploy** (section 6) et attends **Ready**.
+3. **Ouvrir le site** dans ton navigateur, **connecté avec ton compte administrateur**. Ouvre les outils de développement (touche F12) → onglet **Console**. Si Chrome demande de taper `allow pasting`, tape-le.
+4. **Vérifier** (lecture seule). Colle ce bloc, valide, puis saisis le secret dans la fenêtre qui s'ouvre :
+
+   ```js
+   fetch("/api/admin/discord-commands", { method: "POST", headers: { "content-type": "application/json", "x-registration-secret": prompt("Secret d'enregistrement") }, body: JSON.stringify({ mode: "check" }) }).then((r) => r.json()).then((r) => { console.table(r.commands); console.log(r); });
+   ```
+
+   Attendu : un tableau de **13** commandes (`absente` la première fois) et `ok: true`.
+5. **Enregistrer.** Même bloc avec `mode: "execute"` à la place de `mode: "check"`. Attendu : 13 commandes `enregistrée`. Lance-le **une seule fois**.
+6. **Contrôler.** Refais l'étape 4 : les 13 doivent être `présente`. Sur Discord (compte membre) : `/aide` répond ; avec « Gérer le serveur », `/tower-admin` apparaît.
+7. **Éteindre.** Supprime `DISCORD_COMMAND_REGISTRATION_ENABLED` **et** `DISCORD_COMMAND_REGISTRATION_SECRET` dans Vercel, puis **Redeploy**. Vérifie : le bloc de l'étape 4 répond maintenant **404**.
+
+| Réponse | Cause | Que faire |
+| --- | --- | --- |
+| 404 | Interrupteur éteint, secret absent côté serveur, ou Preview | Revoir l'étape 2 et le redéploiement |
+| 401 | Secret faux, ou compte non administrateur / non connecté | Revoir le secret saisi ; te reconnecter avec ton compte administrateur |
+| 429 | Plus de 5 appels par minute | Attendre une minute, ne pas boucler |
+| 503 | `DISCORD_CLIENT_ID`, `DISCORD_BOT_TOKEN` ou `TOWER_DISCORD_GUILD_ID` absent ou invalide | Vérifier la présence des trois variables dans Vercel (sans lire leur valeur) |
+| 502, `code: "50001"` | Application non autorisée sur le serveur avec le scope `applications.commands` | Réinviter l'application (lien dans [DISCORD_COMMANDES.md](DISCORD_COMMANDES.md)) |
+| 502, `code: "50013"` | Permission manquante | Voir [PHASE_TEST.md](PHASE_TEST.md), « Droits minimaux de GameNight » |
+
+**Retour arrière** : retirer les deux variables (étape 7). Rien n'est supprimé sur Discord par cette route ; une commande enregistrée à tort se retire à la main (Paramètres du serveur → Intégrations).
 
 ## 10. Ce que ce document ne garantit pas
 
