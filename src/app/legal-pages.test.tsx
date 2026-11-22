@@ -19,13 +19,14 @@ afterEach(() => vi.unstubAllEnvs());
 
 describe("pages légales (flag allumé)", () => {
   for (const { name, Page, title } of PAGES) {
-    it(`${name} : se rend (200), avec avertissement provisoire et champs « À COMPLÉTER »`, () => {
+    it(`${name} : se rend (200), avec la date de dernière mise à jour et sans bannière provisoire`, () => {
       vi.stubEnv("LEGAL_PAGES_ENABLED", "true");
       const html = renderToStaticMarkup(createElement(Page));
       expect(html).toContain(`<h1`);
       expect(html).toContain(title);
-      expect(html).toContain("Version provisoire, à faire relire par un professionnel du droit.");
-      expect(html).toContain("À COMPLÉTER");
+      expect(html).toContain("Dernière mise à jour : 22 novembre 2026");
+      expect(html).not.toContain("professionnel du droit");
+      expect(html).not.toContain("Version provisoire");
       expect(html).not.toContain("<main");
       for (const href of HREFS) expect(html).toContain(`href="${href}"`);
     });
@@ -56,6 +57,46 @@ describe("pages légales (flag allumé)", () => {
     expect(renderToStaticMarkup(createElement(ConfidentialitePage))).toContain("pas encore disponibles");
     vi.stubEnv("ACCOUNT_DELETION_ENABLED", "true");
     expect(renderToStaticMarkup(createElement(ConfidentialitePage))).toContain("supprimer ton compte toi-même");
+  });
+});
+
+const FULL_ENV = {
+  LEGAL_PAGES_ENABLED: "true",
+  LEGAL_PUBLISHER: "Éditeur Test",
+  LEGAL_PUBLICATION_DIRECTOR: "Directeur Test",
+  LEGAL_CONTACT_EMAIL: "contact@exemple.fr",
+  LEGAL_MIN_AGE: "15",
+};
+
+describe("pages légales : plus aucun « À COMPLÉTER » une fois les variables LEGAL_* posées", () => {
+  for (const { name, Page } of PAGES) {
+    it(`${name} : aucun « À COMPLÉTER » rendu`, () => {
+      for (const [key, value] of Object.entries(FULL_ENV)) vi.stubEnv(key, value);
+      const html = renderToStaticMarkup(createElement(Page));
+      expect(html).not.toContain("À COMPLÉTER");
+      expect(html).not.toContain('data-legal-missing="true"');
+    });
+  }
+
+  it("aucun champ laissé vide en dur dans le code des trois pages", () => {
+    for (const file of ["src/app/mentions-legales/page.tsx", "src/app/confidentialite/page.tsx", "src/app/conditions/page.tsx"]) {
+      const source = readFileSync(file, "utf8");
+      expect(source, file).not.toMatch(/value=\{null\}/);
+      expect(source, file).not.toContain("À COMPLÉTER");
+    }
+  });
+
+  it("les mentions légales donnent l'âge minimum, les conditions nomment l'éditeur ZeyFro", () => {
+    for (const [key, value] of Object.entries(FULL_ENV)) vi.stubEnv(key, value);
+    expect(renderToStaticMarkup(createElement(MentionsLegalesPage))).toContain("15 ans");
+    const conditions = renderToStaticMarkup(createElement(ConditionsPage));
+    expect(conditions).toContain("édité par ZeyFro");
+    expect(conditions).toContain("22 novembre 2026");
+  });
+
+  it("sans variable, la valeur manquante reste signalée (jamais inventée)", () => {
+    vi.stubEnv("LEGAL_PAGES_ENABLED", "true");
+    expect(renderToStaticMarkup(createElement(MentionsLegalesPage))).toContain("À COMPLÉTER");
   });
 });
 

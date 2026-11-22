@@ -423,8 +423,8 @@ Arrêt immédiat si : donnée d'une autre communauté, récompense double, annon
 Aucune action Discord ni Neon. Les pages sont éteintes tant que `LEGAL_PAGES_ENABLED` n’est pas exactement `true` (404, aucun lien).
 
 1. [ ] Vercel → Settings → Environment Variables → **Production** : ajoute `LEGAL_PUBLISHER` (nom et coordonnées, ou association), `LEGAL_PUBLICATION_DIRECTOR`, `LEGAL_CONTACT_EMAIL` (adresse dédiée) et `LEGAL_MIN_AGE` (13, 15 ou 16). Aucune n’est un secret.
-2. [ ] Fais relire les trois textes (`src/app/mentions-legales`, `confidentialite`, `conditions`) par un professionnel du droit : chaque page porte « Version provisoire, à faire relire par un professionnel du droit ».
-3. [ ] Renseigne aussi ce qui reste « À COMPLÉTER » dans la politique : région du stockage de fichiers Vercel Blob, garanties de transfert hors UE, durée de conservation des preuves et des signalements, date de mise à jour des conditions.
+2. [ ] Relis les trois textes (`src/app/mentions-legales`, `confidentialite`, `conditions`). Décision du 22/11/2026 : pas de relecture par un avocat (communauté gratuite, sans revenus) ; chaque page porte « Dernière mise à jour : <date> » (`LEGAL_LAST_UPDATED` dans `src/lib/legal-pages.ts`, à changer à chaque modification d’un texte).
+3. [ ] Plus aucun « À COMPLÉTER » n’est écrit en dur (durées, transferts, date et éditeur des conditions sont renseignés à partir du code et des registres publics) ; un test échoue s’il en réapparaît un. Les seuls champs encore variables sont les quatre `LEGAL_*` de l’étape 1.
 4. [ ] Ajoute `LEGAL_PAGES_ENABLED` = `true` puis **Redeploy**.
 5. [ ] Contrôle : `/mentions-legales`, `/confidentialite`, `/conditions` répondent (sans te connecter), les trois liens sont au bas de la page de connexion et de chaque page, et aucun « À COMPLÉTER » ne s’affiche.
 6. Retour arrière : supprime `LEGAL_PAGES_ENABLED` puis **Redeploy** (les pages redeviennent 404).
