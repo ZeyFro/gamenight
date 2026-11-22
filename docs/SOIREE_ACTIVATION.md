@@ -490,21 +490,15 @@ La réponse ne contient **que** : pour chaque commande, `présente`, `absente`, 
 
 1. **Créer le secret.** Génère une valeur aléatoire d'au moins 32 caractères (gestionnaire de mots de passe, ou PowerShell 7 : `[Convert]::ToHexString([Security.Cryptography.RandomNumberGenerator]::GetBytes(24))`). Garde-la sous la main : tu la saisiras toi-même à l'étape 4.
 2. **Poser les deux variables** dans Vercel → Settings → Environment Variables → **Production** seulement : `DISCORD_COMMAND_REGISTRATION_SECRET` (type **Sensitive**) et `DISCORD_COMMAND_REGISTRATION_ENABLED` = `true`. Puis **Redeploy** (section 6) et attends **Ready**.
-3. **Ouvrir le site** dans ton navigateur, **connecté avec ton compte administrateur**. Ouvre les outils de développement (touche F12) → onglet **Console**. Si Chrome demande de taper `allow pasting`, tape-le.
-4. **Vérifier** (lecture seule). Colle ce bloc, valide, puis saisis le secret dans la fenêtre qui s'ouvre :
-
-   ```js
-   fetch("/api/admin/discord-commands", { method: "POST", headers: { "content-type": "application/json", "x-registration-secret": prompt("Secret d'enregistrement") }, body: JSON.stringify({ mode: "check" }) }).then((r) => r.json()).then((r) => { console.table(r.commands); console.log(r); });
-   ```
-
-   Attendu : un tableau de **13** commandes (`absente` la première fois) et `ok: true`.
-5. **Enregistrer.** Même bloc avec `mode: "execute"` à la place de `mode: "check"`. Attendu : 13 commandes `enregistrée`. Lance-le **une seule fois**.
+3. **Ouvrir la page** `/admin/discord-commands` du site, **connecté avec ton compte administrateur** (elle n'existe que pendant que l'interrupteur est allumé : sinon 404 ; un compte non administrateur est renvoyé à l'accueil). Plus besoin de la console du navigateur.
+4. **Vérifier** (lecture seule). Saisis le secret dans le champ « Secret d’enregistrement » (masqué, ni enregistré ni journalisé, effacé après chaque appel), puis clique **Vérifier**. Attendu : un tableau de **13** commandes (`absente` la première fois) et « HTTP 200 · Terminé. ».
+5. **Enregistrer.** Ressaisis le secret, clique **Enregistrer** et confirme. Attendu : 13 commandes `enregistrée`. Fais-le **une seule fois**.
 6. **Contrôler.** Refais l'étape 4 : les 13 doivent être `présente`. Sur Discord (compte membre) : `/aide` répond ; avec « Gérer le serveur », `/tower-admin` apparaît.
-7. **Éteindre.** Supprime `DISCORD_COMMAND_REGISTRATION_ENABLED` **et** `DISCORD_COMMAND_REGISTRATION_SECRET` dans Vercel, puis **Redeploy**. Vérifie : le bloc de l'étape 4 répond maintenant **404**.
+7. **Éteindre.** Supprime `DISCORD_COMMAND_REGISTRATION_ENABLED` **et** `DISCORD_COMMAND_REGISTRATION_SECRET` dans Vercel, puis **Redeploy**. Vérifie : la page `/admin/discord-commands` répond maintenant **404**.
 
 | Réponse | Cause | Que faire |
 | --- | --- | --- |
-| 404 | Interrupteur éteint, secret absent côté serveur, ou Preview | Revoir l'étape 2 et le redéploiement |
+| 404 (la page ou « HTTP 404 ») | Interrupteur éteint, secret absent côté serveur, ou Preview | Revoir l'étape 2 et le redéploiement |
 | 401 | Secret faux, ou compte non administrateur / non connecté | Revoir le secret saisi ; te reconnecter avec ton compte administrateur |
 | 429 | Plus de 5 appels par minute | Attendre une minute, ne pas boucler |
 | 503 | `DISCORD_CLIENT_ID`, `DISCORD_BOT_TOKEN` ou `TOWER_DISCORD_GUILD_ID` absent ou invalide | Vérifier la présence des trois variables dans Vercel (sans lire leur valeur) |
