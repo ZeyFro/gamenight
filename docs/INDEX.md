@@ -31,6 +31,9 @@
 
 ## Exploitation et sécurité
 
+- [Fiche de l'application](FICHE_APPLICATION.md) — pages, rôles, interrupteurs en Production, données, tâches automatiques, limites des offres gratuites, 10 risques d'ouverture.
+- [Plan de tests par rôle](PLAN_TESTS.md) — parcours, résultat et preuve attendus du visiteur à l'admin, et tests à faire par un humain.
+- [Contrôle de sécurité passif](CONTROLE_SECURITE.md) — en-têtes, cookies, pages refusées, routes sensibles, constats classés par gravité.
 - [Runbook : retour arrière et incidents](RUNBOOK.md) — couper un interrupteur, revenir au déploiement précédent, restauration Neon, migration en échec, incident Discord, fuite de secret, contacts à compléter.
 - [Checklist de lancement](CHECKLIST_LANCEMENT.md) — points à prouver avant l'annonce publique (pages légales, portail Discord, saison 1, catalogue, alertes, sauvegardes, tests de compte), avec la preuve attendue pour chacun.
 - [Routes cron et backfill](CRONS.md) — routes, méthodes et garde d’authentification ; les cadences sont hors dépôt.
