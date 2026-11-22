@@ -21,8 +21,12 @@ export default function MentionsLegalesPage() {
       </section>
       <section className="flex flex-col gap-2">
         <h2>Hébergement</h2>
-        <p>Application et stockage de fichiers : Vercel Inc., 440 N Barranca Ave #4133, Covina, CA 91723, États-Unis.</p>
-        <p>Base de données : Neon, Inc. (PostgreSQL), hébergée à Francfort (Allemagne).</p>
+        <p>Application et stockage de fichiers : Vercel Inc., 440 N Barranca Ave #4133, Covina, CA 91723, États-Unis, téléphone +1 415 398 5463 ; fonctions exécutées à Francfort (Allemagne).</p>
+        <p>Base de données : Neon, LLC (groupe Databricks), PostgreSQL hébergé à Francfort (Allemagne, région AWS eu-central-1).</p>
+      </section>
+      <section className="flex flex-col gap-2">
+        <h2>Âge minimum</h2>
+        <p>GameNight est réservé aux personnes de <LegalValue value={config.minAge ? `${config.minAge} ans` : null} /> et plus, qui respectent aussi l’âge minimum exigé par Discord.</p>
       </section>
       <section className="flex flex-col gap-2">
         <h2>Signaler un contenu illicite</h2>

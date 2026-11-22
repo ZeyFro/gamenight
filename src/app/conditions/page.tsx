@@ -1,6 +1,6 @@
 import { notFound } from "next/navigation";
 import { LegalEmail, LegalPage, LegalValue } from "@/components/legal/LegalPage";
-import { getLegalConfig, isLegalPagesEnabled } from "@/lib/legal-pages";
+import { LEGAL_LAST_UPDATED, LEGAL_PUBLISHER_NAME, getLegalConfig, isLegalPagesEnabled } from "@/lib/legal-pages";
 import { pageMetadata } from "@/lib/page-title";
 
 export const dynamic = "force-dynamic";
@@ -13,6 +13,7 @@ export default function ConditionsPage() {
     <LegalPage title="Conditions d’utilisation">
       <section className="flex flex-col gap-2">
         <h2>Objet et accès</h2>
+        <p>GameNight est un service gratuit et sans publicité édité par {LEGAL_PUBLISHER_NAME}.</p>
         <p>
           GameNight aide les membres de serveurs Discord à organiser leurs soirées jeux (soirées, votes, tournois, équipes, défis The Tower). L’accès est
           gratuit et réservé aux membres actifs d’un serveur Discord relié au service ; la connexion se fait uniquement avec ton compte Discord. Si tu quittes
@@ -62,7 +63,7 @@ export default function ConditionsPage() {
       </section>
       <section className="flex flex-col gap-2">
         <h2>Modification des conditions, droit applicable</h2>
-        <p>Ces conditions peuvent évoluer ; la date de dernière mise à jour est <LegalValue value={null} />. Elles sont soumises au droit français. Contact : <LegalEmail email={config.contactEmail} />.</p>
+        <p>Ces conditions peuvent évoluer ; la date de dernière mise à jour est le {LEGAL_LAST_UPDATED}. Elles sont soumises au droit français. Contact : <LegalEmail email={config.contactEmail} />.</p>
       </section>
     </LegalPage>
   );

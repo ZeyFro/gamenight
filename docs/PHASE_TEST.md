@@ -448,6 +448,6 @@ Autres champs « À COMPLÉTER » qui restent **dans le texte** de la politique 
 - **Durée de conservation** des preuves de défis Tower et des signalements de modération.
 - **Date de mise à jour** des conditions d'utilisation.
 
-Et avant d'allumer : **relecture des trois textes par un professionnel du droit** (chaque page porte « Version provisoire, à faire relire par un professionnel du droit »), puis `DISCORD_INVITE_URL`, `ACCOUNT_DELETION_ENABLED` (export et suppression de compte, migration `20261121100000_account_deletion_log` appliquée d'abord) et, si tu l'as décidé, `MEDIA_PRIVACY_ENABLED`.
+Et avant d'allumer : **relecture des trois textes par Maxime** (décision du 22/11/2026 : pas d'avocat ; chaque page porte « Dernière mise à jour : <date> »), puis `DISCORD_INVITE_URL`, `ACCOUNT_DELETION_ENABLED` (export et suppression de compte, migration `20261121100000_account_deletion_log` appliquée d'abord) et, si tu l'as décidé, `MEDIA_PRIVACY_ENABLED`.
 
 Contrôle après activation : les trois pages répondent **sans te connecter**, les trois liens sont au bas de la page de connexion et de chaque page, et **aucun « À COMPLÉTER »** ne s'affiche. Retour arrière : retirer `LEGAL_PAGES_ENABLED` puis redéployer.
