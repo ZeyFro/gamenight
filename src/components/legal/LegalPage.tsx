@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import Link from "next/link";
-import { LEGAL_DRAFT_NOTICE, LEGAL_LINKS, LEGAL_TO_COMPLETE } from "@/lib/legal-pages";
+import { LEGAL_LINKS, LEGAL_TO_COMPLETE, LEGAL_UPDATE_NOTICE } from "@/lib/legal-pages";
 
 /**
  * Gabarit des pages légales. Pas de `<main>` : le layout racine en fournit déjà un
@@ -11,9 +11,7 @@ export function LegalPage({ title, children }: { title: string; children: ReactN
     <div className="mx-auto flex w-full max-w-3xl flex-col gap-6 px-4 py-8 sm:px-6 sm:py-12">
       <header className="flex flex-col gap-3">
         <h1 className="text-2xl font-semibold text-foreground">{title}</h1>
-        <p role="note" className="rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground">
-          <strong>{LEGAL_DRAFT_NOTICE}</strong>
-        </p>
+        <p className="text-sm text-muted">{LEGAL_UPDATE_NOTICE}</p>
         <nav aria-label="Pages légales" className="flex flex-wrap gap-x-4 gap-y-1 text-sm">
           {LEGAL_LINKS.map((link) => (
             <Link key={link.href} href={link.href} className="text-accent underline underline-offset-2">{link.label}</Link>

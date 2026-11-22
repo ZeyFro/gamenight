@@ -6,7 +6,11 @@
  * JAMAIS inventées : tant qu'une variable est vide, la page affiche « À COMPLÉTER ».
  */
 export const LEGAL_TO_COMPLETE = "À COMPLÉTER";
-export const LEGAL_DRAFT_NOTICE = "Version provisoire, à faire relire par un professionnel du droit.";
+/** Date de dernière mise à jour des trois textes : à changer à chaque modification de leur contenu. */
+export const LEGAL_LAST_UPDATED = "22 novembre 2026";
+export const LEGAL_UPDATE_NOTICE = `Dernière mise à jour : ${LEGAL_LAST_UPDATED}`;
+/** Éditeur nommé dans les conditions d'utilisation (décision du propriétaire du 22/11/2026). */
+export const LEGAL_PUBLISHER_NAME = "ZeyFro";
 
 export const LEGAL_LINKS = [
   { href: "/mentions-legales", label: "Mentions légales" },
