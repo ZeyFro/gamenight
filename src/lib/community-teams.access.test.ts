@@ -33,12 +33,21 @@ describe("community teams access", () => {
     expect(mocks.transaction).toHaveBeenCalledTimes(2);
   });
 
-  it("joinCommunityTeam : deux P2034 → l’erreur remonte après une seule relance", async () => {
+  it("joinCommunityTeam : trois P2034 de suite (inscriptions simultanées, vu en CI) puis succès → joined", async () => {
+    mocks.resolveActiveCommunityId.mockResolvedValue("community-1");
+    mocks.membershipFindUnique.mockResolvedValue({ status: "ACTIVE", community: { status: "ACTIVE", communityTeamsEnabled: true } });
+    const known = (code: string) => new Prisma.PrismaClientKnownRequestError("x", { code, clientVersion: "test" });
+    mocks.transaction.mockRejectedValueOnce(known("P2034")).mockRejectedValueOnce(known("P2034")).mockRejectedValueOnce(known("P2034")).mockResolvedValueOnce("joined");
+    await expect(joinCommunityTeam("user-1", "community-1", "team-1")).resolves.toBe("joined");
+    expect(mocks.transaction).toHaveBeenCalledTimes(4);
+  });
+
+  it("joinCommunityTeam : conflit persistant → l’erreur remonte après 3 relances (jamais avalée)", async () => {
     mocks.resolveActiveCommunityId.mockResolvedValue("community-1");
     mocks.membershipFindUnique.mockResolvedValue({ status: "ACTIVE", community: { status: "ACTIVE", communityTeamsEnabled: true } });
     const known = (code: string) => new Prisma.PrismaClientKnownRequestError("x", { code, clientVersion: "test" });
     mocks.transaction.mockRejectedValue(known("P2034"));
     await expect(joinCommunityTeam("user-1", "community-1", "team-1")).rejects.toMatchObject({ code: "P2034" });
-    expect(mocks.transaction).toHaveBeenCalledTimes(2);
+    expect(mocks.transaction).toHaveBeenCalledTimes(4);
   });
 });

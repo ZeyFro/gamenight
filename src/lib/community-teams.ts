@@ -7,6 +7,16 @@ import { DEFAULT_COMMUNITY_SLUG } from "@/lib/default-community";
 import { prisma } from "@/lib/prisma";
 import { clearTeamRecruiterRoles } from "@/lib/team-recruiter-cleanup";
 
+/**
+ * Conflit sérialisable (P2034) entre deux inscriptions simultanées : PostgreSQL annule l'une des transactions, qui
+ * peut être rejouée. Une seule relance ne suffisait pas sous forte concurrence (trois conflits de suite observés en
+ * CI) : jusqu'à 3 relances, comme `team-recruiters.ts`. Au-delà, l'erreur remonte (jamais avalée).
+ */
+const SERIALIZATION_RETRIES = 3;
+function isSerializationConflict(error: unknown): boolean {
+  return error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2034";
+}
+
 export async function getCommunityTeamsCommunityId(userId: string): Promise<string | null> {
   const communityId = await resolveActiveCommunityId(userId);
   if (!communityId) return null;
@@ -159,12 +169,14 @@ export async function createCommunityTeam(input: TeamInput): Promise<"created" |
     await scopedDb.communityTeamMember.create({ data: { communityId: input.communityId, teamId: team.id, userId: input.userId } });
     return "created";
   }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
-  try {
-    return await attempt();
-  } catch (error) {
-    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") return "already_team";
-    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2034") return attempt();
-    throw error;
+  for (let retry = 0; ; retry++) {
+    try {
+      return await attempt();
+    } catch (error) {
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") return "already_team";
+      if (isSerializationConflict(error) && retry < SERIALIZATION_RETRIES) continue;
+      throw error;
+    }
   }
 }
 
@@ -183,13 +195,13 @@ export async function joinCommunityTeam(userId: string, communityId: string, tea
     await scopedDb.communityTeamMember.create({ data: { communityId, teamId, userId } });
     return "joined";
   }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
-  // Une seule relance sur conflit sérialisable (P2034) ; P2002 = déjà membre, à chaque tentative.
+  // Relances sur conflit sérialisable (P2034) ; P2002 = déjà membre, à chaque tentative.
   for (let retry = 0; ; retry++) {
     try {
       return await attempt();
     } catch (error) {
       if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") return "already_team";
-      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2034" && retry === 0) continue;
+      if (isSerializationConflict(error) && retry < SERIALIZATION_RETRIES) continue;
       throw error;
     }
   }
@@ -230,7 +242,7 @@ export async function leaveCommunityTeam(userId: string, communityId: string, te
       return await attempt();
     } catch (error) {
       if (error instanceof Error && error.message === "team_leave_member_missing") return "missing";
-      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2034" && retry === 0) continue;
+      if (isSerializationConflict(error) && retry < SERIALIZATION_RETRIES) continue;
       throw error;
     }
   }
