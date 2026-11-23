@@ -19,10 +19,15 @@ describe("en-têtes de sécurité (next.config)", () => {
     expect(h["Permissions-Policy"]).toMatch(/geolocation=\(\)/);
   });
 
-  it("CSP en Report-Only (jamais bloquante tant qu'elle n'est pas validée en réel)", async () => {
+  it("HSTS : 2 ans, sous-domaines compris", async () => {
     const h = await headersFor("/:path*");
-    expect(h["Content-Security-Policy"]).toBeUndefined();
-    const csp = h["Content-Security-Policy-Report-Only"];
+    expect(h["Strict-Transport-Security"]).toBe("max-age=63072000; includeSubDomains");
+  });
+
+  it("CSP bloquante (plus de Report-Only)", async () => {
+    const h = await headersFor("/:path*");
+    expect(h["Content-Security-Policy-Report-Only"]).toBeUndefined();
+    const csp = h["Content-Security-Policy"];
     expect(csp).toBeDefined();
     for (const directive of [
       "default-src 'self'",
