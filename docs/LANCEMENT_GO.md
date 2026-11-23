@@ -16,7 +16,7 @@
 
 | # | Critère | Responsable | Statut réel | Preuve attendue |
 | --- | --- | --- | --- | --- |
-| A1 | Migrations à jour | Claude Code | ✅ **151 migrations appliquées sur 151** dans `prisma/migrations`, 0 inachevée, 0 annulée, dernière `20261121100000_account_deletion_log`. Dernier run « Migrations Production » : **n° 27, vert**, 21/11 03:24 UTC (27 runs, tous verts). | Requête `SELECT` sur `_prisma_migrations` (faite) ; GitHub → Actions → « Migrations Production ». |
+| A1 | Migrations à jour | Claude Code | ✅ **151 migrations appliquées sur 151** dans `prisma/migrations`, 0 inachevée, 0 annulée, dernière `20261121100000_account_deletion_log`. Dernier run « Migrations Production » : **n° 27, vert**, 21/11 03:24 UTC (27 runs, tous verts). Les migrations s'appliquent **automatiquement à la fusion** dans `main` (aucune approbation : environnement sans relecteur, constaté sur #525 à #527) ; après chaque fusion à migration, vérifier que le run est vert. | Requête `SELECT` sur `_prisma_migrations` (faite) ; GitHub → Actions → « Migrations Production ». |
 | A2 | Production déployée sur le dernier `main`, état READY | Claude Code | ✅ à chaque fusion (dernier relevé : déploiement READY de #517) | Vercel → Deployments : le premier est « Production · Ready ». |
 | A3 | Aucune fusion pendant la semaine du lancement, Dependabot compris | Maxime | ✅ les 5 PR Dependabot (#501, #502, #504, #505, #506) restent ouvertes | Liste des PR ouvertes. |
 | A4 | Sauvegarde : retour arrière possible | Maxime + ChatGPT | 🔴 L'offre Neon gratuite ne garde que **6 heures** d'historique : une erreur vue le lendemain n'est plus réparable. Créer une **branche de sauvegarde** juste avant l'annonce. | Capture de la branche de sauvegarde datée dans la console Neon. |

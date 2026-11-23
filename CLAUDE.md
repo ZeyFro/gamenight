@@ -24,7 +24,7 @@ Next.js 16 (App Router) · React 19 · TypeScript · Prisma 6 · PostgreSQL (ada
 - Exception décidée par le propriétaire (2026-10-15) : la boucle roadmap (`scripts/work-roadmap.ps1`, suivi `docs/ROADMAP.md`) fusionne elle-même les PR `claude/lot[1-7]-*` qu'elle a construites, après la porte `scripts/roadmap-gate.mjs` et les contrôles `verify` et `Vercel` verts, puis attend le déploiement de production. Toute nouvelle migration est exclue de cette auto-fusion et exige une revue explicite. Claude ne fusionne jamais dans cette boucle : `gh pr merge` / `gh pr ready` lui restent interdits. Arrêt propre : fichier `logs/STOP`.
 - Test « skipped » = à signaler explicitement, jamais présenté comme passé.
 - Aucune nouvelle dépendance sans demander.
-- Migrations Prisma existantes immuables (hook) : toujours en créer une nouvelle, additive (appliquée automatiquement après fusion dans main par `.github/workflows/migrate-production.yml`, jamais au build ; voir docs/MIGRATIONS.md). Changement Prisma seulement si justifié.
+- Migrations Prisma existantes immuables (hook) : toujours en créer une nouvelle, additive (appliquée automatiquement après fusion dans main par `.github/workflows/migrate-production.yml`, sans approbation manuelle (environnement sans relecteur) et jamais au build ; vérifier que le run est vert avant la fusion suivante ; voir docs/MIGRATIONS.md). Changement Prisma seulement si justifié.
 - Pas de refactor large, pas de try/catch silencieux.
 - Commits/PR en français, style `type(scope): …`.
 
