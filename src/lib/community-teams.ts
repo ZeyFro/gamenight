@@ -9,12 +9,20 @@ import { clearTeamRecruiterRoles } from "@/lib/team-recruiter-cleanup";
 
 /**
  * Conflit sérialisable (P2034) entre deux inscriptions simultanées : PostgreSQL annule l'une des transactions, qui
- * peut être rejouée. Une seule relance ne suffisait pas sous forte concurrence (trois conflits de suite observés en
- * CI) : jusqu'à 3 relances, comme `team-recruiters.ts`. Au-delà, l'erreur remonte (jamais avalée).
+ * peut être rejouée. Relancer aussitôt ne suffit pas : tant que la transaction concurrente n'a pas validé, chaque
+ * relance est annulée à son tour (4 conflits en 40 ms observés en CI). D'où une courte attente croissante avec une
+ * part aléatoire (25, 50, 100, 200, 400 ms + 0 à 25 ms) avant chacune des 5 relances. Au-delà, l'erreur remonte
+ * (jamais avalée).
  */
-const SERIALIZATION_RETRIES = 3;
+const SERIALIZATION_RETRIES = 5;
 function isSerializationConflict(error: unknown): boolean {
   return error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2034";
+}
+/** Vrai s'il faut relancer : attend d'abord le délai de la relance `retry` (0 = première relance). */
+export async function waitBeforeSerializationRetry(error: unknown, retry: number, sleep: (ms: number) => Promise<void> = ms => new Promise(resolve => setTimeout(resolve, ms))): Promise<boolean> {
+  if (!isSerializationConflict(error) || retry >= SERIALIZATION_RETRIES) return false;
+  await sleep(25 * 2 ** retry + Math.floor(Math.random() * 25));
+  return true;
 }
 
 export async function getCommunityTeamsCommunityId(userId: string): Promise<string | null> {
@@ -174,7 +182,7 @@ export async function createCommunityTeam(input: TeamInput): Promise<"created" |
       return await attempt();
     } catch (error) {
       if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") return "already_team";
-      if (isSerializationConflict(error) && retry < SERIALIZATION_RETRIES) continue;
+      if (await waitBeforeSerializationRetry(error, retry)) continue;
       throw error;
     }
   }
@@ -201,7 +209,7 @@ export async function joinCommunityTeam(userId: string, communityId: string, tea
       return await attempt();
     } catch (error) {
       if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") return "already_team";
-      if (isSerializationConflict(error) && retry < SERIALIZATION_RETRIES) continue;
+      if (await waitBeforeSerializationRetry(error, retry)) continue;
       throw error;
     }
   }
@@ -242,7 +250,7 @@ export async function leaveCommunityTeam(userId: string, communityId: string, te
       return await attempt();
     } catch (error) {
       if (error instanceof Error && error.message === "team_leave_member_missing") return "missing";
-      if (isSerializationConflict(error) && retry < SERIALIZATION_RETRIES) continue;
+      if (await waitBeforeSerializationRetry(error, retry)) continue;
       throw error;
     }
   }
