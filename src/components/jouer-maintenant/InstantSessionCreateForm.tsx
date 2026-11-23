@@ -24,9 +24,12 @@ import { createInstantSessionAction } from "@/app/jouer-maintenant/actions";
 export function InstantSessionCreateForm({
   localGames,
   potes,
+  defaultSelection = "all",
 }: {
   localGames: Array<LocalGameOption & GameWarningsData>;
   potes: NotifyRecipientCandidate[];
+  /** `none` : personne n’est pré-coché (centre de notifications allumé). */
+  defaultSelection?: "all" | "none";
 }) {
   const [selected, setSelected] = useState<SelectedGame | null>(null);
 
@@ -37,9 +40,9 @@ export function InstantSessionCreateForm({
 
       {potes.length > 0 && (
         <div className="flex flex-col gap-2 rounded-lg border border-border bg-background p-3">
-          <NotifyRecipientsField potes={potes} label="Prévenir qui ?" />
+          <NotifyRecipientsField potes={potes} label="Prévenir qui ?" defaultSelection={defaultSelection} />
           <p className="text-xs text-faint">
-            Les potes cochés reçoivent un MP Discord + une notification (selon leurs préférences) —
+            {defaultSelection === "none" ? "Personne n’est prévenu tant que tu ne coches pas des potes. " : ""}Les potes cochés reçoivent un MP Discord + une notification (selon leurs préférences) —
             ils ne sont ni inscrits automatiquement, ni seuls autorisés à voir ou rejoindre la
             session : n&apos;importe qui peut la rejoindre librement tant qu&apos;elle est active.
           </p>

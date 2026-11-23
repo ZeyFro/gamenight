@@ -10,6 +10,7 @@ import { Card } from "@/components/ui/Card";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Avatar } from "@/components/ui/Avatar";
 import { InstantSessionCreateForm } from "@/components/jouer-maintenant/InstantSessionCreateForm";
+import { isNotificationCenterEnabled } from "@/lib/game-ping-optin";
 import { gameWarningsSelect } from "@/lib/game-warnings";
 import type { NotifyRecipientCandidate } from "@/components/NotifyRecipientsField";
 import { pageMetadata } from "@/lib/page-title";
@@ -79,7 +80,7 @@ export default async function JouerMaintenantPage({
         </Card>
       ) : (
         <Card>
-          <InstantSessionCreateForm localGames={games} potes={potes} />
+          <InstantSessionCreateForm localGames={games} potes={potes} defaultSelection={isNotificationCenterEnabled() ? "none" : "all"} />
         </Card>
       )}
 

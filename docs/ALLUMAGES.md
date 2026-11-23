@@ -99,6 +99,7 @@
 - `/profil/personnalisation` : acheter une couleur avec de l'XP, la voir sur `/profil`.
 - `/ce-soir` : se déclarer dispo pour 1 à 3 jeux.
 - `/notifications` s'ouvre et liste les notifications.
+- **« Jouer maintenant »** (`NOTIFICATION_CENTER_ENABLED` allumé) : `/jouer-maintenant` affiche « Prévenir qui ? (0/N) » avec **personne de coché** et la phrase « Personne n’est prévenu tant que tu ne coches pas des potes » ; cocher un pote puis Démarrer n’envoie le MP qu’à lui. (Éteint : tous cochés, comme avant.)
 - **Potes = amis** (`POTES_FRIENDS_ENABLED`) : `/potes` ne montre plus que les amis (au début : « Tu n’as pas encore d’ami »). Chercher un pseudo (2 lettres minimum) : un membre du serveur apparaît avec « Demander en ami » ; un profil masqué n’apparaît jamais. Avec un second compte : « Demandes reçues » → Accepter ; les deux se voient alors dans `/potes` et ouvrent leurs fiches. Un non-ami ouvert par lien (`/potes/[id]`) montre une fiche réduite (pseudo, bouton, soirées « publique » ou « privée, sur invitation » sans détail), jamais son niveau, ses badges ni sa bibliothèque.
 - `/profil/parametres` : remplir « Pour trouver des partenaires » ; `/potes` : filtrer par langue, et voir « Partenaires compatibles » (jamais un profil masqué).
 
