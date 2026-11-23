@@ -24,6 +24,7 @@ Le dépôt ne définit aucun déclencheur cron dans vercel.json. Le défi d’é
 | `/api/cron/steam-library-full-sync` | GET, POST | Synchronisation Steam complète |
 | `/api/cron/steam-library-sync` | GET | Synchronisation Steam incrémentale |
 | `/api/cron/booster-sync` | GET | Lecture REST de `premium_since` (soutiens Nitro) ; OFF si `DISCORD_BOOSTERS_ENABLED` absent ; aucun cron créé |
+| `/api/cron/hosting-usage` | GET | Alerte avant saturation de l'hébergement gratuit (taille de la base ; 200 sous 70 %, 503 au-delà, le moniteur externe prévient par e-mail) ; OFF si `HOSTING_ALERT_ENABLED` absent ; lecture seule ; aucun cron créé |
 | `/api/cron/team-captain-handover` | GET | Passation des capitaines d’équipe inactifs ; OFF et dry-run par défaut |
 | `/api/cron/tournament-teams` | GET | Relance des confirmations de résultat (12 h) et lancement des tournois d’équipes à l’échéance d’inscription ; OFF sans `TOURNAMENT_TEAMS_ENABLED` ; 503 sans `CRON_SECRET` |
 | `/api/cron/team-applications` | GET | Relance (48 h) et expiration (7 j) des candidatures d’équipe, retrait des accès Discord des membres non actifs ; OFF sans `TEAM_RECRUITERS_ENABLED` ; 503 sans `CRON_SECRET` |
