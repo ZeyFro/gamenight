@@ -1,0 +1,77 @@
+[
+  {
+    "id": "titre accueil",
+    "ok": true,
+    "detail": "« GameNight »"
+  },
+  {
+    "id": "titre /sessions",
+    "ok": true,
+    "detail": "« Soirées · GameNight »"
+  },
+  {
+    "id": "titre /tower",
+    "ok": true,
+    "detail": "« The Tower · GameNight »"
+  },
+  {
+    "id": "/tower s'affiche",
+    "ok": true,
+    "detail": "HTTP 200, /tower"
+  },
+  {
+    "id": "/tower phrase étages",
+    "ok": true,
+    "detail": "phrase « …tes étages Tower repartent de zéro »"
+  },
+  {
+    "id": "/ascension s'affiche",
+    "ok": true,
+    "detail": "HTTP 200, titre « Ascension · GameNight »"
+  },
+  {
+    "id": "/ascension phrase étages",
+    "ok": true,
+    "detail": "phrase sur les étages"
+  },
+  {
+    "id": "titre /guide",
+    "ok": true,
+    "detail": "« Guide · GameNight »"
+  },
+  {
+    "id": "/guide « Jouer maintenant »",
+    "ok": true,
+    "detail": "section présente"
+  },
+  {
+    "id": "/guide « Tournois »",
+    "ok": true,
+    "detail": "section présente"
+  },
+  {
+    "id": "titre dynamique fiche jeu",
+    "ok": true,
+    "detail": "« Among Us · GameNight » (attendu « Among Us · GameNight »)"
+  },
+  {
+    "id": "menu ordinateur « The Tower »",
+    "ok": true,
+    "detail": "liens visibles : [\"The Tower\"]"
+  },
+  {
+    "id": "menu mobile « The Tower »",
+    "ok": true,
+    "detail": "barre : [] ; tiroir : [\"The Tower\"]"
+  },
+  {
+    "id": "/admin/tableau-de-bord (admin)",
+    "ok": true,
+    "detail": "HTTP 200, /admin/tableau-de-bord, titre « Tableau de bord · Admin · GameNight »"
+  },
+  {
+    "id": "/admin/tableau-de-bord (membre)",
+    "ok": true,
+    "detail": "non-admin : / (HTTP 200)"
+  }
+]
