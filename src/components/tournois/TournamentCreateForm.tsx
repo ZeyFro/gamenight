@@ -90,7 +90,7 @@ export function TournamentCreateForm({
 
       {potes.length > 0 && (
         <div className="flex flex-col gap-2 rounded-lg border border-border bg-background p-3">
-          <NotifyRecipientsField potes={potes} label="Qui prévenir de l'ouverture des inscriptions ?" />
+          <NotifyRecipientsField potes={potes} label="Qui prévenir de l'ouverture des inscriptions ?" defaultSelection="none" />
           <p className="text-xs text-faint">
             Les potes cochés reçoivent une mention Discord dans l&apos;annonce du tournoi (si le
             bot Discord est configuré) — ils ne sont ni inscrits automatiquement, ni seuls
