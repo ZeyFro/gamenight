@@ -34,3 +34,16 @@ describe("AdminTabs — Joueurs", () => {
     }
   });
 });
+
+describe("AdminTabs — mobile (320 px)", () => {
+  it("retour à la ligne : jamais de défilement horizontal, cible tactile ≥ 44 px (min-h-11), navigation nommée", () => {
+    render(<AdminTabs active="messages" showCommunities />);
+    const nav = screen.getByRole("navigation", { name: "Sections de l’administration" });
+    expect(nav.className).toContain("flex-wrap");
+    expect(nav.className).not.toContain("overflow-x");
+    const links = screen.getAllByRole("link");
+    expect(links).toHaveLength(ADMIN_TAB_KEYS.length);
+    for (const link of links) expect(link.className).toContain("min-h-11");
+    expect(screen.getByRole("link", { name: "Messages Discord" }).getAttribute("aria-current")).toBe("page");
+  });
+});
