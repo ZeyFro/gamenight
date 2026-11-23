@@ -22,6 +22,7 @@ import { PodiumSpot } from "@/components/PodiumSpot";
 import { PullToRefresh } from "@/components/PullToRefresh";
 import { Stagger, StaggerItem } from "@/components/motion";
 import { plural } from "@/lib/plural";
+import { activePlayersCaption } from "@/lib/group-stats-rules";
 
 export const metadata = pageMetadata("Accueil (aperçu)");
 
@@ -245,7 +246,7 @@ export default async function AccueilV2Page() {
                       className="text-2xl font-semibold tabular-nums text-foreground"
                     />
                     <p className="text-xs text-muted">
-                      {plural(d.groupStats.activePlayers, "joueur")} {plural(d.groupStats.activePlayers, "actif")}
+                      {activePlayersCaption(d.groupStats.activePlayers, d.groupStats.members)}
                     </p>
                   </div>
                   {d.groupStats.mostPlayedGame && (

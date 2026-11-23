@@ -7,6 +7,8 @@ import { creationMemberUserWhere, memberUserWhereFor } from "@/lib/community-iso
 import { getActiveScopedPrisma } from "@/lib/community-scoped-client";
 import { writeCommunityIdForUser } from "@/lib/community-stats";
 import { isFrenchNewsTitle } from "@/lib/news-language";
+import { reconcileGroupStats } from "@/lib/group-stats-rules";
+import { getGroupMemberCounts } from "@/lib/member-counts";
 
 /**
  * Données agrégées pour la home (refonte : "Activité récente", "Stats du
@@ -141,6 +143,8 @@ export interface GroupStats {
   gamePlayTimes: { gameId: string; name: string; playedMinutes: number }[];
   bestActiveStreak: { discordName: string; streakCount: number } | null;
   activePlayers: number;
+  /** Membres actifs du serveur affiché, toi compris (dénominateur des joueurs actifs). */
+  members: number;
 }
 
 const ACTIVE_STREAK_WINDOW_MS = 24 * 60 * 60 * 1000;
@@ -177,17 +181,18 @@ export async function getGroupStats(viewerId: string): Promise<GroupStats> {
   const communityId = await writeCommunityIdForUser(viewerId);
   const progressCommunity = { communityId: { in: communityId ? [communityId] : [] } };
 
-  const [sessionStats, topGameStats, playTimeStats, gamePlayTimes, bestStreakUser, activePlayers] = await Promise.all([
-    scopedDb.groupSessionStats.aggregate({ _sum: { totalSessionsPlayed: true } }),
+  const [sessionStats, topGameStats, playTimeStats, gamePlayTimes, bestStreakUser, activePlayers, memberCounts] = await Promise.all([
+    scopedDb.groupSessionStats.aggregate({ where: progressCommunity, _sum: { totalSessionsPlayed: true } }),
     scopedDb.groupGameStat.groupBy({
+      where: progressCommunity,
       by: ["gameId"],
       _sum: { playCount: true },
       orderBy: { _sum: { playCount: "desc" } },
       take: 1,
     }),
-    scopedDb.groupGameStat.aggregate({ _sum: { totalPlayMinutes: true } }),
+    scopedDb.groupGameStat.aggregate({ where: progressCommunity, _sum: { totalPlayMinutes: true } }),
     scopedDb.groupGameStat.findMany({
-      where: { totalPlayMinutes: { gt: 0 } },
+      where: { ...progressCommunity, totalPlayMinutes: { gt: 0 } },
       orderBy: { totalPlayMinutes: "desc" },
       select: { gameId: true, totalPlayMinutes: true, game: { select: { name: true } } },
     }),
@@ -204,14 +209,20 @@ export async function getGroupStats(viewerId: string): Promise<GroupStats> {
     scopedDb.communityMemberStats.count({
       where: { user: members, ...progressCommunity, streakLastActiveAt: { gte: new Date(now - ACTIVE_PLAYER_WINDOW_MS) } },
     }),
+    getGroupMemberCounts(viewerId),
   ]);
 
   const topGame = topGameStats[0]
     ? await prisma.game.findUnique({ where: { id: topGameStats[0].gameId }, select: { name: true, coverUrl: true } })
     : null;
 
+  // Une seule lecture cohérente : jamais « 0 soirée jouée » à côté d’un jeu joué 8 fois, jamais plus de joueurs actifs que de membres.
+  const coherent = reconcileGroupStats(
+    { totalSessionsPlayed: sessionStats._sum.totalSessionsPlayed ?? 0, mostPlayedCount: topGameStats[0]?._sum.playCount ?? null, activePlayers },
+    memberCounts.members,
+  );
   return {
-    totalSessionsPlayed: sessionStats._sum.totalSessionsPlayed ?? 0,
+    totalSessionsPlayed: coherent.totalSessionsPlayed,
     mostPlayedGame:
       topGame && topGameStats[0]
         ? { name: topGame.name, coverUrl: topGame.coverUrl, count: topGameStats[0]._sum.playCount ?? 0 }
@@ -221,7 +232,8 @@ export async function getGroupStats(viewerId: string): Promise<GroupStats> {
     bestActiveStreak: bestStreakUser
       ? { discordName: bestStreakUser.user.discordName, streakCount: bestStreakUser.streakCount }
       : null,
-    activePlayers,
+    activePlayers: coherent.activePlayers,
+    members: memberCounts.members,
   };
 }
 

@@ -1,4 +1,6 @@
 import { plural } from "@/lib/plural";
+import { otherMembersLabel } from "@/lib/group-stats-rules";
+import { getGroupMemberCounts } from "@/lib/member-counts";
 import { FriendsPanel } from "@/components/potes/FriendsPanel";
 import { isFriendsEnabled, normalizeFriendSearch } from "@/lib/friends-rules";
 import { listFriendIds, listFriendRequests, searchMembersByName } from "@/lib/friends";
@@ -65,6 +67,7 @@ export default async function PotesPage({ searchParams }: { searchParams?: Promi
 
   // Potes = amis (POTES_FRIENDS_ENABLED) : la liste ne montre que mes amis ; demandes et recherche par pseudo à côté.
   const friendsEnabled = isFriendsEnabled();
+  const memberCounts = await getGroupMemberCounts(user.id);
   const friendIds = friendsEnabled ? await listFriendIds(user.id) : [];
   const friendRequests = friendsEnabled ? await listFriendRequests(user.id) : { incoming: [], outgoing: [] };
   const searchQuery = friendsEnabled && typeof params.q === "string" ? params.q : "";
@@ -145,7 +148,7 @@ export default async function PotesPage({ searchParams }: { searchParams?: Promi
       <div>
         <h1 className="text-xl font-semibold text-foreground sm:text-2xl">Potes</h1>
         <p className="mt-1 text-sm text-muted">
-          {friendsEnabled ? `${potes.length} ${plural(potes.length, "ami")}.` : `${potes.length} ${plural(potes.length, "membre")} dans le groupe.`}
+          {friendsEnabled ? `${potes.length} ${plural(potes.length, "ami")}.` : `${otherMembersLabel(potes.length)} dans le groupe${memberCounts.members > 0 ? ` (${memberCounts.members} avec toi)` : ""}.`}
         </p>
       </div>
 
