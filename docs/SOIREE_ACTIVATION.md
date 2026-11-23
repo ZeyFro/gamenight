@@ -492,7 +492,9 @@ La réponse ne contient **que** : pour chaque commande, `présente`, `absente`, 
 2. **Poser les deux variables** dans Vercel → Settings → Environment Variables → **Production** seulement : `DISCORD_COMMAND_REGISTRATION_SECRET` (type **Sensitive**) et `DISCORD_COMMAND_REGISTRATION_ENABLED` = `true`. Puis **Redeploy** (section 6) et attends **Ready**.
 3. **Ouvrir la page** `/admin/discord-commands` du site, **connecté avec ton compte administrateur** (elle n'existe que pendant que l'interrupteur est allumé : sinon 404 ; un compte non administrateur est renvoyé à l'accueil). Plus besoin de la console du navigateur.
 4. **Vérifier** (lecture seule). Saisis le secret dans le champ « Secret d’enregistrement » (masqué, ni enregistré ni journalisé, effacé après chaque appel), puis clique **Vérifier**. Attendu : un tableau de **13** commandes (`absente` la première fois) et « HTTP 200 · Terminé. ».
-5. **Enregistrer.** Ressaisis le secret, clique **Enregistrer** et confirme. Attendu : 13 commandes `enregistrée`. Fais-le **une seule fois**.
+5. **Enregistrer.** Clique **Enregistrer** et confirme (le secret reste saisi tant que la page est ouverte). L'enregistrement peut durer jusqu'à 45 s : GameNight attend entre deux écritures et respecte la limite de débit de Discord. Attendu : 13 lignes, chacune `enregistrée` ou `déjà à jour`.
+   - **Réponse « HTTP 202 » (partiel)** : Discord a demandé de ralentir. Attends le délai affiché, puis clique à nouveau sur **Enregistrer** : les commandes déjà à jour sont sautées, seules les lignes `en attente` sont envoyées. Recommence jusqu'à ce qu'il n'y ait plus de ligne `en attente` (au plus 5 clics par minute).
+   - Rien n'est jamais supprimé ; relancer ne crée pas de doublon.
 6. **Contrôler.** Refais l'étape 4 : les 13 doivent être `présente`. Sur Discord (compte membre) : `/aide` répond ; avec « Gérer le serveur », `/tower-admin` apparaît.
 7. **Éteindre.** Supprime `DISCORD_COMMAND_REGISTRATION_ENABLED` **et** `DISCORD_COMMAND_REGISTRATION_SECRET` dans Vercel, puis **Redeploy**. Vérifie : la page `/admin/discord-commands` répond maintenant **404**.
 
@@ -500,7 +502,8 @@ La réponse ne contient **que** : pour chaque commande, `présente`, `absente`, 
 | --- | --- | --- |
 | 404 (la page ou « HTTP 404 ») | Interrupteur éteint, secret absent côté serveur, ou Preview | Revoir l'étape 2 et le redéploiement |
 | 401 | Secret faux, ou compte non administrateur / non connecté | Revoir le secret saisi ; te reconnecter avec ton compte administrateur |
-| 429 | Plus de 5 appels par minute | Attendre une minute, ne pas boucler |
+| 202 | Enregistrement partiel : limite de débit **Discord** | Attendre le délai affiché, puis recliquer sur « Enregistrer » (reprise sans doublon) |
+| 429 | Plus de 5 appels par minute **sur la page** | Attendre une minute, ne pas boucler |
 | 503 | `DISCORD_CLIENT_ID`, `DISCORD_BOT_TOKEN` ou `TOWER_DISCORD_GUILD_ID` absent ou invalide | Vérifier la présence des trois variables dans Vercel (sans lire leur valeur) |
 | 502, `code: "50001"` | Application non autorisée sur le serveur avec le scope `applications.commands` | Réinviter l'application (lien dans [DISCORD_COMMANDES.md](DISCORD_COMMANDES.md)) |
 | 502, `code: "50013"` | Permission manquante | Voir [PHASE_TEST.md](PHASE_TEST.md), « Droits minimaux de GameNight » |
