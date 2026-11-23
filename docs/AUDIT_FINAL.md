@@ -64,7 +64,8 @@ Aucun constat 🔴 ni haute gravité. Crons et backfills (`verifyCronRequest`, 5
 | 🟠 | 1.4 Preuve Tower validée par 3 faux comptes | Quorum de votants actifs, votes décisifs visibles du staff | Restant (priorité 2) |
 | 🟠 | 1.5 Défi d'équipe : coéquipier fantôme récompensé | Participants confirmés par le capitaine, plafond par jour | Restant (priorité 2) |
 | 🟡 | 1.3 Ancienneté de 7 jours des votants selon le seul interrupteur | Ancienneté appliquée même interrupteur éteint | Corrigé (#570), puis 3 jours (décision de Maxime) |
-| 🟡 | 1.6, 1.10, 1.11, 1.14 (temps Steam AFK, XP de vote, tournoi complice, MP en masse) | Plafonds par jour, limite partagée | Restant |
+| 🟡 | 1.6, 1.10, 1.11 (temps Steam AFK, XP de vote, tournoi complice) | Plafonds par jour, limite partagée | Restant |
+| 🟡 | 1.14 MP en masse : créations de soirées et de tournois sans plafond partagé | Limite partagée : 10 soirées et 5 tournois par personne et par jour (`creation-quota.ts`, dans la transaction de création) ; site, `/soiree creer`, roulette instantanée, sondage et tournois individuels ou par équipes ; « Jouer maintenant » et la roulette différée non plafonnés | Corrigé (#586, en brouillon) pour les créations ; plafond de MP reçus par destinataire et par jour **Restant** ; tests d'intégration Postgres validés par la CI seulement |
 | 🟡 | 1.8, 1.15 plafonds sans test (soirée créée, demandes d'ami) | Tests d'intégration | Partiel : plafond « soirée créée » testé (#569) ; demandes d'ami restantes |
 | 🟠 | 2.4 Web Push : `getRegistration("/sw.js")` au lieu de `/service-worker.js` ; abonnement jamais détecté après rechargement | Chemin `/service-worker.js`, test jsdom : abonnement détecté après rechargement | Corrigé (#572) |
 | 🟠 | 2.5–2.6 iPhone : aucune détection du mode installé ni guide « Sur l'écran d'accueil » | Détection (`detectPushSupport`), guide « Sur l'écran d'accueil », messages dédiés (navigateur sans push, permission refusée) | Corrigé (#572) ; réception sur iPhone réel non vérifiée |
@@ -87,7 +88,7 @@ Faites : XP de présence (#569), ancienneté des votants (#570), aperçu du lien
 1. **À arbitrer avec Maxime** : preuves Tower validées par de faux comptes (1.4) et coéquipier fantôme (1.5) : quorum de votants « actifs », confirmation des participants par le capitaine.
 2. Autocomplétion Discord sous 3 s avec base endormie (course à ~2 s, liste vide en repli).
 3. Secret dédié de `force-relogin` (nouvelle variable d'environnement chez Vercel).
-4. Plafonds par jour des autres gains d'XP et des MP en masse (1.6, 1.10, 1.11, 1.14) ; tests des plafonds de demandes d'ami (1.15).
+4. Plafonds par jour des autres gains d'XP (1.6, 1.10, 1.11) et plafond de MP reçus par destinataire (reste de 1.14) ; tests des plafonds de demandes d'ami (1.15).
 5. Icône Apple 180×180 et `badge` de notification (2.7, 2.8).
 6. Journal d'erreurs minimal en base (journaux Vercel limités à 1 h).
 
