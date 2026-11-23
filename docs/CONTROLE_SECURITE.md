@@ -44,7 +44,7 @@ Adresse testée : `https://gamenight-zeyfro.vercel.app`.
 | --- | --- | --- | --- |
 | `POST /api/admin/discord-commands` | Interrupteur + secret dédié comparé à temps constant + administrateur connecté + 5 appels par minute. Jamais sur Preview. | Seuls `check` ou `execute` sont acceptés. Aucune suppression ni réponse contenant un secret. | OK |
 | `/api/admin/tower-archive`, `tower-content-audit`, `tower-layout`, `tower-preflight` | `requireAdmin` (liste `ADMIN_DISCORD_IDS`). | Lecture. | OK |
-| `/api/admin/force-relogin` | Secret `CRON_SECRET`. | — | OK |
+| `/api/admin/force-relogin` | Secret DÉDIÉ `FORCE_RELOGIN_SECRET` (jamais `CRON_SECRET` depuis l'audit du 23/11/2026 ; 503 sans lui). | — | OK |
 | Actions des pages `/admin/*` (badges, messages, joueurs, communautés, jeux, nettoyage, réglages, superlatifs) | Chaque action vérifie l'administrateur. | Champs lus un à un. | OK |
 | Contestations Tower (`/admin/tower-appeals`) | Membre ACTIVE du serveur, puis contrôle du rôle dans `decideTowerChallengeAppeal`. L'auteur du défi, ceux qui ont voté et les participants sont exclus. Si l'auteur est admin, l'arbitre configuré est obligatoire. | Schéma de validation (zod) ; requêtes paramétrées. | OK |
 

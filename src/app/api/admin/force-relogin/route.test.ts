@@ -24,7 +24,8 @@ describe("POST /api/admin/force-relogin", () => {
   beforeEach(() => {
     triggerGlobalRelogin.mockReset().mockResolvedValue({ forcedAt: "2026-01-01T00:00:00.000Z" });
     timingSafeEqual.mockClear();
-    vi.stubEnv("CRON_SECRET", "s3cret");
+    vi.stubEnv("FORCE_RELOGIN_SECRET", "s3cret");
+    vi.stubEnv("CRON_SECRET", "cron-secret-distinct");
   });
 
   it("mauvais secret → 401, comparaison à temps constant", async () => {
@@ -35,11 +36,17 @@ describe("POST /api/admin/force-relogin", () => {
     expect(triggerGlobalRelogin).not.toHaveBeenCalled();
   });
 
-  it("sans CRON_SECRET → 503", async () => {
-    vi.stubEnv("CRON_SECRET", "");
+  it("sans FORCE_RELOGIN_SECRET → 503, même avec un CRON_SECRET valide (échec fermé)", async () => {
+    vi.stubEnv("FORCE_RELOGIN_SECRET", "");
     const res = await POST(req("Bearer s3cret"));
     expect(res.status).toBe(503);
     expect(await res.json()).toEqual({ error: "not_configured" });
+    expect(triggerGlobalRelogin).not.toHaveBeenCalled();
+  });
+
+  it("CRON_SECRET n'ouvre plus la route : 401, la reconnexion n'est pas déclenchée (audit 23/11/2026, A01)", async () => {
+    const res = await POST(req("Bearer cron-secret-distinct"));
+    expect(res.status).toBe(401);
     expect(triggerGlobalRelogin).not.toHaveBeenCalled();
   });
 

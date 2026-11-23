@@ -17,7 +17,7 @@ const COVERED_ELSEWHERE = new Set(["cron", "backfill"]);
 const PUBLIC_EXCEPTIONS: Record<string, string> = {
   "auth/[...nextauth]": "handlers Auth.js (connexion Discord)",
   "csp-report": "appelée par les navigateurs sans session ; entrée bornée",
-  "admin/force-relogin": "protégée par un secret Bearer (CRON_SECRET), pas par session",
+  "admin/force-relogin": "protégée par un secret Bearer DÉDIÉ (FORCE_RELOGIN_SECRET, jamais CRON_SECRET), pas par session",
   "discord/webhook-events":
     "webhook Discord : authentifiée par signature Ed25519 (discord-signature.ts), 503 sans clé publique, 401 si invalide",
   "discord/interactions":
