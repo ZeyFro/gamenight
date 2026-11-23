@@ -39,7 +39,7 @@ const SECTIONS: GuideSection[] = [
     title: "Soirées",
     lines: [
       "Propose une date, tes potes votent pour le jeu.",
-      "Le jeu le plus voté est retenu à la deadline.",
+      "Le jeu le plus voté est retenu à la fin des votes.",
       "Retrouve les soirées passées dans l'onglet Historique.",
       "Avant de participer, consulte les avertissements et les langues du jeu. Les joueurs qui possèdent le jeu peuvent les renseigner sur sa fiche ; une information non renseignée reste inconnue.",
     ],

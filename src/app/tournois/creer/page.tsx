@@ -3,6 +3,7 @@ import { getCurrentUser } from "@/lib/current-user";
 import { prisma } from "@/lib/prisma";
 import { creationMemberUserWhere } from "@/lib/community-isolation";
 import { RATE_LIMIT_MESSAGE } from "@/lib/rate-limit";
+import { TOURNAMENT_QUOTA_ERROR_KEY, TOURNAMENT_QUOTA_MESSAGE } from "@/lib/creation-quota";
 import { VALIDATION_ERROR_KEY, VALIDATION_ERROR_MESSAGE } from "@/lib/validations";
 import { Card } from "@/components/ui/Card";
 import { TournamentCreateForm } from "@/components/tournois/TournamentCreateForm";
@@ -13,6 +14,7 @@ export const metadata = pageMetadata("Créer un tournoi");
 
 const TOURNAMENT_ERROR_MESSAGES: Record<string, string> = {
   rate_limited: RATE_LIMIT_MESSAGE,
+  [TOURNAMENT_QUOTA_ERROR_KEY]: TOURNAMENT_QUOTA_MESSAGE,
   [VALIDATION_ERROR_KEY]: VALIDATION_ERROR_MESSAGE,
 };
 

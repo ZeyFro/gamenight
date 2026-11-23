@@ -34,6 +34,7 @@ import { DiscoverableSessions } from "@/components/sessions/DiscoverableSessions
 import { listDiscoverableSessions } from "@/lib/session-applications";
 import { sessionVisibilityEnabled } from "@/lib/session-visibility";
 import { RATE_LIMIT_MESSAGE } from "@/lib/rate-limit";
+import { SESSION_QUOTA_ERROR_KEY, SESSION_QUOTA_MESSAGE } from "@/lib/creation-quota";
 import { tagColor } from "@/lib/tags";
 import { VALIDATION_ERROR_KEY, VALIDATION_ERROR_MESSAGE } from "@/lib/validations";
 import { pageMetadata } from "@/lib/page-title";
@@ -54,6 +55,7 @@ const CREATE_ERROR_MESSAGES: Record<string, string> = {
   session_trop_proche:
     "Cette soirée est trop proche (ou déjà passée) pour laisser un minimum de temps de vote (30 min). Choisis une heure un peu plus tardive.",
   rate_limited: RATE_LIMIT_MESSAGE,
+  [SESSION_QUOTA_ERROR_KEY]: SESSION_QUOTA_MESSAGE,
   [VALIDATION_ERROR_KEY]: VALIDATION_ERROR_MESSAGE,
 };
 

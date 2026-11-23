@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { pageMetadata } from "@/lib/page-title";
+import { TOURNAMENT_QUOTA_ERROR_KEY, TOURNAMENT_QUOTA_MESSAGE } from "@/lib/creation-quota";
 import { createTeamTournamentAction } from "./actions";
 
 export const metadata = pageMetadata("Tournois d’équipes");
@@ -15,6 +16,7 @@ export const metadata = pageMetadata("Tournois d’équipes");
 const RESULT_MESSAGES: Record<string, string> = {
   invalid: "Informations invalides.", rate: "Trop de demandes, réessaie dans une minute.", invalid_game: "Jeu introuvable.",
   unavailable: "Les tournois d’équipes ne sont pas disponibles dans ta communauté.", created: "Tournoi créé.",
+  [TOURNAMENT_QUOTA_ERROR_KEY]: TOURNAMENT_QUOTA_MESSAGE,
 };
 
 const STATUS_LABELS = { REGISTRATION: "Inscriptions ouvertes", IN_PROGRESS: "En cours", DONE: "Terminé" } as const;

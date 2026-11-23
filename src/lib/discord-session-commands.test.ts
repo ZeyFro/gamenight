@@ -16,6 +16,7 @@ const mocks = vi.hoisted(() => ({
   schedule: vi.fn(),
   resolveGame: vi.fn(),
   edit: vi.fn(),
+  shared: vi.fn(),
 }));
 
 vi.mock("@/lib/prisma", () => ({
@@ -37,6 +38,7 @@ vi.mock("@/lib/session-access", () => ({
 vi.mock("@/lib/session-creation", () => ({ createVotingSessionInTransaction: mocks.createInTx }));
 vi.mock("@/lib/session-schedule", () => ({ resolveSessionSchedule: mocks.schedule }));
 vi.mock("@/lib/discord-game-lookup", () => ({ resolveGameId: mocks.resolveGame }));
+vi.mock("@/lib/shared-rate-limit", () => ({ checkSharedRateLimit: mocks.shared }));
 vi.mock("@/lib/discord-rest", () => ({ editSetupResponse: mocks.edit }));
 vi.mock("@/lib/logger", () => ({ logger: { warn: vi.fn(), error: vi.fn(), info: vi.fn() } }));
 
@@ -290,6 +292,39 @@ describe("/soiree — création par le service existant", () => {
     mocks.transaction.mockImplementation(async (callback: (client: typeof tx) => Promise<unknown>) => callback(tx));
     mocks.createInTx.mockResolvedValue({ id: SESSION, date: new Date("2026-12-05T20:00:00.000Z") });
     mocks.resolveGame.mockResolvedValue({ kind: "FOUND", id: "game-1", name: "Valheim" });
+    tx.proposal.create.mockClear();
+    tx.session.update.mockClear();
+    mocks.createInTx.mockClear();
+    mocks.shared.mockReset();
+    mocks.shared.mockResolvedValue(true);
+  });
+
+  it("plafond du jour : le compteur partagé « dailyCreateSession » (10 / 24 h) est consommé dans la transaction de création", async () => {
+    await createSessionFromDiscord({ userId: USER, communityId: "community-1", gameQuery: "valheim", dateStr: "2026-12-05", timeStr: "21:00", places: 6 });
+    expect(mocks.shared).toHaveBeenCalledWith(USER, "dailyCreateSession", { limit: 10, windowMs: 86_400_000 }, expect.any(Number), tx);
+  });
+
+  it("au-delà de 10 soirées par jour : refus clair, aucune soirée, aucune proposition", async () => {
+    mocks.shared.mockResolvedValue(false);
+    const result = await createSessionFromDiscord({ userId: USER, communityId: "community-1", gameQuery: "valheim", dateStr: "2026-12-05", timeStr: "21:00", places: 6 });
+    expect(result.status).toBe("DAILY_LIMIT");
+    expect(mocks.createInTx).not.toHaveBeenCalled();
+    expect(tx.proposal.create).not.toHaveBeenCalled();
+  });
+
+  it("la commande /soiree creer répond avec le message de plafond", async () => {
+    mocks.shared.mockResolvedValue(false);
+    const content = await deferredContent(
+      handleSignedSessionInteraction(
+        interaction("creer", [
+          { name: "jeu", value: "valheim" },
+          { name: "date", value: "2026-12-05" },
+          { name: "heure", value: "21:00" },
+        ]),
+        now()
+      )
+    );
+    expect(content).toBe("Tu as atteint la limite de 10 soirées créées par jour. Réessaie demain.");
   });
 
   it("crée une Session VOTING via createVotingSessionInTransaction, sans annonce Discord", async () => {

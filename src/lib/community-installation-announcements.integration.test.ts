@@ -27,7 +27,7 @@ describe.skipIf(!TEST_DATABASE_URL)("installation → choix → création → an
   });
   afterEach(() => { vi.unstubAllGlobals(); vi.unstubAllEnvs(); });
   beforeEach(async () => {
-    await db.$executeRawUnsafe('TRUNCATE "Community", "User", "Game", "NotificationEvent" CASCADE');
+    await db.$executeRawUnsafe('TRUNCATE "RateLimitWindow", "Community", "User", "Game", "NotificationEvent" CASCADE');
     await db.cronLock.deleteMany({ where: { name: { startsWith: "community-setup" } } });
     channels = []; requests = [];
     for (const key of ["COMMUNITY_PICKER_ENABLED", "COMMUNITY_CHANNELS_ENABLED", "COMMUNITY_ISOLATION_ENABLED",

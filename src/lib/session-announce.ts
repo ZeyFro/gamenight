@@ -1240,7 +1240,7 @@ function resolveAnnounceRendering(session: SessionWithVotes): AnnounceRendering 
       color: 0x8b5cf6,
       fields: [
         {
-          name: "Deadline de vote",
+          name: "Fin des votes",
           value: formatDateTimeFr(session.votingDeadline ?? session.date),
           inline: true,
         },
