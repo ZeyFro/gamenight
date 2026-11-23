@@ -11,7 +11,7 @@ vi.mock("@/lib/xp-shop", () => ({ getEquippedShopItems: async () => ({ TITLE: nu
 vi.mock("@/lib/prisma", () => ({ prisma: { user: { findUnique: mocks.find } } }));
 vi.mock("@/lib/member-stats", () => ({ getMemberStatsForViewer: async () => ({}), projectUserProgress: (user: unknown) => user }));
 vi.mock("next/navigation", () => ({
-  redirect: (url: string) => { throw Error(`REDIRECT:${url}`); },
+  usePathname: () => "/potes/friend", redirect: (url: string) => { throw Error(`REDIRECT:${url}`); },
   notFound: () => { throw Error("NOT_FOUND"); },
 }));
 vi.mock("@/components/RankAvatar", () => ({ RankAvatar: () => null }));
