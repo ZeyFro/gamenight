@@ -15,7 +15,17 @@ const GUILD_ID = "553922938101825536";
 const ENDPOINT = `https://discord.com/api/v10/applications/${CLIENT_ID}/guilds/${GUILD_ID}/commands`;
 const fetchMock = vi.fn();
 
-function call(body: unknown = { mode: "check" }, headers: Record<string, string> = { "x-registration-secret": SECRET }) {
+/** Appelle la route en faisant avancer les minuteries simulées (pauses entre écritures Discord). */
+async function call(body: unknown = { mode: "check" }, headers: Record<string, string> = { "x-registration-secret": SECRET }) {
+  let done = false;
+  const pending = invoke(body, headers).finally(() => {
+    done = true;
+  });
+  while (!done) await vi.advanceTimersByTimeAsync(500);
+  return pending;
+}
+
+function invoke(body: unknown, headers: Record<string, string>) {
   return POST(
     new Request("https://example.test/api/admin/discord-commands", {
       method: "POST",
@@ -32,6 +42,7 @@ function discordOk(installed: object[] = []) {
 }
 
 beforeEach(() => {
+  vi.useFakeTimers({ toFake: ["setTimeout", "Date"] });
   // Un administrateur différent à chaque appel : la limite de débit est testée à part.
   requireAdmin.mockReset().mockImplementation(async () => ({ id: `admin-${Math.random()}` }));
   fetchMock.mockReset();
@@ -46,6 +57,7 @@ beforeEach(() => {
   discordOk();
 });
 afterEach(() => {
+  vi.useRealTimers();
   vi.unstubAllGlobals();
   vi.unstubAllEnvs();
 });
@@ -175,7 +187,10 @@ describe("POST /api/admin/discord-commands : mode execute", () => {
     const response = await call({ mode: "execute" });
     expect(response.status).toBe(502);
     const body = await response.json();
-    expect(body.commands).toHaveLength(2);
+    expect(body.commands).toHaveLength(13);
+    expect(body.commands.slice(0, 2).every((c: { status: string }) => c.status === "enregistrée")).toBe(true);
+    expect(body.commands[2].status).toBe("échec");
+    expect(body.commands.slice(3).every((c: { status: string }) => c.status === "en attente")).toBe(true);
     expect(body.failure).toMatchObject({ stage: "write", code: "50013" });
     expect(typeof body.failure.command).toBe("string");
     expect(posts).toBe(3);
@@ -187,6 +202,77 @@ describe("POST /api/admin/discord-commands : mode execute", () => {
     expect(response.status).toBe(503);
     expect((await response.json()).failure).toEqual({ stage: "config" });
     expect(fetchMock).not.toHaveBeenCalled();
+  });
+});
+
+describe("POST /api/admin/discord-commands : limite de débit Discord", () => {
+  it("429 avec Retry-After : attend puis réessaie la même commande, les 13 finissent enregistrées", async () => {
+    let posts = 0;
+    fetchMock.mockImplementation(async (_url: string, init?: RequestInit) => {
+      if (init?.method !== "POST") return new Response("[]", { status: 200 });
+      posts += 1;
+      return posts === 6 ? new Response(JSON.stringify({ retry_after: 2.5, global: false }), { status: 429, headers: { "retry-after": "3" } }) : new Response("{}", { status: 200 });
+    });
+    const started = Date.now();
+    const response = await call({ mode: "execute" });
+    expect(response.status).toBe(200);
+    const body = await response.json();
+    expect(body.commands).toHaveLength(13);
+    expect(body.commands.every((c: { status: string }) => c.status === "enregistrée")).toBe(true);
+    expect(posts).toBe(14);
+    // 12 pauses d'au moins 1 s + l'attente Retry-After (2,5 s du corps)
+    expect(Date.now() - started).toBeGreaterThanOrEqual(12_000 + 2_500 - 1_000);
+  });
+
+  it("seau épuisé (X-RateLimit-Remaining 0) : attend Reset-After avant l'écriture suivante", async () => {
+    const times: number[] = [];
+    fetchMock.mockImplementation(async (_url: string, init?: RequestInit) => {
+      if (init?.method !== "POST") return new Response("[]", { status: 200 });
+      times.push(Date.now());
+      return new Response("{}", { status: 200, headers: { "x-ratelimit-remaining": times.length === 1 ? "0" : "4", "x-ratelimit-reset-after": "7" } });
+    });
+    await call({ mode: "execute" });
+    expect(times[1] - times[0]).toBeGreaterThanOrEqual(7_000);
+    expect(times[2] - times[1]).toBeGreaterThanOrEqual(1_000);
+  });
+
+  it("429 persistant : arrêt propre en 202, 13 lignes, aucune boucle sans fin, délai conseillé", async () => {
+    let posts = 0;
+    fetchMock.mockImplementation(async (_url: string, init?: RequestInit) => {
+      if (init?.method !== "POST") return new Response("[]", { status: 200 });
+      posts += 1;
+      return posts <= 5 ? new Response("{}", { status: 200 }) : new Response(JSON.stringify({ retry_after: 20 }), { status: 429 });
+    });
+    const response = await call({ mode: "execute" });
+    expect(response.status).toBe(202);
+    const body = await response.json();
+    expect(body.commands).toHaveLength(13);
+    expect(body.commands.filter((c: { status: string }) => c.status === "enregistrée")).toHaveLength(5);
+    expect(body.commands.filter((c: { status: string }) => c.status === "en attente")).toHaveLength(8);
+    expect(body.failure).toMatchObject({ stage: "rate_limit", retryAfterSeconds: 20 });
+    expect(posts).toBeLessThanOrEqual(8);
+  });
+
+  it("reprise : les commandes déjà à jour sont sautées, seules les manquantes sont écrites", async () => {
+    const first = await call({ mode: "check" });
+    const names = (await first.json()).commands as { name: string }[];
+    expect(names).toHaveLength(13);
+    // Simule 5 commandes déjà enregistrées à l'identique : on relit le manifeste réel.
+    const manifest = (await import("../../../../../scripts/discord-commands.json")).default as { name: string; type?: number }[];
+    const installed = manifest.slice(0, 5).map((command) => ({ ...command, id: "1", application_id: "2", version: "3" }));
+    const posted: string[] = [];
+    fetchMock.mockImplementation(async (_url: string, init?: RequestInit) => {
+      if (init?.method !== "POST") return new Response(JSON.stringify(installed), { status: 200 });
+      posted.push(JSON.parse(String(init.body)).name);
+      return new Response("{}", { status: 200 });
+    });
+    const response = await call({ mode: "execute" });
+    expect(response.status).toBe(200);
+    const body = await response.json();
+    expect(body.commands).toHaveLength(13);
+    expect(body.commands.filter((c: { status: string }) => c.status === "déjà à jour")).toHaveLength(5);
+    expect(posted).toHaveLength(8);
+    expect(posted).not.toContain(manifest[0].name);
   });
 });
 

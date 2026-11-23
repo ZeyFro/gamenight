@@ -9,7 +9,7 @@ type Report = {
   ok?: boolean;
   commands?: CommandRow[];
   outsideManifest?: number | null;
-  failure?: { stage: string; command?: string; http?: number; code?: string; hint?: string; errorName?: string } | null;
+  failure?: { stage: string; command?: string; http?: number; code?: string; hint?: string; errorName?: string; retryAfterSeconds?: number } | null;
   error?: string;
 };
 type Outcome = { status: number; report: Report | null };
@@ -17,6 +17,7 @@ type Outcome = { status: number; report: Report | null };
 /** Explication de chaque statut de la route (mêmes cas que docs/SOIREE_ACTIVATION.md § 9 sexies). */
 export const STATUS_HELP: Record<number, string> = {
   200: "Terminé.",
+  202: "Enregistrement partiel : Discord limite le débit. Attends le délai indiqué puis clique à nouveau sur « Enregistrer » : les commandes déjà à jour sont sautées.",
   400: "Requête invalide.",
   401: "Secret faux, ou compte non administrateur / non connecté.",
   404: "Fonction éteinte : interrupteur ou secret absent côté serveur, ou Preview.",
@@ -25,9 +26,13 @@ export const STATUS_HELP: Record<number, string> = {
   503: "Configuration Discord absente ou invalide (application, jeton du bot ou serveur The Tower).",
 };
 
+/** Ordre et libellé des statuts dans le résumé. */
+const STATUS_ORDER = ["enregistrée", "déjà à jour", "présente", "absente", "différente", "en attente", "échec"] as const;
+
 /**
- * Formulaire de la route d'enregistrement. Le secret n'existe que dans l'état du composant le temps de la saisie :
- * jamais écrit dans le stockage du navigateur, jamais journalisé, jamais affiché ; il est effacé après chaque appel.
+ * Formulaire de la route d'enregistrement. Le secret n'existe que dans la mémoire de la page (état React) : jamais
+ * écrit dans le stockage du navigateur, jamais journalisé, jamais affiché. Il reste saisi entre deux appels pour
+ * permettre de reprendre un enregistrement partiel, et disparaît avec « Effacer le secret » ou en quittant la page.
  */
 export function DiscordCommandsConsole() {
   const [secret, setSecret] = useState("");
@@ -58,7 +63,6 @@ export function DiscordCommandsConsole() {
     } catch {
       setOutcome({ status: 0, report: null });
     } finally {
-      setSecret("");
       setPending(null);
     }
   }
@@ -87,7 +91,7 @@ export function DiscordCommandsConsole() {
           onChange={(event) => setSecret(event.target.value)}
           className="rounded-lg border-2 border-border bg-background px-3 py-2 text-sm text-foreground"
         />
-        <p className="text-xs text-muted">Il n’est ni enregistré ni journalisé, et il est effacé après chaque appel.</p>
+        <p className="text-xs text-muted">Il n’est ni enregistré ni journalisé. Il reste en mémoire de la page pour pouvoir reprendre, jusqu’à « Effacer le secret » ou la fermeture de la page.</p>
         <div className="flex flex-wrap gap-3">
           <button
             type="submit"
@@ -102,7 +106,15 @@ export function DiscordCommandsConsole() {
             onClick={() => void run("execute")}
             className="rounded-lg bg-accent px-4 py-2 text-sm text-accent-foreground disabled:opacity-50"
           >
-            {pending === "execute" ? "Enregistrement…" : "Enregistrer"}
+            {pending === "execute" ? "Enregistrement… (jusqu’à 45 s)" : "Enregistrer"}
+          </button>
+          <button
+            type="button"
+            disabled={pending !== null || !secret}
+            onClick={() => setSecret("")}
+            className="rounded-lg px-4 py-2 text-sm text-muted underline disabled:opacity-50"
+          >
+            Effacer le secret
           </button>
         </div>
       </form>
@@ -114,7 +126,13 @@ export function DiscordCommandsConsole() {
               ? "Le serveur n'a pas répondu."
               : `HTTP ${outcome.status} · ${STATUS_HELP[outcome.status] ?? "Réponse inattendue."}`}
           </p>
-          {report?.failure && (
+          {report?.failure?.stage === "rate_limit" && (
+            <p className="text-sm text-destructive">
+              Discord limite le débit{report.failure.command ? ` (arrêt avant /${report.failure.command})` : ""}. Attends {report.failure.retryAfterSeconds ?? 30} s, puis
+              clique à nouveau sur « Enregistrer » : les commandes déjà à jour sont sautées, aucune n’est supprimée.
+            </p>
+          )}
+          {report?.failure && report.failure.stage !== "rate_limit" && (
             <p className="text-sm text-destructive">
               Échec à l’étape « {report.failure.stage} »
               {report.failure.command ? ` (commande /${report.failure.command})` : ""}
@@ -122,6 +140,15 @@ export function DiscordCommandsConsole() {
               {report.failure.code ? `, code Discord ${report.failure.code}` : ""}
               {report.failure.errorName ? `, ${report.failure.errorName}` : ""}
               {report.failure.hint ? ` : ${report.failure.hint}` : "."}
+            </p>
+          )}
+          {report?.commands && report.commands.length > 0 && (
+            <p className="text-sm text-foreground" aria-label="Résumé">
+              {STATUS_ORDER.map((status) => [status, report.commands!.filter((command) => command.status === status).length] as const)
+                .filter(([, count]) => count > 0)
+                .map(([status, count]) => `${count} ${status}`)
+                .join(" · ")}
+              {" "}sur {report.commands.length} commandes.
             </p>
           )}
           {report?.commands && report.commands.length > 0 && (

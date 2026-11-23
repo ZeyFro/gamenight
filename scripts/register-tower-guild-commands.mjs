@@ -42,9 +42,9 @@ function describePlan(command) {
 
 /**
  * Retourne le code de sortie. Tout est injectable pour les tests (fetch simulé).
- * @param {{ argv?: string[], env?: Record<string, string | undefined>, fetchImpl?: typeof fetch, log?: (m: string) => void, fail?: (m: string) => void, commands?: object[] }} [options]
+ * @param {{ argv?: string[], env?: Record<string, string | undefined>, fetchImpl?: typeof fetch, log?: (m: string) => void, fail?: (m: string) => void, commands?: object[], sleep?: (ms: number) => Promise<void> }} [options]
  */
-export async function run({ argv = [], env = {}, fetchImpl = fetch, log = console.log, fail = console.error, commands } = {}) {
+export async function run({ argv = [], env = {}, fetchImpl = fetch, log = console.log, fail = console.error, commands, sleep } = {}) {
   if (argv.some((arg) => !MODES.includes(arg))) {
     fail("Argument inconnu : seuls --check et --execute sont acceptés.");
     return 1;
@@ -70,8 +70,9 @@ export async function run({ argv = [], env = {}, fetchImpl = fetch, log = consol
     return 0;
   }
 
-  const result = await registerCommands({ mode: execute ? "execute" : "check", commands: toRegister, env, fetchImpl });
-  for (const entry of result.statuses) log(execute ? `/${entry.name} : enregistrée sur The Tower.` : `/${entry.name} : ${entry.status}`);
+  // En local, pas de limite de durée de fonction : budget de 10 minutes pour absorber les limites de débit Discord.
+  const result = await registerCommands({ mode: execute ? "execute" : "check", commands: toRegister, env, fetchImpl, budgetMs: 600_000, ...(sleep ? { sleep } : {}) });
+  for (const entry of result.statuses) log(entry.status === "enregistrée" ? `/${entry.name} : enregistrée sur The Tower.` : `/${entry.name} : ${entry.status}`);
   const failure = result.failure;
   if (!failure) {
     if (!execute) log(`${result.outsideManifest} commande(s) du serveur hors manifeste : non touchées.`);
@@ -81,6 +82,8 @@ export async function run({ argv = [], env = {}, fetchImpl = fetch, log = consol
     fail("Configuration absente/invalide : application Discord (DISCORD_CLIENT_ID), guild The Tower (TOWER_DISCORD_GUILD_ID), autorisation bot (DISCORD_BOT_TOKEN).");
   } else if (failure.stage === "network") {
     fail(`Échec de communication avec Discord : ${failure.errorName}.`);
+  } else if (failure.stage === "rate_limit") {
+    fail(`Limite de débit Discord (429) atteinte avant /${failure.command} : relancer dans ${failure.retryAfterSeconds} s ; les commandes déjà à jour seront sautées.`);
   } else {
     const detail = `HTTP ${failure.http}, code ${failure.code}.${failure.hint ? ` ${failure.hint}` : ""}`;
     fail(failure.stage === "read" ? `Discord refuse la lecture : ${detail}` : `Échec d'enregistrement de /${failure.command} : ${detail}`);
