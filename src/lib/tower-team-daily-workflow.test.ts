@@ -27,7 +27,8 @@ function run(enabled: string | undefined, configured = false, responseEnabled = 
   } finally { rmSync(dir, { recursive: true, force: true }); }
 }
 
-// Décision du 17/11/2026 : attribution à 18:00 Europe/Paris, deux slots UTC pour couvrir CET et CEST.
+// Décision du 17/11/2026 : attribution à partir de 18:00 Europe/Paris, deux slots UTC pour couvrir CET et CEST.
+// Audit du 23/11/2026 : la garde « heure == 18 » faisait sauter la journée si GitHub retardait un slot d'une heure ; elle est « heure >= 18 ».
 describe("horaire 18:00 Europe/Paris", () => {
   const cron = workflow.on.schedule[0].cron as string;
   const parisHourOf = (iso: string) => new Intl.DateTimeFormat("en-GB", { timeZone: "Europe/Paris", hour: "2-digit", hourCycle: "h23" }).format(new Date(iso));
@@ -45,9 +46,17 @@ describe("horaire 18:00 Europe/Paris", () => {
   it("heure d'hiver (CET, UTC+1) : seul le slot 17:00 UTC tombe à 18:00 Paris", () => {
     expect(slots.map(hour => parisHourOf(`2027-01-15T${hour}:00:00Z`))).toEqual(["17", "18"]);
   });
-  it("jours de changement d'heure : un seul slot par jour tombe à 18:00 Paris", () => {
+  it("jours de changement d'heure : un seul slot par jour tombe pile à 18:00 Paris", () => {
     for (const day of ["2027-03-28", "2027-10-31", "2026-10-25", "2028-03-26"]) {
       expect(slots.filter(hour => parisHourOf(`${day}T${hour}:00:00Z`) === "18")).toHaveLength(1);
+    }
+  });
+  it("un retard de GitHub d'une heure ne fait plus sauter la journée : au moins un slot appelle (heure de Paris >= 18), même avec 1 h de retard", () => {
+    for (const day of ["2027-01-15", "2027-07-15", "2027-03-28", "2027-10-31", "2026-10-25", "2028-03-26"]) {
+      for (const delayHours of [0, 1]) {
+        const calling = slots.filter(hour => Number(parisHourOf(`${day}T${String(hour + delayHours).padStart(2, "0")}:00:00Z`)) >= 18);
+        expect(calling.length, day + " retard " + delayHours + " h").toBeGreaterThanOrEqual(1);
+      }
     }
   });
 });
@@ -77,14 +86,14 @@ describe.skipIf(process.platform !== "linux")("cron équipe Ubuntu : activation 
     expect(run("true", true)).toMatchObject({ status: 0, called: true });
     expect(step.env.TOWER_TEAM_DAILY_ENABLED).toBe("${{ vars.TOWER_TEAM_DAILY_ENABLED }}");
   });
-  it.each(["09", "17", "19"])("ignore le slot dont l'heure de Paris est %s (CET ou CEST), sans appel HTTP", hour => {
+  it.each(["00", "09", "17"])("ignore le slot dont l'heure de Paris est %s (avant 18:00), sans appel HTTP", hour => {
     const result = run("true", true, true, hour);
     expect(result.status).toBe(0);
     expect(result.called).toBe(false);
-    expect(result.output).toContain("outside 18:00 Europe/Paris");
+    expect(result.output).toContain("before 18:00 Europe/Paris");
   });
-  it("appelle la route quand l'heure de Paris vaut 18", () => {
-    expect(run("true", true, true, "18")).toMatchObject({ status: 0, called: true });
+  it.each(["18", "19", "23"])("appelle la route quand l'heure de Paris vaut %s (à partir de 18:00, rattrapage compris ; la route est idempotente par jour)", hour => {
+    expect(run("true", true, true, hour)).toMatchObject({ status: 0, called: true });
   });
   it("refuse toujours une route désactivée après activation du schedule", () => {
     expect(run("true", true, false)).toMatchObject({ status: 1, called: true });
