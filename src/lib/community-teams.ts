@@ -6,6 +6,25 @@ import { accessibleSessionWhereFor } from "@/lib/session-access";
 import { DEFAULT_COMMUNITY_SLUG } from "@/lib/default-community";
 import { prisma } from "@/lib/prisma";
 import { clearTeamRecruiterRoles } from "@/lib/team-recruiter-cleanup";
+import type { TeamIdentity } from "@/lib/team-identity";
+
+/**
+ * Conflit sérialisable (P2034) entre deux inscriptions simultanées : PostgreSQL annule l'une des transactions, qui
+ * peut être rejouée. Relancer aussitôt ne suffit pas : tant que la transaction concurrente n'a pas validé, chaque
+ * relance est annulée à son tour (4 conflits en 40 ms observés en CI). D'où une courte attente croissante avec une
+ * part aléatoire (25, 50, 100, 200, 400 ms + 0 à 25 ms) avant chacune des 5 relances. Au-delà, l'erreur remonte
+ * (jamais avalée).
+ */
+const SERIALIZATION_RETRIES = 5;
+function isSerializationConflict(error: unknown): boolean {
+  return error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2034";
+}
+/** Vrai s'il faut relancer : attend d'abord le délai de la relance `retry` (0 = première relance). */
+export async function waitBeforeSerializationRetry(error: unknown, retry: number, sleep: (ms: number) => Promise<void> = ms => new Promise(resolve => setTimeout(resolve, ms))): Promise<boolean> {
+  if (!isSerializationConflict(error) || retry >= SERIALIZATION_RETRIES) return false;
+  await sleep(25 * 2 ** retry + Math.floor(Math.random() * 25));
+  return true;
+}
 
 export async function getCommunityTeamsCommunityId(userId: string): Promise<string | null> {
   const communityId = await resolveActiveCommunityId(userId);
@@ -43,6 +62,8 @@ export async function listCommunityTeams(userId: string, communityId: string) {
       platform: true,
       maxMembers: true,
       isRecruiting: true,
+      color: true,
+      emblem: true,
       createdById: true,
       captainId: true,
       captain: { select: { discordName: true } },
@@ -159,12 +180,14 @@ export async function createCommunityTeam(input: TeamInput): Promise<"created" |
     await scopedDb.communityTeamMember.create({ data: { communityId: input.communityId, teamId: team.id, userId: input.userId } });
     return "created";
   }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
-  try {
-    return await attempt();
-  } catch (error) {
-    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") return "already_team";
-    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2034") return attempt();
-    throw error;
+  for (let retry = 0; ; retry++) {
+    try {
+      return await attempt();
+    } catch (error) {
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") return "already_team";
+      if (await waitBeforeSerializationRetry(error, retry)) continue;
+      throw error;
+    }
   }
 }
 
@@ -183,13 +206,13 @@ export async function joinCommunityTeam(userId: string, communityId: string, tea
     await scopedDb.communityTeamMember.create({ data: { communityId, teamId, userId } });
     return "joined";
   }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
-  // Une seule relance sur conflit sérialisable (P2034) ; P2002 = déjà membre, à chaque tentative.
+  // Relances sur conflit sérialisable (P2034) ; P2002 = déjà membre, à chaque tentative.
   for (let retry = 0; ; retry++) {
     try {
       return await attempt();
     } catch (error) {
       if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") return "already_team";
-      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2034" && retry === 0) continue;
+      if (await waitBeforeSerializationRetry(error, retry)) continue;
       throw error;
     }
   }
@@ -230,7 +253,7 @@ export async function leaveCommunityTeam(userId: string, communityId: string, te
       return await attempt();
     } catch (error) {
       if (error instanceof Error && error.message === "team_leave_member_missing") return "missing";
-      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2034" && retry === 0) continue;
+      if (await waitBeforeSerializationRetry(error, retry)) continue;
       throw error;
     }
   }
@@ -262,6 +285,40 @@ export async function setCommunityTeamRecruitment(userId: string, communityId: s
     if (leaderId !== userId) return "missing";
     if (open && team._count.members >= team.maxMembers) return "full";
     const updated = await scopedDb.communityTeam.updateMany({ where: { id: teamId, communityId }, data: { isRecruiting: open, captainLastActivityAt: new Date() } });
+    return updated.count ? "saved" : "missing";
+  }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+}
+
+/**
+ * Identité visuelle (cahier §11.2) : seul le responsable actuel de l'équipe (même règle que le recrutement :
+ * capitaine actif, sinon le plus ancien membre actif) peut la changer. Valeurs déjà validées par parseTeamIdentity.
+ */
+export async function setCommunityTeamIdentity(
+  userId: string, communityId: string, teamId: string, identity: TeamIdentity,
+): Promise<"saved" | "missing" | "unavailable"> {
+  if (await getCommunityTeamsCommunityId(userId) !== communityId) return "unavailable";
+  return prisma.$transaction(async (tx) => {
+    if (!await canUseTeams(tx, userId, communityId)) return "unavailable";
+    const scopedDb = scopedTransactionPrisma(tx, { communityIds: [communityId], includesDefault: false });
+    const team = await scopedDb.communityTeam.findFirst({
+      where: { id: teamId, communityId, members: { some: { userId, ...activeTeamMemberWhere(communityId) } } },
+      select: {
+        createdById: true,
+        captainId: true,
+        createdBy: { select: { memberships: { where: { communityId, status: "ACTIVE" }, select: { id: true } } } },
+        captain: { select: { memberships: { where: { communityId, status: "ACTIVE" }, select: { id: true } } } },
+        members: { where: activeTeamMemberWhere(communityId), orderBy: { joinedAt: "asc" }, take: 1, select: { userId: true } },
+      },
+    });
+    if (!team) return "missing";
+    const configuredCaptainId = team.captainId ?? team.createdById;
+    const activeCaptain = team.captainId ? Boolean(team.captain?.memberships.length) : team.createdBy.memberships.length > 0;
+    const leaderId = activeCaptain ? configuredCaptainId : team.members[0]?.userId;
+    if (leaderId !== userId) return "missing";
+    const updated = await scopedDb.communityTeam.updateMany({
+      where: { id: teamId, communityId },
+      data: { color: identity.color, emblem: identity.emblem, captainLastActivityAt: new Date() },
+    });
     return updated.count ? "saved" : "missing";
   }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
 }

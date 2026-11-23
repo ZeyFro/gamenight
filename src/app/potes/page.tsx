@@ -28,6 +28,8 @@ import { Button } from "@/components/ui/Button";
 import { setProfileVisibilityAction } from "./visibility-actions";
 import { gameLevelUserWhere, levelKey, loadVisibleLevels, parseGameLevelFilter } from "@/lib/game-level-filter";
 import { GAME_LEVELS, GAME_LEVEL_LABELS, isGameLevelsEnabled } from "@/lib/game-levels-rules";
+import { COMMUNITY_PREFERENCES, isPlayerMatchingEnabled, parsePlayerMatchingFilters, PLAY_HABITS, PLAYER_LANGUAGES, playerMatchingUserWhere } from "@/lib/player-matching-rules";
+import { loadCompatiblePartners } from "@/lib/player-matching";
 
 export const metadata = pageMetadata("Potes");
 
@@ -44,7 +46,15 @@ export default async function PotesPage({ searchParams }: { searchParams?: Promi
   const user = await getCurrentUser();
   if (!user) redirect("/");
   const levelsEnabled = isGameLevelsEnabled();
-  const levelFilterParse = levelsEnabled ? parseGameLevelFilter((await searchParams) ?? {}) : null;
+  const params = (await searchParams) ?? {};
+  const levelFilterParse = levelsEnabled ? parseGameLevelFilter(params) : null;
+  // Recherche de joueurs (§12.2) : filtres déclaratifs, toujours combinés aux gardes de communauté et de visibilité.
+  const matchingEnabled = isPlayerMatchingEnabled();
+  const matchingParse = matchingEnabled ? parsePlayerMatchingFilters(params) : null;
+  const matchingFilter = matchingParse?.success ? matchingParse.data : {};
+  const matchingFilterInvalid = matchingParse !== null && !matchingParse.success;
+  const matchingFiltered = Object.values(matchingFilter).some(Boolean);
+  const interestTags = matchingEnabled ? await prisma.tag.findMany({ orderBy: { name: "asc" }, select: { id: true, name: true } }) : [];
   const levelFilter = levelFilterParse?.success ? levelFilterParse.data : {};
   const levelFilterInvalid = levelFilterParse !== null && !levelFilterParse.success;
   const levelGames = levelsEnabled ? await prisma.game.findMany({ where: { userLevels: { some: {} } }, select: { id: true, name: true }, orderBy: [{ name: "asc" }, { id: "asc" }], take: 300 }) : [];
@@ -53,7 +63,7 @@ export default async function PotesPage({ searchParams }: { searchParams?: Promi
   const rawPotes = await prisma.user.findMany({
     // Multi-communautés (PR4) : uniquement les membres de mes communautés
     // (aucun filtre si l'isolation est éteinte).
-    where: { AND: [{ id: { not: user.id } }, await creationMemberUserWhere(user.id), profileVisibilityWhere(), levelFilterInvalid ? { id: { in: [] } } : gameLevelUserWhere(levelFilter)] },
+    where: { AND: [{ id: { not: user.id } }, await creationMemberUserWhere(user.id), profileVisibilityWhere(), levelFilterInvalid ? { id: { in: [] } } : gameLevelUserWhere(levelFilter), matchingFilterInvalid ? { id: { in: [] } } : playerMatchingUserWhere(matchingFilter)] },
     orderBy: { discordName: "asc" },
     select: {
       id: true,
@@ -114,6 +124,9 @@ export default async function PotesPage({ searchParams }: { searchParams?: Promi
   const nowPlayingEnabled = isNowPlayingEnabled();
   // Visibilité du profil : nouveau drapeau, éteint par défaut (alors rien ne change).
   const visibility = isProfileVisibilityEnabled() ? await getProfileVisibility(user.id) : null;
+  // Partenaires compatibles (§12.3) : seulement parmi les potes déjà listés (même communauté, profil visible).
+  const partners = matchingEnabled && visibility !== "HIDDEN" && !matchingFiltered ? await loadCompatiblePartners(user.id, potes.map((pote) => pote.id)) : [];
+  const poteNames = new Map(potes.map((pote) => [pote.id, pote.discordName]));
 
   return (
     <PullToRefresh>
@@ -156,9 +169,40 @@ export default async function PotesPage({ searchParams }: { searchParams?: Promi
         {levelFilterInvalid && <p role="alert" className="mt-2 text-sm text-destructive">Choisis un jeu pour filtrer par niveau.</p>}
       </Card>}
 
+      {matchingEnabled && <Card>
+        <form action="/potes" method="get" className="flex flex-wrap items-end gap-3">
+          <label className="grid gap-1 text-sm">Langue
+            <select name="language" defaultValue={matchingFilter.language ?? ""} className="rounded-lg border border-border bg-background px-3 py-2 text-base"><option value="">Toutes</option>{PLAYER_LANGUAGES.map((option) => <option key={option.key} value={option.key}>{option.label}</option>)}</select>
+          </label>
+          <label className="grid gap-1 text-sm">Habitude
+            <select name="habit" defaultValue={matchingFilter.habit ?? ""} className="rounded-lg border border-border bg-background px-3 py-2 text-base"><option value="">Toutes</option>{PLAY_HABITS.map((option) => <option key={option.key} value={option.key}>{option.label}</option>)}</select>
+          </label>
+          <label className="grid gap-1 text-sm">Ambiance
+            <select name="preference" defaultValue={matchingFilter.preference ?? ""} className="rounded-lg border border-border bg-background px-3 py-2 text-base"><option value="">Toutes</option>{COMMUNITY_PREFERENCES.map((option) => <option key={option.key} value={option.key}>{option.label}</option>)}</select>
+          </label>
+          <label className="grid gap-1 text-sm">Centre d’intérêt
+            <select name="tagId" defaultValue={matchingFilter.tagId ?? ""} className="rounded-lg border border-border bg-background px-3 py-2 text-base"><option value="">Tous</option>{interestTags.map((tag) => <option key={tag.id} value={tag.id}>{tag.name}</option>)}</select>
+          </label>
+          <Button type="submit" size="sm">Filtrer</Button>
+          <Link href="/potes" className="text-sm text-accent">Réinitialiser</Link>
+        </form>
+        {matchingFilterInvalid && <p role="alert" className="mt-2 text-sm text-destructive">Choisis parmi les options proposées.</p>}
+      </Card>}
+
+      {partners.length > 0 && <Card>
+        <h2 className="font-semibold text-foreground">Partenaires compatibles</h2>
+        <p className="mt-1 text-sm text-muted">Proposés d’après vos jeux en commun et vos réponses dans les paramètres. Les profils masqués ne sont jamais proposés.</p>
+        <ul className="mt-3 grid gap-2" aria-label="Partenaires compatibles">
+          {partners.map((partner) => <li key={partner.userId} className="text-sm">
+            <Link href={`/potes/${partner.userId}`} className="font-medium text-accent hover:underline">{poteNames.get(partner.userId)}</Link>
+            <span className="text-muted"> · {partner.reasons.join(" · ")}</span>
+          </li>)}
+        </ul>
+      </Card>}
+
       {potes.length === 0 ? (
         <Card>
-          <p className="text-sm text-muted">Personne d&apos;autre n&apos;a encore rejoint le groupe.</p>
+          <p className="text-sm text-muted">{matchingFiltered || levelFilter.gameId ? "Aucun membre ne correspond à ces filtres." : <>Personne d&apos;autre n&apos;a encore rejoint le groupe.</>}</p>
         </Card>
       ) : (
         <Stagger className="grid grid-cols-1 gap-4 lg:grid-cols-2">

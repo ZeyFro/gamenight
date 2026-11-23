@@ -1,7 +1,8 @@
 // @vitest-environment jsdom
 import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
-const mocks = vi.hoisted(() => ({ user: vi.fn(), community: vi.fn(), podium: vi.fn(), progress: vi.fn(), redirect: vi.fn() }));
+const mocks = vi.hoisted(() => ({ user: vi.fn(), community: vi.fn(), podium: vi.fn(), progress: vi.fn(), teams: vi.fn(), redirect: vi.fn() }));
+vi.mock("@/lib/tower-team-standings", () => ({ getTowerTeamStandings: mocks.teams }));
 vi.mock("@/lib/current-user", () => ({ getCurrentUser: mocks.user }));
 vi.mock("@/lib/community-isolation", () => ({ resolveActiveCommunityId: mocks.community }));
 vi.mock("@/lib/tower-season-podium", () => ({ getTowerSeasonPodium: mocks.podium }));
@@ -14,6 +15,7 @@ beforeEach(() => {
   mocks.community.mockResolvedValue("community");
   mocks.redirect.mockImplementation(() => { throw new Error("REDIRECT"); });
   mocks.progress.mockResolvedValue({ status: "DISABLED" });
+  mocks.teams.mockResolvedValue({ status: "DISABLED" });
   mocks.podium.mockResolvedValue({ status: "PODIUM", season: { name: "S1 · 2026-2027", startAt: new Date("2026-11-30T23:00:00Z"), endAt: new Date("2027-03-31T22:00:00Z") }, entries: [] });
 });
 afterEach(cleanup);
@@ -92,4 +94,15 @@ it("n'affiche aucune progression quand la Tour est éteinte ou indisponible", as
     expect(screen.queryByRole("heading", { name: "Ta progression" })).toBeNull();
     cleanup();
   }
+});
+
+it("classement des équipes : saison et depuis toujours, ex æquo signalé, emblème affiché", async () => {
+  const team = (teamId: string, name: string, rank: number, exAequo = false) => ({ teamId, name, color: "#ff0000", emblem: "🐉", floors: 6, wins: 2, reachedAt: new Date(), rank, exAequo });
+  mocks.teams.mockResolvedValueOnce({ status: "STANDINGS", season: { name: "S1 · 2026-2027" }, seasonTeams: [team("a", "Les Dragons", 1, true), team("b", "Les Loups", 1, true)], allTimeTeams: [] });
+  render(await Page());
+  expect(screen.getByRole("heading", { name: "Classement des équipes" })).toBeTruthy();
+  const season = screen.getByRole("region", { name: "Classement des équipes : S1 · 2026-2027" });
+  expect(season.textContent).toContain("1. 🐉Les Dragons (ex æquo)");
+  expect(season.textContent).toContain("6 étage(s) · 2 défi(s)");
+  expect(screen.getByRole("region", { name: "Classement des équipes : Depuis toujours" }).textContent).toContain("Aucun défi d’équipe validé.");
 });

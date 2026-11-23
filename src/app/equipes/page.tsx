@@ -4,6 +4,7 @@ import { getCurrentUser } from "@/lib/current-user";
 import { prisma } from "@/lib/prisma";
 import { getCommunityTeamsCommunityId, listCommunityTeams } from "@/lib/community-teams";
 import { createCommunityTeamAction, joinCommunityTeamAction, leaveCommunityTeamAction, setCommunityTeamRecruitmentAction } from "./actions";
+import { TeamBadge } from "./TeamBadge";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { EmptyState } from "@/components/ui/EmptyState";
@@ -77,7 +78,7 @@ export default async function CommunityTeamsPage({ searchParams }: { searchParam
           const isLeader = leaderId === user.id;
           return <Card key={team.id} className="grid gap-3">
             <div className="flex flex-wrap items-start justify-between gap-2">
-              <div><p className="font-semibold text-foreground">{team.name}</p><p className="text-sm text-muted">{team.game.name} · {team.platform} · {team._count.members}/{team.maxMembers} joueurs</p></div>
+              <div><p className="font-semibold text-foreground"><TeamBadge color={team.color} emblem={team.emblem} />{team.name}</p><p className="text-sm text-muted">{team.game.name} · {team.platform} · {team._count.members}/{team.maxMembers} joueurs</p></div>
               <span className="text-xs text-muted">{team.isRecruiting ? "Recrutement ouvert" : "Recrutement fermé"}</span>
             </div>
             <p className="whitespace-pre-wrap text-sm text-foreground">{team.description}</p>
