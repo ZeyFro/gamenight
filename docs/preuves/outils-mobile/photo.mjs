@@ -1,0 +1,17 @@
+import { createRequire } from "node:module";import { readFileSync, writeFileSync } from "node:fs";import { PrismaClient } from "@prisma/client";import { encode } from "next-auth/jwt";import sharp from "sharp";
+const { chromium, devices } = createRequire(import.meta.url)("playwright");
+const origin = "http://127.0.0.1:3102";
+const [persona, device, path, out, full] = process.argv.slice(2);
+const db = new PrismaClient({ datasourceUrl: process.env.TEST_DATABASE_URL });
+const user = await db.user.findUniqueOrThrow({ where: { discordId: persona } });
+const secret = readFileSync("/tmp/preuves-auth-secret", "utf8").trim();
+const browser = await chromium.launch();
+const context = await browser.newContext({ ...devices[device], locale: "fr-FR" });
+await context.route("**/*", route => (new URL(route.request().url()).origin === origin ? route.continue() : route.abort()));
+await context.addCookies([{ name: "authjs.session-token", value: await encode({ secret, salt: "authjs.session-token", maxAge: 7200, token: { discordId: user.discordId, sessionCreatedAt: Date.now() } }), url: origin, httpOnly: true, sameSite: "Lax" }]);
+await context.addInitScript(id => sessionStorage.setItem(`gn:onboarding-prompt:${id}`, "later"), user.id);
+const page = await context.newPage(); await page.goto(origin + path, { waitUntil: "load", timeout: 90_000 }); await page.waitForTimeout(1000);
+const png = await page.screenshot({ fullPage: full === "full" });
+writeFileSync(out, await sharp(png).png({ palette: true, colours: 64, compressionLevel: 9 }).toBuffer());
+console.log(await page.evaluate(() => ({ scrollHeight: document.documentElement.scrollHeight, innerHeight: innerHeight })));
+await browser.close(); await db.$disconnect();
