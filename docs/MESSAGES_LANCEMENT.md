@@ -98,14 +98,14 @@ Le message du guide qui disait « Tes étages actuels restent en place » est fa
 
 **Phrase à substituer à « Tes étages actuels restent en place » :**
 
-> Ton niveau, ton étage XP et ton rang XP sont conservés ; tes étages Tower repartent de zéro et se gagnent par les défis, et ton grade Tower (Régulars, Irregular, Ranker, High Ranker) repart avec eux.
+> Ton niveau, ton niveau d’XP et ton rang XP sont conservés ; tes étages Tower repartent de zéro et se gagnent par les défis, et ton grade Tower (Régulars, Irregular, Ranker, High Ranker) repart avec eux.
 
 **Bloc prêt à coller (complément ou remplacement de la section « mes étages ») :**
 
 ```
 Et mes anciens étages ?
 
-Ton niveau, ton étage XP et ton rang XP sont conservés ; tes étages Tower repartent de zéro et se gagnent par les défis, et ton grade Tower (Régulars, Irregular, Ranker, High Ranker) repart avec eux.
+Ton niveau, ton niveau d’XP et ton rang XP sont conservés ; tes étages Tower repartent de zéro et se gagnent par les défis, et ton grade Tower (Régulars, Irregular, Ranker, High Ranker) repart avec eux.
 
 Les étages Tower se gagnent désormais par les défis : facile +1 étage, moyen +2, difficile +3. Une fois gagnés, ils sont permanents.
 ```

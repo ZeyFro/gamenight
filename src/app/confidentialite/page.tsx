@@ -15,7 +15,7 @@ export default function ConfidentialitePage() {
     <LegalPage title="Politique de confidentialité">
       <section className="flex flex-col gap-2">
         <h2>Responsable du traitement</h2>
-        <p>Éditeur : <LegalValue value={config.publisher} />. Contact pour toute question ou demande : <LegalEmail email={config.contactEmail} />.</p>
+        <p>Éditeur : <LegalValue value={config.publisher} />. Contact pour toute question ou demande : <LegalEmail email={config.contactEmail} label={config.publisher} />.</p>
       </section>
       <section className="flex flex-col gap-2">
         <h2>Données collectées, finalités, durées</h2>
@@ -58,16 +58,35 @@ export default function ConfidentialitePage() {
       <section className="flex flex-col gap-2">
         <h2>Cookies et stockage local</h2>
         <p>
-          GameNight n’utilise que des cookies strictement nécessaires : connexion (session, protection contre les requêtes frauduleuses, retour après connexion,
-          échange avec Discord) et liaison Steam temporaire. Ton navigateur garde aussi tes préférences d’affichage (fond animé, traînée de curseur, rappel de
-          profil). Ils ne servent ni à la publicité ni au suivi, donc aucun bandeau de consentement n’est nécessaire.
+          GameNight n’utilise que des cookies strictement nécessaires au service que tu demandes (connexion, sécurité, liaison Steam) et des préférences d’affichage
+          gardées dans ton navigateur. Aucun ne sert à la publicité, à la mesure d’audience ou au suivi : aucun bandeau de consentement n’est donc nécessaire.
+          Sur une connexion sécurisée (https), les noms des cookies de connexion portent le préfixe `__Secure-` ou `__Host-`.
         </p>
+        <table>
+          <thead><tr><th>Nom</th><th>Rôle</th><th>Durée</th></tr></thead>
+          <tbody>
+            <tr><td><code>authjs.session-token</code></td><td>Connexion Auth.js : ta session (jeton signé, illisible par les scripts de la page).</td><td>Jusqu’à 30 jours, ou ta déconnexion.</td></tr>
+            <tr><td><code>authjs.csrf-token</code></td><td>Connexion Auth.js : protection contre les requêtes frauduleuses.</td><td>Durée de la session du navigateur.</td></tr>
+            <tr><td><code>authjs.callback-url</code></td><td>Connexion Auth.js : page où te ramener après la connexion.</td><td>Durée de la session du navigateur.</td></tr>
+            <tr><td><code>authjs.state</code>, <code>authjs.pkce.code_verifier</code></td><td>Échange avec Discord pendant la connexion (vérifie que le retour vient bien de ta demande).</td><td>Quelques minutes, supprimés dès la connexion terminée.</td></tr>
+            <tr><td><code>steam_link_state</code></td><td>Cookie temporaire de liaison Steam : vérifie que le retour de Steam correspond à ta demande, sur <code>/api/steam</code> uniquement.</td><td>10 minutes, supprimé dès la liaison terminée.</td></tr>
+          </tbody>
+        </table>
+        <p>Stockage local de ton navigateur (jamais envoyé à nos serveurs) :</p>
+        <table>
+          <thead><tr><th>Clé</th><th>Rôle</th><th>Durée</th></tr></thead>
+          <tbody>
+            <tr><td><code>gamenight:ambient-motion</code> (localStorage)</td><td>Ta préférence pour le fond animé.</td><td>Jusqu’à ce que tu l’effaces.</td></tr>
+            <tr><td><code>gamenight:cursor-trail-enabled</code> (localStorage)</td><td>Ta préférence pour la traînée de curseur.</td><td>Jusqu’à ce que tu l’effaces.</td></tr>
+            <tr><td><code>gn:onboarding-prompt:&lt;ton identifiant&gt;</code> (sessionStorage)</td><td>Se souvient que tu as choisi « Plus tard » sur le rappel de profil.</td><td>Jusqu’à la fermeture de l’onglet.</td></tr>
+          </tbody>
+        </table>
       </section>
       <section className="flex flex-col gap-2">
         <h2>Tes droits</h2>
         <p>
           Tu peux demander l’accès à tes données, leur rectification, leur effacement, leur portabilité, la limitation ou l’opposition à un traitement, et retirer un
-          consentement. Écris à <LegalEmail email={config.contactEmail} /> ; réponse sous un mois.
+          consentement. Écris à <LegalEmail email={config.contactEmail} label={config.publisher} /> ; réponse sous un mois.
           {deletionOpen
             ? " Tu peux aussi exporter tes données et supprimer ton compte toi-même depuis les paramètres de ton profil."
             : " L’export et la suppression en libre-service ne sont pas encore disponibles : la demande se fait par e-mail."}

@@ -21,6 +21,10 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
+function confirmWrite() {
+  fireEvent.click(screen.getByRole("checkbox", { name: /Je confirme/ }));
+}
+
 function typeSecret() {
   const input = screen.getByLabelText("Secret d’enregistrement") as HTMLInputElement;
   expect(input.type).toBe("password");
@@ -34,6 +38,7 @@ describe("DiscordCommandsConsole", () => {
     reply(202, { mode: "execute", ok: false, commands, outsideManifest: 0, failure: { stage: "rate_limit", command: "cmd5", http: 429, retryAfterSeconds: 12 } });
     render(<DiscordCommandsConsole />);
     typeSecret();
+    confirmWrite();
     fireEvent.click(screen.getByRole("button", { name: "Enregistrer" }));
     await waitFor(() => expect(screen.getByText(/Attends 12 s/)).toBeTruthy());
     expect(screen.getAllByRole("row")).toHaveLength(14);
@@ -53,6 +58,7 @@ describe("DiscordCommandsConsole", () => {
     render(<DiscordCommandsConsole />);
     expect((screen.getByRole("button", { name: "Vérifier" }) as HTMLButtonElement).disabled).toBe(true);
     expect((screen.getByRole("button", { name: "Enregistrer" }) as HTMLButtonElement).disabled).toBe(true);
+    expect((screen.getByRole("button", { name: "Tout enregistrer d’un coup" }) as HTMLButtonElement).disabled).toBe(true);
   });
 
   it("Vérifier : POST mode check avec l'en-tête x-registration-secret, affiche le tableau, garde le secret en mémoire seulement", async () => {
@@ -90,17 +96,45 @@ describe("DiscordCommandsConsole", () => {
     expect(document.body.textContent).not.toContain(SECRET);
   });
 
-  it("Enregistrer : demande confirmation puis POST mode execute ; refus de confirmation = aucun appel", async () => {
+  it("Enregistrer : case « Je confirme » obligatoire (aucune fenêtre du navigateur), puis POST mode execute", async () => {
     reply(200, { mode: "execute", ok: true, commands: [{ name: "aide", kind: "chat", status: "enregistrée" }], outsideManifest: null, failure: null });
     render(<DiscordCommandsConsole />);
     typeSecret();
-    vi.mocked(window.confirm).mockReturnValueOnce(false);
-    fireEvent.click(screen.getByRole("button", { name: "Enregistrer" }));
+    const button = screen.getByRole("button", { name: "Enregistrer" }) as HTMLButtonElement;
+    expect(button.disabled).toBe(true);
+    fireEvent.click(button);
     expect(fetchMock).not.toHaveBeenCalled();
 
-    fireEvent.click(screen.getByRole("button", { name: "Enregistrer" }));
+    confirmWrite();
+    expect(button.disabled).toBe(false);
+    fireEvent.click(button);
     await waitFor(() => expect(screen.getByText("enregistrée")).toBeTruthy());
     expect(JSON.parse(String((fetchMock.mock.calls[0] as [string, RequestInit])[1].body))).toEqual({ mode: "execute" });
+    expect(window.confirm).not.toHaveBeenCalled();
+  });
+
+  it("Tout enregistrer d’un coup : POST mode bulk une seule fois, sans fenêtre de confirmation, après la case", async () => {
+    reply(200, { mode: "bulk", ok: true, commands: Array.from({ length: 13 }, (_, i) => ({ name: `cmd${i}`, kind: "chat", status: "enregistrée" })), outsideManifest: 0, failure: null });
+    render(<DiscordCommandsConsole />);
+    typeSecret();
+    const button = screen.getByRole("button", { name: "Tout enregistrer d’un coup" }) as HTMLButtonElement;
+    expect(button.disabled).toBe(true);
+    confirmWrite();
+    fireEvent.click(button);
+    await waitFor(() => expect(screen.getByLabelText("Résumé").textContent).toContain("13 enregistrée sur 13 commandes"));
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(JSON.parse(String((fetchMock.mock.calls[0] as [string, RequestInit])[1].body))).toEqual({ mode: "bulk" });
+    expect(window.confirm).not.toHaveBeenCalled();
+  });
+
+  it("refus 409 (commandes hors manifeste) : message explicite, aucune écriture annoncée", async () => {
+    reply(409, { mode: "bulk", ok: false, commands: [{ name: "aide", kind: "chat", status: "en attente" }], outsideManifest: 2, failure: { stage: "outside_manifest", hint: "2 commande(s) hors manifeste." } });
+    render(<DiscordCommandsConsole />);
+    typeSecret();
+    confirmWrite();
+    fireEvent.click(screen.getByRole("button", { name: "Tout enregistrer d’un coup" }));
+    await waitFor(() => expect(screen.getByRole("status").textContent).toContain("HTTP 409"));
+    expect(screen.getByRole("status").textContent).toContain("hors manifeste");
   });
 
   it("refus de la route (401, 404) et échec Discord (502) : statut expliqué, sans tableau", async () => {

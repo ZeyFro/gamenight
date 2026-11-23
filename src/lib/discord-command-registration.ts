@@ -8,10 +8,11 @@ import manifestRaw from "../../scripts/discord-commands.json";
  * Trois verrous cumulés (route `POST /api/admin/discord-commands`) : l'interrupteur
  * `DISCORD_COMMAND_REGISTRATION_ENABLED` (exactement `true`, OFF par défaut), un administrateur authentifié, et un secret
  * dédié en en-tête (`DISCORD_COMMAND_REGISTRATION_SECRET`, jamais `CRON_SECRET`).
- * Jamais de PUT global, jamais de suppression : mêmes appels que le script (un GET, puis un POST d'upsert par commande).
+ * Jamais de PUT global. `check`/`execute` : un GET, puis un POST d'upsert par commande (aucune suppression). `bulk` : un GET puis UN PUT
+ * sur le serveur The Tower avec le manifeste complet, refusé si le serveur porte une commande hors manifeste.
  */
 export const REGISTRATION_SECRET_HEADER = "x-registration-secret";
-export type RegistrationMode = "check" | "execute";
+export type RegistrationMode = "check" | "execute" | "bulk";
 
 type Env = Record<string, string | undefined>;
 
@@ -29,7 +30,7 @@ export function checkRegistrationSecret(expected: string | undefined, provided: 
 
 export function parseRegistrationMode(body: unknown): RegistrationMode | null {
   const mode = typeof body === "object" && body !== null ? (body as { mode?: unknown }).mode : undefined;
-  return mode === "check" || mode === "execute" ? mode : null;
+  return mode === "check" || mode === "execute" || mode === "bulk" ? mode : null;
 }
 
 export type CommandReport = { name: string; kind: "chat" | "message"; status: string };
@@ -85,5 +86,6 @@ export async function runCommandRegistration(
 export function registrationHttpStatus(report: RegistrationReport): number {
   if (report.ok) return 200;
   if (report.failure?.stage === "rate_limit") return 202;
+  if (report.failure?.stage === "outside_manifest") return 409;
   return report.failure?.stage === "config" ? 503 : 502;
 }

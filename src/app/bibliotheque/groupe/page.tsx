@@ -8,6 +8,7 @@ import { GameFilterDrawer } from "@/components/GameFilterDrawer";
 import { ReadOnlyGameGrid } from "@/components/ReadOnlyGameGrid";
 import { pageMetadata } from "@/lib/page-title";
 import Link from "next/link";
+import { plural } from "@/lib/plural";
 
 export const metadata = pageMetadata("Bibliothèque du groupe");
 
@@ -91,7 +92,7 @@ export default async function GroupLibraryPage({
 
       <div className="flex items-center justify-between gap-3">
         <p className="text-sm text-muted">
-          {mapped.length} jeu{mapped.length === 1 ? "" : "x"}
+          {mapped.length} {plural(mapped.length, "jeu", "jeux")}
           {filteredGames.length !== allGames.length && ` sur ${allGames.length}`}
         </p>
         <GameFilterDrawer

@@ -7,6 +7,7 @@ import { LibraryTabs } from "@/components/LibraryTabs";
 import { GameFilterDrawer } from "@/components/GameFilterDrawer";
 import { TierlistBoard } from "@/components/TierlistBoard";
 import { pageMetadata } from "@/lib/page-title";
+import { plural } from "@/lib/plural";
 
 export const metadata = pageMetadata("Tier list");
 
@@ -55,7 +56,7 @@ export default async function TierlistPage({
 
       <div className="flex items-center justify-between gap-3">
         <p className="text-sm text-muted">
-          {games.length} jeu{games.length === 1 ? "" : "x"}
+          {games.length} {plural(games.length, "jeu", "jeux")}
           {games.length !== allGames.length && ` sur ${allGames.length}`}
         </p>
         <GameFilterDrawer

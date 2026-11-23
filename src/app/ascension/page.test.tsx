@@ -25,7 +25,8 @@ it("uses only the active community's XP, not the historical User total", async (
   const html = renderToStaticMarkup(await AscensionPage());
 
   expect(mocks.getMemberStats).toHaveBeenCalledWith("user-1", "community-1");
-  expect(html).toContain("Étage 1");
+  expect(html).toContain("Niveau d’XP 1");
+  expect(html).not.toContain("Étage 1");
 });
 
 async function renderAscension() {
@@ -43,12 +44,12 @@ describe("phrase décidée le 18/11 sur les étages (V3-12)", () => {
     expect(await renderAscension()).not.toContain("repartent de zéro");
   });
 
-  it("allumé : la phrase exacte apparaît une seule fois, sous l'étage XP, le reste du rendu est inchangé", async () => {
+  it("allumé : la phrase exacte apparaît une seule fois, sous le niveau d’XP, le reste du rendu est inchangé", async () => {
     const off = await renderAscension();
     vi.stubEnv("LAUNCH_TEXTS_ENABLED", "true");
     const on = await renderAscension();
     expect(on.split(TOWER_FLOORS_RESET_NOTICE)).toHaveLength(2);
-    expect(on.indexOf("Étage 1")).toBeLessThan(on.indexOf(TOWER_FLOORS_RESET_NOTICE));
+    expect(on.indexOf("Niveau d’XP 1")).toBeLessThan(on.indexOf(TOWER_FLOORS_RESET_NOTICE));
     expect(on.replace(`<p class="mt-2 text-xs text-muted">${TOWER_FLOORS_RESET_NOTICE}</p>`, "")).toBe(off);
   });
 });

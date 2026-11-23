@@ -15,6 +15,7 @@ import {
   type PlatformFamilyKey,
 } from "@/lib/game-platforms";
 import { quickAddGameAction } from "./actions";
+import { plural } from "@/lib/plural";
 
 export const metadata = pageMetadata("Jeux par plateforme");
 
@@ -60,7 +61,7 @@ export default async function PlatformLibraryPage({ searchParams }: { searchPara
                 <div className="min-w-0">
                   <Link href={`/jeux/${encodeURIComponent(game.id)}`} className="block truncate font-medium text-foreground hover:underline">{game.name}</Link>
                   <p className="text-xs text-muted">
-                    {game.owners} membre{game.owners > 1 ? "s" : ""} · {crossplayLabel(game.crossplay)}
+                    {game.owners} {plural(game.owners, "membre")} · {crossplayLabel(game.crossplay)}
                   </p>
                 </div>
                 <form action={quickAddGameAction}>
