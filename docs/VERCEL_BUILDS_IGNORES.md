@@ -3,7 +3,7 @@
 `vercel.json` définit `"ignoreCommand": "node scripts/vercel-ignore-build.mjs"`. Vercel exécute ce script avant chaque build : **code 0 = build ignoré, code 1 = build exécuté**. La CI GitHub (`verify`, `immutable`) n'est pas concernée.
 
 ## Aucun déploiement hors main : `git.deploymentEnabled` (23/11/2026)
-Décision de Maxime : `vercel.json` porte `"git": { "deploymentEnabled": { "*": false, "main": true } }` en plus de `ignoreCommand`. Vercel ne crée plus de déploiement pour une branche autre que `main` ; la règle « une branche vaut vrai si au moins une règle correspondante vaut vrai » garde `main` actif. La doc Vercel ne dit pas si les pull requests sont couvertes ni si un déploiement évité sort du compteur de 100 par jour : l'effet est à CONSTATER.
+Décision de Maxime : `vercel.json` porte `"git": { "deploymentEnabled": { "*": false, "**": false, "main": true } }` en plus de `ignoreCommand`. Vercel ne crée plus de déploiement pour une branche autre que `main` ; la règle « une branche vaut vrai si au moins une règle correspondante vaut vrai » garde `main` actif. `**` est nécessaire en plus de `*` : en syntaxe minimatch, `*` ne traverse pas le `/`, donc `fix/xxx` et `claude/xxx` lui échappaient (constaté le 23/11/2026 : « Canceled by Ignored Build Step » sur une branche `fix/…`). La doc Vercel ne dit pas si les pull requests sont couvertes ni si un déploiement évité sort du compteur de 100 par jour : l'effet est à CONSTATER.
 
 **Retour arrière immédiat** si un déploiement de production de `main` ne réussit plus après cette fusion (hors erreur « Deployment rate limited ») : retirer le bloc `git` de `vercel.json` (revert du commit, aucune autre dépendance) ; `ignoreCommand` continue de limiter les aperçus.
 

@@ -169,16 +169,16 @@ describe("vercel.json", () => {
     expect(config.regions).toEqual(["fra1"]);
   });
 
-  it("ne déploie QUE main : deploymentEnabled { \"*\": false, \"main\": true } (décision de Maxime du 23/11/2026, quota de 100 déploiements par jour)", () => {
+  it("ne déploie QUE main : deploymentEnabled { \"*\": false, \"**\": false, \"main\": true } (décision de Maxime du 23/11/2026, quota de 100 déploiements par jour ; `**` car `*` ne traverse pas le `/` de fix/…, claude/…)", () => {
     const git = config.git as { deploymentEnabled?: Record<string, boolean> } | undefined;
-    expect(git?.deploymentEnabled).toEqual({ "*": false, main: true });
+    expect(git?.deploymentEnabled).toEqual({ "*": false, "**": false, main: true });
   });
 
   it("garde-fou production : main reste explicitement activée et jamais désactivée, sinon plus aucun déploiement de production", () => {
     const enabled = (config.git as { deploymentEnabled?: unknown } | undefined)?.deploymentEnabled;
     expect(typeof enabled).toBe("object"); // jamais le booléen `false`, qui couperait aussi main
     expect((enabled as Record<string, boolean>).main).toBe(true);
-    expect(Object.entries(enabled as Record<string, boolean>).filter(([branch, value]) => value === false && /^(main|\*\*)$/.test(branch))).toEqual([]);
+    expect(Object.entries(enabled as Record<string, boolean>).filter(([branch, value]) => value === false && branch === "main")).toEqual([]);
   });
 
   it("ne redéfinit ni le build ni l'installation", () => {
