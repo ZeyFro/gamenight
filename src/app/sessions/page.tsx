@@ -42,15 +42,17 @@ import { isAdminUser, parseAdminDiscordIds } from "@/lib/admin-rules";
 import { getCommunityTeamsCommunityId, listMemberCommunityTeamOptions } from "@/lib/community-teams";
 import { pickCreationCommunityId } from "@/lib/community-channels";
 import { getDefaultCommunityId } from "@/lib/default-community";
+import { isFriendsEnabled } from "@/lib/friends-rules";
+import { listFriendIds } from "@/lib/friends";
 import { isVoicePresenceEnabled } from "@/lib/session-voice-config";
 
 export const metadata = pageMetadata("Soirées");
 
 const CREATE_ERROR_MESSAGES: Record<string, string> = {
   deadline_apres_session:
-    "La deadline de vote doit être strictement avant l'heure de la session. Choisis une deadline plus tôt.",
+    "La fin des votes doit être strictement avant l'heure de la soirée. Choisis une fin des votes plus tôt.",
   session_trop_proche:
-    "Cette session est trop proche (ou déjà passée) pour laisser un minimum de temps de vote (30 min). Choisis une heure un peu plus tardive.",
+    "Cette soirée est trop proche (ou déjà passée) pour laisser un minimum de temps de vote (30 min). Choisis une heure un peu plus tardive.",
   rate_limited: RATE_LIMIT_MESSAGE,
   [VALIDATION_ERROR_KEY]: VALIDATION_ERROR_MESSAGE,
 };
@@ -118,6 +120,8 @@ export default async function SessionsPage({
   // Sprint 3 (FEATURE 6) — sélection groupée par tag dans `NotifyRecipientsField`.
   const potes = potesRaw.map((p) => ({ ...p, tagIds: p.userTags.map((t) => t.tagId) }));
   const tagOptions = tags.map((t) => ({ id: t.id, name: t.name, color: tagColor(t.name) }));
+  // Personne n'est prévenu par défaut (MP seulement pour ce qui vise personnellement le joueur) ; Potes = amis allumé : les amis le sont.
+  const initialGuestIds = isFriendsEnabled() ? await listFriendIds(user.id) : [];
 
   const scopedDb = await getActiveScopedPrisma(user.id);
   const dueSessions = await scopedDb.session.findMany({
@@ -268,11 +272,11 @@ export default async function SessionsPage({
               </div>
             )}
 
-            <SessionPlanningFields potes={potes} tags={tagOptions} minDate={toDateInputValue(todayDateOnly())} initialDate={prefillDate} initialTime={prefillTime} />
+            <SessionPlanningFields potes={potes} tags={tagOptions} minDate={toDateInputValue(todayDateOnly())} initialDate={prefillDate} initialTime={prefillTime} initialGuestIds={initialGuestIds} />
 
             <div className="flex flex-col gap-1">
               <label className="text-xs text-muted" htmlFor="deadline-offset">
-                Deadline de vote
+                Fin des votes
               </label>
               <select
                 id="deadline-offset"
@@ -324,16 +328,20 @@ export default async function SessionsPage({
 
             <div className="flex flex-col gap-1">
               <label className="text-xs text-muted" htmlFor="custom-reminder">
-                Message de rappel perso (optionnel)
+                Message de rappel personnalisé (optionnel)
               </label>
               <textarea
                 id="custom-reminder"
                 name="customReminderMessage"
                 rows={2}
                 maxLength={MAX_MESSAGE_TEXT_LENGTH}
-                placeholder="Remplace le tirage aléatoire — variables : {pote} {jeu} {heure}"
+                placeholder="Ex. : Yo {pote}, dans 30 min c'est {jeu} à {heure} !"
+                aria-describedby="custom-reminder-help"
                 className="rounded-lg border border-border bg-background px-3 py-3 text-base text-foreground placeholder:text-faint focus:border-accent focus:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-background"
               />
+              <p id="custom-reminder-help" className="text-xs text-muted">
+                Ce message remplace le message tiré au hasard. Dans le texte, <b>{"{pote}"}</b> devient le pseudo de la personne qui reçoit le rappel (ex. Alice), <b>{"{jeu}"}</b> le nom du jeu retenu (ex. Valheim) et <b>{"{heure}"}</b> l&apos;heure de la soirée (ex. 20 h 30).
+              </p>
             </div>
 
             <Button type="submit" variant="primary" fullWidthOnMobile>

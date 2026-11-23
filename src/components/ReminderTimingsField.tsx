@@ -101,7 +101,7 @@ export function ReminderTimingsField() {
           <button
             type="button"
             onClick={() => removeCustom(custom.id)}
-            aria-label="Retirer ce rappel custom"
+            aria-label="Retirer ce rappel personnalisé"
             className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-muted hover:text-destructive"
           >
             ✕
@@ -115,7 +115,7 @@ export function ReminderTimingsField() {
         disabled={atMax}
         className="self-start text-xs font-medium text-accent hover:underline disabled:cursor-not-allowed disabled:text-muted disabled:no-underline"
       >
-        + Ajouter un rappel custom
+        + Ajouter un rappel personnalisé
       </button>
       {atMax && (
         <p className="text-xs text-muted">

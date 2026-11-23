@@ -310,14 +310,14 @@ export default async function AccueilV2Page() {
                 <Link href="/saisons">
                   <Card className="flex flex-col gap-2">
                     <p className="text-sm text-muted">
-                      🏆 {d.seasonProgress.name} — Jour {d.seasonProgress.dayOfMonth}/
+                      🏆 Saison {d.seasonProgress.name} — jour {d.seasonProgress.day}/
                       {d.seasonProgress.totalDays}
                     </p>
                     <div className="h-2 overflow-hidden rounded-full bg-surface-hover">
                       <div
                         className="h-full rounded-full bg-accent"
                         style={{
-                          width: `${Math.min(100, (d.seasonProgress.dayOfMonth / d.seasonProgress.totalDays) * 100)}%`,
+                          width: `${Math.min(100, (d.seasonProgress.day / d.seasonProgress.totalDays) * 100)}%`,
                         }}
                       />
                     </div>

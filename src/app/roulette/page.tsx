@@ -248,7 +248,7 @@ async function CreerTab({
 
         <div className="flex flex-col gap-1">
           <label className="text-xs text-muted" htmlFor="roulette-deadline-offset">
-            Deadline pour proposer ses jeux
+            Date limite pour proposer ses jeux
           </label>
           <select
             id="roulette-deadline-offset"
