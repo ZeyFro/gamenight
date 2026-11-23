@@ -20,6 +20,7 @@ import { RankAvatar } from "@/components/RankAvatar";
 import { PodiumSpot } from "@/components/PodiumSpot";
 import { PullToRefresh } from "@/components/PullToRefresh";
 import { Stagger, StaggerItem } from "@/components/motion";
+import { plural } from "@/lib/plural";
 
 export const metadata = pageMetadata("Accueil (aperçu)");
 
@@ -105,12 +106,11 @@ export default async function AccueilV2Page() {
                         <p className="mt-2 truncate text-base text-foreground">
                           {d.nextSession.decidedGame
                             ? d.nextSession.decidedGame.name
-                            : `${d.nextSession.proposals.length} proposition${d.nextSession.proposals.length === 1 ? "" : "s"}`}
+                            : `${d.nextSession.proposals.length} ${plural(d.nextSession.proposals.length, "proposition")}`}
                         </p>
                         {d.registeredPlayerCount > 0 && (
                           <p className="mt-1 text-sm text-muted">
-                            {d.registeredPlayerCount} joueur{d.registeredPlayerCount === 1 ? "" : "s"} inscrit
-                            {d.registeredPlayerCount === 1 ? "" : "s"}
+                            {d.registeredPlayerCount} {plural(d.registeredPlayerCount, "joueur")} {plural(d.registeredPlayerCount, "inscrit")}
                           </p>
                         )}
                       </div>
@@ -235,8 +235,7 @@ export default async function AccueilV2Page() {
                       className="text-2xl font-semibold tabular-nums text-foreground"
                     />
                     <p className="text-xs text-muted">
-                      soirée{d.groupStats.totalSessionsPlayed === 1 ? "" : "s"} jouée
-                      {d.groupStats.totalSessionsPlayed === 1 ? "" : "s"}
+                      {plural(d.groupStats.totalSessionsPlayed, "soirée")} {plural(d.groupStats.totalSessionsPlayed, "jouée")}
                     </p>
                   </div>
                   <div>
@@ -245,8 +244,7 @@ export default async function AccueilV2Page() {
                       className="text-2xl font-semibold tabular-nums text-foreground"
                     />
                     <p className="text-xs text-muted">
-                      joueur{d.groupStats.activePlayers === 1 ? "" : "s"} actif
-                      {d.groupStats.activePlayers === 1 ? "" : "s"}
+                      {plural(d.groupStats.activePlayers, "joueur")} {plural(d.groupStats.activePlayers, "actif")}
                     </p>
                   </div>
                   {d.groupStats.mostPlayedGame && (
@@ -294,8 +292,7 @@ export default async function AccueilV2Page() {
                         🔥 {d.groupStats.bestActiveStreak.discordName}
                       </p>
                       <p className="text-xs text-muted">
-                        Meilleur streak actif · {d.groupStats.bestActiveStreak.streakCount} jour
-                        {d.groupStats.bestActiveStreak.streakCount === 1 ? "" : "s"}
+                        Meilleur streak actif · {d.groupStats.bestActiveStreak.streakCount} {plural(d.groupStats.bestActiveStreak.streakCount, "jour")}
                       </p>
                     </div>
                   )}

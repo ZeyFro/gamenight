@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { sessionSeatAction } from "@/app/sessions/actions/seats";
 import type { SeatCommand } from "@/lib/session-seats";
 import type { SeatStatus } from "@/lib/session-seat-plan";
+import { plural } from "@/lib/plural";
 
 const messages = { access: "Tu n’as plus accès à cette soirée.", closed: "Les inscriptions sont fermées.", disabled: "L’organisateur doit d’abord activer la gestion des places.", capacity: "La capacité doit respecter le jeu et conserver les places déjà confirmées.", authentication: "Reconnecte-toi pour répondre.", rate_limited: "Trop de demandes rapprochées. Réessaie dans un instant.", unavailable: "La réponse n’a pas pu être enregistrée. Réessaie : elle ne créera pas de doublon." };
 export function SessionSeatsPanel({ sessionId, userId, isCreator, open, capacity, maxPlayers, seats }: {
@@ -36,7 +37,7 @@ export function SessionSeatsPanel({ sessionId, userId, isCreator, open, capacity
   const button = "rounded-lg border border-accent/40 px-3 py-2 text-sm font-medium text-accent hover:bg-accent/10 disabled:opacity-50";
   return <section aria-labelledby="seats-title" aria-busy={pending} className="flex flex-col gap-3 rounded-xl border border-border bg-surface p-4">
     <h2 id="seats-title" className="font-semibold">🎮 Places et liste d’attente</h2>
-    {capacity === null ? <p className="text-sm text-muted">Sans limite de places · {confirmed.length} confirmé{confirmed.length === 1 ? "" : "s"}. Les membres invités qui répondent sont confirmés.</p> : <p className="text-sm"><strong>{confirmed.length}/{capacity} places confirmées</strong> · {queue.length} en attente</p>}
+    {capacity === null ? <p className="text-sm text-muted">Sans limite de places · {confirmed.length} {plural(confirmed.length, "confirmé")}. Les membres invités qui répondent sont confirmés.</p> : <p className="text-sm"><strong>{confirmed.length}/{capacity} places confirmées</strong> · {queue.length} en attente</p>}
     <p className="text-sm text-muted">{mine?.status === "CONFIRMED" ? "Tu as une place." : mine?.status === "WAITLIST" ? `Ta position : ${position}.` : "Tu n’es pas inscrit."}</p>
     {confirmed.length > 0 && <p className="text-xs text-muted">Confirmés : {confirmed.map(seat => seat.user.discordName).join(", ")}</p>}
     {queue.length > 0 && <ol aria-label="Ordre de la liste d’attente" className="list-inside list-decimal text-xs text-muted">{queue.map(seat => <li key={seat.userId}>{seat.user.discordName}</li>)}</ol>}

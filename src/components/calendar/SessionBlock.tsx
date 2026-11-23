@@ -8,6 +8,7 @@ import { VoterAvatars } from "@/components/VoterAvatars";
 import { SESSION_STATUS_LABELS } from "@/lib/session-status";
 import { formatDateTimeFr, toTimeInputValue } from "@/lib/wallclock";
 import type { CalendarSession } from "@/lib/calendar";
+import { plural } from "@/lib/plural";
 
 const STATUS_BLOCK_CLASSES: Record<CalendarSession["status"], string> = {
   // Orange/rouge : distinct de "Prévue" (violet accent), signale qu'il
@@ -111,7 +112,7 @@ export function SessionBlock({ session }: { session: CalendarSession }) {
                   >
                     <span className="truncate text-foreground">{p.gameName}</span>
                     <span className="shrink-0 text-xs text-muted">
-                      {p.voteCount} vote{p.voteCount === 1 ? "" : "s"}
+                      {p.voteCount} {plural(p.voteCount, "vote")}
                     </span>
                   </div>
                 ))}

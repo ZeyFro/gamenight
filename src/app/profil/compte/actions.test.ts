@@ -8,6 +8,7 @@ const mocks = vi.hoisted(() => ({
 }));
 vi.mock("@/lib/current-user", () => ({ getCurrentUser: mocks.getCurrentUser }));
 vi.mock("@/lib/rate-limit", () => ({ checkRateLimit: mocks.rateLimit, RATE_LIMIT_MESSAGE: "trop vite" }));
+vi.mock("@/lib/shared-rate-limit", () => ({ checkSharedRateLimit: mocks.rateLimit }));
 vi.mock("@/auth", () => ({ signOut: mocks.signOut }));
 vi.mock("@/lib/account-deletion", () => {
   class AccountBlobUnavailableError extends Error {}
