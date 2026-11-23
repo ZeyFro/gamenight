@@ -232,9 +232,13 @@ export async function createNotificationEvent(
 export const DM_RECEIVED_DAILY_LIMIT = 20;
 
 /** `true` si ce MP peut partir ; `false` si le destinataire a déjà reçu `DM_RECEIVED_DAILY_LIMIT` MP dans les dernières 24 h. */
-export async function assertDmQuota(delivery: Pick<NotificationDelivery, "channel" | "operation" | "recipientKey">): Promise<boolean> {
+export async function assertDmQuota(
+  delivery: Pick<NotificationDelivery, "channel" | "operation" | "recipientKey">,
+  /** Client de la transaction de l'appelant quand il en a une : le compteur utilise cette connexion (aucune connexion supplémentaire, donc aucun risque d'épuiser le pool quand plusieurs créations s'exécutent en même temps). */
+  client?: Parameters<typeof checkSharedRateLimit>[4],
+): Promise<boolean> {
   if (delivery.channel !== "DISCORD_DM" || delivery.operation !== "SEND") return true;
-  return checkSharedRateLimit(delivery.recipientKey, "dmReceivedDaily", { limit: DM_RECEIVED_DAILY_LIMIT, windowMs: 24 * 60 * 60_000 });
+  return checkSharedRateLimit(delivery.recipientKey, "dmReceivedDaily", { limit: DM_RECEIVED_DAILY_LIMIT, windowMs: 24 * 60 * 60_000 }, Date.now(), client);
 }
 
 export interface EnqueueDeliveryInput {
@@ -281,7 +285,7 @@ export async function enqueueDelivery(
   if (created) {
     // Plafond de MP par destinataire : au-delà, la livraison est conservée mais abandonnée (SKIPPED, motif `dm_quota`) et journalisée,
     // jamais perdue en silence ; l'executor ne la réclame pas.
-    if (!(await assertDmQuota(created))) {
+    if (!(await assertDmQuota(created, "$queryRaw" in db && "$executeRaw" in db ? (db as unknown as Parameters<typeof checkSharedRateLimit>[4]) : undefined))) {
       logger.warn("notification-delivery", "Plafond de MP reçus par destinataire atteint : livraison abandonnée.", { deliveryId: created.id, limit: DM_RECEIVED_DAILY_LIMIT });
       return db.notificationDelivery.update({
         where: { id: created.id },
