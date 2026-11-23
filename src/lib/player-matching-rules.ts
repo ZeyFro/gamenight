@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { plural } from "@/lib/plural";
 
 /**
  * Recherche de joueurs (cahier §12.2, §12.3) : critères déclarés par le joueur et compatibilité.
@@ -101,12 +102,12 @@ export function compatibility(viewer: MatchingProfile, candidate: CompatibilityI
   const habits = shared(viewer.playHabits, candidate.playHabits);
   const preferences = shared(viewer.communityPreferences, candidate.communityPreferences);
   const tags = shared(viewer.tagIds, candidate.tagIds);
-  if (candidate.commonGames) reasons.push(`${candidate.commonGames} jeu${candidate.commonGames > 1 ? "x" : ""} en commun`);
+  if (candidate.commonGames) reasons.push(`${candidate.commonGames} ${plural(candidate.commonGames, "jeu", "jeux")} en commun`);
   if (languages) reasons.push(labelsFor(PLAYER_LANGUAGES, viewer.languages.filter(value => candidate.languages.includes(value))).join(", "));
-  if (platforms) reasons.push(`${platforms} plateforme${platforms > 1 ? "s" : ""} en commun`);
+  if (platforms) reasons.push(`${platforms} ${plural(platforms, "plateforme")} en commun`);
   if (habits) reasons.push(labelsFor(PLAY_HABITS, viewer.playHabits.filter(value => candidate.playHabits.includes(value))).join(", "));
   if (preferences) reasons.push(labelsFor(COMMUNITY_PREFERENCES, viewer.communityPreferences.filter(value => candidate.communityPreferences.includes(value))).join(", "));
-  if (tags) reasons.push(`${tags} centre${tags > 1 ? "s" : ""} d’intérêt en commun`);
+  if (tags) reasons.push(`${tags} ${plural(tags, "centre")} d’intérêt en commun`);
   const score = games * 3 + (languages ? 4 : 0) + platforms * 2 + habits + preferences + tags;
   return { userId: candidate.userId, score, reasons };
 }

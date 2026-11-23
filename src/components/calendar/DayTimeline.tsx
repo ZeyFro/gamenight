@@ -16,6 +16,7 @@ import { isAvailableAt, type OverrideForDate, type WeeklySlot } from "@/lib/avai
 import { haptics } from "@/lib/haptics";
 import { formatDateFr, sameUtcDate, toDateInputValue, wallClockNow } from "@/lib/wallclock";
 import type { CalendarDay, CalendarSession, CalendarUser } from "@/lib/calendar";
+import { plural } from "@/lib/plural";
 
 const HOURS_OF_DAY = Array.from({ length: 24 }, (_, h) => h);
 const AUTO_SCROLL_HOUR = 18;
@@ -449,7 +450,7 @@ export function DayTimeline({
               ? isAvailable
                 ? "Dispo"
                 : "Pas dispo"
-              : `${availableIds.length}/${totalUsers} dispo${availableIds.length > 1 ? "s" : ""}`;
+              : `${availableIds.length}/${totalUsers} ${plural(availableIds.length, "dispo")}`;
           const editable = canEdit && editMode;
           const isPendingAnchor = editable && pendingStart === hour;
           // En Collectif + édition, la cellule garde la couleur/densité
