@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
 import { requireAdmin } from "@/lib/admin";
 import { logger } from "@/lib/logger";
-import { checkRateLimit } from "@/lib/rate-limit";
+import { checkSharedRateLimit } from "@/lib/shared-rate-limit";
+import { recordSensitiveOperation } from "@/lib/sensitive-operation-log";
 import { isVercelPreview } from "@/lib/preview-safety";
 import {
   REGISTRATION_SECRET_HEADER,
@@ -21,7 +22,7 @@ const respond = (body: object, status: number) => NextResponse.json(body, { stat
 
 /**
  * Enregistre (ou vérifie) les commandes Discord de The Tower DEPUIS LE SERVEUR, avec le jeton du bot de l'environnement :
- * le jeton ne sort jamais de Vercel et n'apparaît dans aucune réponse ni journal. Corps : `{ "mode": "check" | "execute" }`.
+ * le jeton ne sort jamais de Vercel et n'apparaît dans aucune réponse ni journal. Corps : `{ "mode": "check" | "execute" | "bulk" }`.
  * Quatre verrous : interrupteur `DISCORD_COMMAND_REGISTRATION_ENABLED` (éteint = 404, même pour un admin), secret dédié en
  * en-tête `x-registration-secret`, administrateur authentifié, jamais sur une Preview. Un POST avec en-tête personnalisé
  * ne peut pas être déclenché depuis un autre site. Jamais de suppression ni de PUT global (docs/SOIREE_ACTIVATION.md § 9 sexies).
@@ -37,7 +38,7 @@ export async function POST(request: Request) {
   }
   const admin = await requireAdmin();
   if (!admin) return respond({ error: "unauthorized" }, 401);
-  if (!checkRateLimit(admin.id, "discordCommandRegistration", { limit: 5, windowMs: 60_000 })) {
+  if (!(await checkSharedRateLimit(admin.id, "discordCommandRegistration", { limit: 5, windowMs: 60_000 }))) {
     return respond({ error: "rate_limited" }, 429);
   }
 
@@ -48,7 +49,7 @@ export async function POST(request: Request) {
     body = null;
   }
   const mode = parseRegistrationMode(body);
-  if (!mode) return respond({ error: "invalid_mode", expected: ["check", "execute"] }, 400);
+  if (!mode) return respond({ error: "invalid_mode", expected: ["check", "execute", "bulk"] }, 400);
 
   const report = await runCommandRegistration(mode);
   // Journal d'audit : qui, quel mode, combien de commandes, quel résultat. Jamais de secret.
@@ -60,5 +61,9 @@ export async function POST(request: Request) {
     stage: report.failure?.stage ?? null,
     http: report.failure?.http ?? null,
   });
+  // Journal des opérations sensibles (cahier §19.1) : seul l'enregistrement écrit dans Discord.
+  if (mode === "execute" || mode === "bulk") {
+    await recordSensitiveOperation({ actorId: admin.id, action: mode === "bulk" ? "discord.commands_bulk" : "discord.commands_execute", outcome: report.ok ? "ok" : report.failure?.stage ?? "failed" });
+  }
   return respond(report, registrationHttpStatus(report));
 }

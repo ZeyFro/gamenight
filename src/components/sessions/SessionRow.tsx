@@ -4,6 +4,7 @@ import { SESSION_STATUS_LABELS } from "@/lib/session-status";
 import { formatDateTimeFr } from "@/lib/wallclock";
 import { Avatar } from "@/components/ui/Avatar";
 import { Badge } from "@/components/ui/Badge";
+import { plural } from "@/lib/plural";
 
 export type SessionParticipant = {
   discordName: string;
@@ -62,7 +63,7 @@ export function SessionRow({
             <p className="truncate text-sm text-muted">
               {session.decidedGame
                 ? session.decidedGame.name
-                : `${session._count.proposals} proposition${session._count.proposals === 1 ? "" : "s"}`}
+                : `${session._count.proposals} ${plural(session._count.proposals, "proposition")}`}
             </p>
             {session.communityTeam && <p className="truncate text-xs text-accent">Équipe · {session.communityTeam.name}</p>}
           </div>
@@ -91,8 +92,7 @@ export function SessionRow({
               )}
             </div>
             <span className="text-xs text-muted">
-              {participants.length} joueur{participants.length === 1 ? "" : "s"} inscrit
-              {participants.length === 1 ? "" : "s"}
+              {participants.length} {plural(participants.length, "joueur")} {plural(participants.length, "inscrit")}
             </span>
           </div>
         )}

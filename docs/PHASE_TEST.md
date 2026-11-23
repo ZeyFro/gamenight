@@ -91,7 +91,7 @@ Option : `TOWER_TEAM_DAILY_ENABLED` (défi d'équipe quotidien à 18:00 Europe/P
 ### Tests que Maxime fait dans l'application
 
 1. `/tower` répond et affiche le catalogue importé et le défi en cours (le web est en **lecture seule** pour le solo : démarrer un défi et envoyer la preuve passent par Discord).
-2. `/ascension` affiche l'étage XP ; avec `LAUNCH_TEXTS_ENABLED=true` (groupe 6) la phrase décidée le 18/11 sur les étages s'affiche.
+2. `/ascension` affiche le niveau d’XP ; avec `LAUNCH_TEXTS_ENABLED=true` (groupe 6) la phrase décidée le 18/11 sur les étages s'affiche.
 3. Un compte d'**un autre serveur** (ou sans appartenance) ne voit **aucune** donnée de The Tower.
 4. Logs Vercel : aucune erreur 5xx ; `/admin` : opérations Discord en échec = 0 (avec `ADMIN_DASHBOARD_V2_ENABLED=true`, page `/admin/tableau-de-bord`).
 
@@ -354,9 +354,10 @@ Si tu veux seulement un vocal ad hoc, sans soirée : **créer le salon à la mai
 | **Envoyer des messages dans les fils** | 38 | Écrire dans un fil ; Discord l'exige aussi pour ajouter un membre à un fil | groupes 1, 4 |
 | **Gérer les fils** | 34 | Supprimer ou archiver un fil | groupes 1, 4 |
 | **Se connecter** (vocal) | 20 | **Lire l'état vocal d'un membre** : Discord exige que le bot puisse se connecter au salon (`GET /guilds/{id}/voice-states/{membre}`) ; sert à ne supprimer le vocal temporaire que s'il est vide | `SESSION_VISIBILITY_ENABLED` |
+| **Mentionner @everyone, @here et tous les rôles** | 17 | Faire notifier un **rôle** non mentionnable par tout le monde (Gaming, Minecraft, Ranker, Régulars…) ; décision de Maxime du 23/11 : à garder. Le bot n'envoie jamais @everyone ni @here (retirés dans `discord-rest.ts`) | ping de rôle de jeu (Q19) |
 | **Parler** (vocal) | 21 | Le bot ne peut **accorder** à d'autres que les permissions qu'il possède lui-même : les vocaux privés donnent Voir, Se connecter et Parler | groupes 3, 4, 5 |
 
-**Total : 12 permissions.** Masque Discord correspondant : **`395408657424`**. L'invitation actuelle de [DISCORD_COMMANDES.md](DISCORD_COMMANDES.md) (`395137076240`) contient les 9 premières **sans** « Gérer les rôles », « Se connecter » et « Parler » : elle suffit pour la Tour et les annonces, **pas** pour `/role`, les espaces d'équipe, les boosters ni le vocal de soirée.
+**Total : 13 permissions.** Masque Discord correspondant : **`395408788496`** (gardé par `src/lib/discord-bot-permissions.test.ts`). L'invitation actuelle de [DISCORD_COMMANDES.md](DISCORD_COMMANDES.md) (`395137076240`) contient les 9 premières **sans** « Gérer les rôles », « Se connecter » et « Parler » : elle suffit pour la Tour et les annonces, **pas** pour `/role`, les espaces d'équipe, les boosters ni le vocal de soirée.
 
 **Ne demandent aucune permission de serveur** : les messages privés (`POST /users/@me/channels`), les réponses aux commandes et les éditions de réponse, l'enregistrement des commandes (scope `applications.commands`), la lecture des rôles, salons et membres (`GET`), la suppression **de ses propres** messages (annonces de tournoi), les webhooks de récompense (adresse secrète, sans rôle).
 
@@ -387,10 +388,10 @@ Choisis un moment calme (aucun test de groupe en cours). Cette procédure ne sup
 2. **Vérifier qui d'autre porte « Workshop » et « AppBot »** (Rôles → clic sur le rôle → membres). Si d'autres bots ou personnes les utilisent, **ne supprime pas ces rôles**.
 3. **Donner d'abord au bot ses 12 droits, avant de retirer quoi que ce soit.** Deux façons :
    - **Réinviter** l'application avec le lien ci-dessous (réinviter ne retire rien, il ajoute les droits manquants ; il faut un compte avec « Gérer le serveur ») ;
-   - ou cocher à la main les 12 permissions sur le rôle **intégré** du bot (Paramètres → Rôles).
+   - ou cocher à la main les 13 permissions sur le rôle **intégré** du bot (Paramètres → Rôles).
 
    ```
-   https://discord.com/oauth2/authorize?client_id=<DISCORD_CLIENT_ID>&scope=bot%20applications.commands&permissions=395408657424&guild_id=<TOWER_DISCORD_GUILD_ID>&disable_guild_select=true
+   https://discord.com/oauth2/authorize?client_id=<DISCORD_CLIENT_ID>&scope=bot%20applications.commands&permissions=395408788496&guild_id=<TOWER_DISCORD_GUILD_ID>&disable_guild_select=true
    ```
 
    Remplace les deux valeurs depuis Vercel ou le portail développeur ; ne les écris dans aucun fichier du dépôt et ne colle **jamais** le jeton du bot dans un chat.

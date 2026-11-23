@@ -64,11 +64,14 @@ import { GameWarnings } from "@/components/GameWarnings";
 import { readSessionPreparation } from "@/lib/session-preparation";
 import { SessionPreparationPanel } from "@/components/sessions/SessionPreparationPanel";
 import { SessionGallery } from "@/components/sessions/SessionGallery";
+import { SessionPhotosLink } from "@/components/sessions/SessionPhotosLink";
+import { discordPhotosChannelUrl } from "@/lib/discord-photos-channel";
 import { isSessionVideoEnabled } from "@/lib/session-gallery";
 import { canManageSessionContent } from "@/lib/session-content-access";
 import { readSessionVoicePresence } from "@/lib/session-voice-presence";
 import { isLaunchTextsEnabled, shouldShowSessionGallery, shouldShowVoicePresence } from "@/lib/launch-texts";
 import { SessionVoicePresencePanel } from "@/components/sessions/SessionVoicePresencePanel";
+import { plural } from "@/lib/plural";
 
 export const metadata = pageMetadata("Soirée");
 
@@ -497,8 +500,7 @@ export default async function SessionDetailPage({
           {sessionParticipants.length > 0 && (
             <div>
               <p className="mb-2 text-xs font-medium text-muted">
-                {sessionParticipants.length} participant
-                {sessionParticipants.length > 1 ? "s" : ""}
+                {sessionParticipants.length} {plural(sessionParticipants.length, "participant")}
               </p>
               <div className="flex flex-wrap gap-2">
                 {sessionParticipants.map((result) => (
@@ -777,7 +779,7 @@ export default async function SessionDetailPage({
 
                   <GameWarnings game={proposal.game} />
                   <p className="text-sm text-muted">
-                    {availableCount} dispo{availableCount > 1 ? "s" : ""} et
+                    {availableCount} {plural(availableCount, "dispo")} et
                     possède le jeu
                     {availableCount > 0 && (
                       <>
@@ -859,6 +861,8 @@ export default async function SessionDetailPage({
       )}
 
       {preparation && <SessionPreparationPanel sessionId={session.id} userId={user.id} participants={preparation} />}
+
+      {discordPhotosChannelUrl() && <SessionPhotosLink url={discordPhotosChannelUrl()!} />}
 
       {shouldShowSessionGallery({ galleryEnabled, storageReady: galleryStorageReady, canManage: canManageContent, launchTexts }) && (
         <SessionGallery

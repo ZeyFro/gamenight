@@ -10,6 +10,7 @@ import { pageMetadata } from "@/lib/page-title";
 import { RATE_LIMIT_MESSAGE } from "@/lib/rate-limit";
 import { formatDateTimeFr } from "@/lib/wallclock";
 import { createCommunityQuickPollAction, voteCommunityQuickPollAction } from "./actions";
+import { plural } from "@/lib/plural";
 
 export const metadata = pageMetadata("Sondages éclair");
 const PATH = "/profil/lore/sondages";
@@ -58,7 +59,7 @@ export default async function CommunityQuickPollsPage({ searchParams }: { search
                 <li key={poll.id}>
                   <Card className="flex flex-col gap-3">
                     <h3 className="break-words font-semibold">{poll.question}</h3>
-                    <p className="text-xs text-muted">{poll.closed ? "Clos" : "Ouvert"} · Fin : {formatDateTimeFr(poll.endsAt)} · {total} vote{total === 1 ? "" : "s"}</p>
+                    <p className="text-xs text-muted">{poll.closed ? "Clos" : "Ouvert"} · Fin : {formatDateTimeFr(poll.endsAt)} · {total} {plural(total, "vote")}</p>
                     <form key={`${poll.id}-${poll.selectedOption}-${poll.closed}`} action={voteCommunityQuickPollAction} className="flex flex-col gap-3">
                       <input type="hidden" name="communityId" value={collection.community.id} /><input type="hidden" name="pollId" value={poll.id} />
                       <fieldset disabled={poll.closed} className="flex flex-col gap-3">

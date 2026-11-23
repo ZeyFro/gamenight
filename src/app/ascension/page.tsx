@@ -34,8 +34,8 @@ export default async function AscensionPage() {
   return (
     <main className="mx-auto flex w-full max-w-2xl flex-col gap-6 px-4 py-8 sm:px-6 sm:py-12">
       <header>
-        <p className="text-sm font-medium text-accent">The Tower · Ta progression</p>
-        <h1 className="mt-1 text-2xl font-semibold text-foreground sm:text-3xl">Étage {progress.floor}</h1>
+        <p className="text-sm font-medium text-accent">Ta progression XP</p>
+        <h1 className="mt-1 text-2xl font-semibold text-foreground sm:text-3xl">Niveau d’XP {progress.floor}</h1>
         <p className="mt-2 text-sm text-muted">Niveau {progress.level} · {titleForLevel(progress.level)} · Rang {rank.name}</p>
         {isLaunchTextsEnabled() && <p className="mt-2 text-xs text-muted">{TOWER_FLOORS_RESET_NOTICE}</p>}
       </header>
@@ -43,14 +43,14 @@ export default async function AscensionPage() {
       <Card className="flex flex-col gap-3">
         <div className="flex items-end justify-between gap-4">
           <div>
-            <h2 className="font-semibold text-foreground">Prochain étage</h2>
+            <h2 className="font-semibold text-foreground">Prochain niveau d’XP</h2>
             <p className="text-sm text-muted">{progress.xpToNextFloor.toLocaleString("fr-FR")} XP restantes</p>
           </div>
           <p className="text-sm tabular-nums text-muted">{Math.floor(progress.progress * 100)} %</p>
         </div>
         <div
           role="progressbar"
-          aria-label={`Progression vers l’étage ${progress.floor + 1}`}
+          aria-label={`Progression vers le niveau d’XP ${progress.floor + 1}`}
           aria-valuemin={0}
           aria-valuemax={100}
           aria-valuenow={Math.floor(progress.progress * 100)}
@@ -58,7 +58,7 @@ export default async function AscensionPage() {
         >
           <div className="h-full rounded-full bg-accent transition-[width]" style={{ width: `${progress.progress * 100}%` }} />
         </div>
-        <p className="text-xs text-muted">Chaque étage couvre {community?.towerLevelsPerFloor ?? 10} niveaux. Ton XP existante reste inchangée.</p>
+        <p className="text-xs text-muted">Chaque niveau d’XP regroupe {community?.towerLevelsPerFloor ?? 10} niveaux. Ton XP existante reste inchangée. Les étages de la Tour, eux, se gagnent par les défis.</p>
       </Card>
 
       <section className="flex flex-col gap-3" aria-labelledby="tower-links-title">

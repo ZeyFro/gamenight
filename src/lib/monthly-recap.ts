@@ -5,6 +5,7 @@ import { wallClockNow, startOfMonthUTC, endOfMonthUTC } from "@/lib/wallclock";
 import { ACCENT_COLOR } from "@/lib/discord";
 import { postToCommunity } from "@/lib/community-announce";
 import { logger } from "@/lib/logger";
+import { plural } from "@/lib/plural";
 
 export interface MonthlyRecapData {
   sessionsPlayed: number;
@@ -170,7 +171,7 @@ async function generateMonthlyRecapForCommunity(communityId: string, year: numbe
   const base = (process.env.AUTH_URL ?? "http://localhost:3000").replace(/\/$/, "");
   const result = await postToCommunity(communityId, {
     title: "📊 Le recap du mois est prêt !",
-    description: `${data.sessionsPlayed} soirée${data.sessionsPlayed > 1 ? "s" : ""} jouée${data.sessionsPlayed > 1 ? "s" : ""} le mois dernier — va voir ton Wrapped !\n${base}/recap/${year}/${month}`,
+    description: `${data.sessionsPlayed} ${plural(data.sessionsPlayed, "soirée")} ${plural(data.sessionsPlayed, "jouée")} le mois dernier — va voir ton Wrapped !\n${base}/recap/${year}/${month}`,
     color: ACCENT_COLOR,
   });
   if (!result.ok) {

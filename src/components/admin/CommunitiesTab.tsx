@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/Button";
 import { activateCommunityAction, setCommunityAttendanceXpAction, setCommunityChannelAction, setCommunityGuideAction, setCommunityFreeGamesAction, setCommunitySteamPriceAlertsAction, setCommunityGroupPurchasePlansAction, setCommunityPlayerClassifiedsAction, setCommunityTeamsAction, setCommunityTowerLevelsPerFloorAction } from "@/app/admin/communautes/actions";
 import { setCommunitySessionGalleryAction } from "@/app/admin/communautes/actions";
 import { THREAD_CAPABLE_CHANNEL_TYPES, VOICE_CHANNEL_TYPES } from "@/lib/discord-rest";
+import { plural } from "@/lib/plural";
 
 const STATUS_LABELS: Record<string, { label: string; tone: "accent" | "neutral" | "warning" | "destructive" }> = {
   PENDING: { label: "En attente", tone: "warning" },
@@ -108,8 +109,7 @@ function CommunityCard({ community: c }: { community: AdminCommunityRow }) {
         <div>
           <h2 className="font-semibold text-foreground">{c.name}</h2>
           <p className="text-xs text-muted">
-            {c.slug} · serveur {c.discordGuildId ?? "inconnu"} · {c.activeMembers} membre
-            {c.activeMembers > 1 ? "s" : ""}
+            {c.slug} · serveur {c.discordGuildId ?? "inconnu"} · {c.activeMembers} {plural(c.activeMembers, "membre")}
           </p>
         </div>
         <Badge tone={status.tone}>{status.label}</Badge>
@@ -199,7 +199,7 @@ function CommunityCard({ community: c }: { community: AdminCommunityRow }) {
       {editable && (
         <form action={setCommunityTowerLevelsPerFloorAction} className="flex flex-wrap items-end gap-3 border-t border-border pt-4">
           <input type="hidden" name="communityId" value={c.id} />
-          <label className="flex flex-1 flex-col gap-1 text-xs text-muted">Niveaux par étage (5 à 20)
+          <label className="flex flex-1 flex-col gap-1 text-xs text-muted">Niveaux par niveau d’XP (5 à 20)
             <input type="number" name="levelsPerFloor" min={5} max={20} step={1} required defaultValue={c.towerLevelsPerFloor} className={SELECT_CLASS} />
           </label>
           <Button type="submit" size="sm">Enregistrer</Button>

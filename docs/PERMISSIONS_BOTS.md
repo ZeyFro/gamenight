@@ -16,22 +16,31 @@ Noms des permissions tels qu'ils apparaissent dans Discord en français.
 
 | Bot | À quoi il sert | Permissions minimales en plus du socle | Encore utile ? (critère) |
 | --- | --- | --- | --- |
-| **GameNight** (rôle AppBot) | Le site : annonces de soirées, tournois et défis, MP, commandes `/tower-admin`, `/aide`… | Les 12 permissions de `PHASE_TEST.md` (masque `395408657424`) : socle + *Gérer les salons*, *Gérer les rôles*, *Créer des fils publics*, *Créer des fils privés*, *Envoyer des messages dans les fils*, *Gérer les fils*, *Se connecter*, *Parler*. **Pour le lancement**, avec les seuls interrupteurs allumés, les 9 premières suffisent (masque `395137076240`). Garder les 12 évite de revenir plus tard. | **Oui**, indispensable. |
+| **GameNight** (rôle AppBot) | Le site : annonces de soirées, tournois et défis, MP, commandes `/tower-admin`, `/aide`… | Les 13 permissions de `PHASE_TEST.md` (masque `395408788496`) : socle + *Gérer les salons*, *Gérer les rôles*, *Créer des fils publics*, *Créer des fils privés*, *Envoyer des messages dans les fils*, *Gérer les fils*, *Se connecter*, *Parler* et **_Mentionner @everyone, @here et tous les rôles_** (voir « GameNight et les mentions » ci-dessous). Ne jamais retirer cette dernière. | **Oui**, indispensable. |
 | **Appy** | Formulaires de candidature (staff, équipes) par MP, résultats postés dans un salon, rôle donné à l'acceptation | *Gérer les rôles* (seulement si un rôle est donné à l'acceptation) | Oui s'il sert aux candidatures du staff. GameNight a ses propres candidatures d'**équipe**, éteintes : pas de doublon au lancement. |
-| **Atlas** | Bot à tout faire : modération, journaux, niveaux, messages de bienvenue | Selon les modules allumés : *Gérer les messages* ; *Gérer les rôles* ; *Expulser*, *Bannir*, *Exclure temporairement des membres* (modération) ; *Voir les logs du serveur* (journaux) | À vérifier : il **fait doublon** avec MEE6, YAGPDB et Koya. Garder **un seul** bot de modération. |
-| **Discord.Me** | Référencer le serveur sur l'annuaire discord.me (« bump », nombre de membres) | *Créer une invitation* | **Probablement inutile** si le serveur n'est plus promu sur discord.me. Premier candidat au retrait. |
+| **Atlas** | Bot à tout faire : modération, journaux, niveaux, messages de bienvenue | Selon les modules allumés : *Gérer les messages* ; *Gérer les rôles* ; *Expulser*, *Bannir*, *Exclure temporairement des membres* (modération) ; *Voir les logs du serveur* (journaux) | **Retirer** (décision du 23/11) : doublon avec MEE6 et YAGPDB. |
+| **Discord.Me** | Référencer le serveur sur l'annuaire discord.me (« bump », nombre de membres) | *Créer une invitation* | **Garder** (décision du 23/11). |
 | **Koya** | Vérification des nouveaux arrivants, anti-raid, rôles par réaction, bienvenue | *Gérer les rôles* ; *Ajouter des réactions* ; *Expulser des membres* (anti-raid) ; *Gérer les messages* | Oui s'il fait la vérification à l'entrée. Sinon doublon avec MEE6 ou Atlas. |
-| **MEE6** | Niveaux et rôles de niveau, modération, bienvenue, rôles par réaction, alertes | *Gérer les rôles* (rôles de niveau) ; *Gérer les messages* ; *Ajouter des réactions* ; modération si utilisée : *Expulser*, *Bannir*, *Exclure temporairement* ; *Voir les logs du serveur* | À vérifier : ses **niveaux** font doublon avec l'XP et les étages de GameNight et peuvent embrouiller les membres. |
+| **MEE6** | Niveaux et rôles de niveau, modération, bienvenue, rôles par réaction, alertes | *Gérer les rôles* (rôles de niveau) ; *Gérer les messages* ; *Ajouter des réactions* ; modération si utilisée : *Expulser*, *Bannir*, *Exclure temporairement* ; *Voir les logs du serveur* | **Garder**, mais **couper son module Niveaux** (décision du 23/11) : seul l'XP GameNight compte. Sans niveaux, *Gérer les rôles* ne sert plus qu'aux rôles par réaction. |
 | **MonitoRSS** | Publie des flux RSS (actualités, sites) dans des salons | *Gérer les webhooks* seulement si l'on veut un nom et un avatar personnalisés | Oui si des flux sont actifs. Vérifier sur son tableau de bord. |
 | **PatchBot** | Publie les notes de mise à jour des jeux | *Gérer les webhooks* (facultatif, même raison) | Oui si des jeux sont suivis. GameNight a des actualités de jeux, mais dans le site, pas dans Discord. |
 | **RPBot** | Jeu de rôle : fiches de personnages, dés, messages « au nom » d'un personnage | *Gérer les webhooks* (messages au nom d'un personnage) ; *Gérer les messages* (effacer le message d'origine) | À vérifier : utilisé seulement s'il y a des parties de jeu de rôle sur le serveur. |
 | **Ticket Tool** | Tickets d'aide : crée un salon privé par demande | *Gérer les salons* ; *Gérer les rôles* (droits du salon de ticket) ; *Joindre des fichiers* ; *Gérer les messages* ; *Créer des fils privés* (mode « fil ») | Oui s'il sert à l'aide ou à la modération. Il ajoute lui-même ses droits sur les salons qu'il crée. |
-| **UnbelievaBoat** | Économie (monnaie, boutique, jeux de hasard), modération | *Gérer les rôles* (rôles achetés en boutique) ; modération si utilisée | À vérifier : son économie fait doublon avec l'XP et la boutique de profil de GameNight. |
-| **YAGPDB** | Commandes personnalisées, rôles automatiques, modération, journaux | *Gérer les rôles* ; *Gérer les messages* ; *Gérer les pseudos* (si utilisé) ; modération si utilisée ; *Voir les logs du serveur* | À vérifier : doublon possible avec Atlas et MEE6. |
+| **UnbelievaBoat** | Économie (monnaie, boutique, jeux de hasard), modération | *Gérer les rôles* (rôles achetés en boutique) ; modération si utilisée | **Couper son économie** (décision du 23/11) : seul l'XP GameNight compte. Sans boutique, il n'a plus besoin de *Gérer les rôles*. |
+| **YAGPDB** | Commandes personnalisées, rôles automatiques, modération, journaux | *Gérer les rôles* ; *Gérer les messages* ; *Gérer les pseudos* (si utilisé) ; modération si utilisée ; *Voir les logs du serveur* | **Garder** (décision du 23/11). |
 
-**Ce qu'aucun bot ne devrait garder** : *Administrateur* ; *Gérer le serveur* (sauf demande précise d'un bot de configuration) ; *Mentionner @everyone, @here et tous les rôles* (sauf un bot d'annonces décidé par Maxime).
+**Ce qu'aucun bot ne devrait garder** : *Administrateur* ; *Gérer le serveur* (sauf demande précise d'un bot de configuration) ; *Mentionner @everyone, @here et tous les rôles* (sauf un bot d'annonces décidé par Maxime : **GameNight**, voir ci-dessous).
 
-**Recommandation pour Maxime** : garde un seul bot de modération (MEE6 **ou** Atlas **ou** YAGPDB) et un seul pour la vérification (Koya). Retire Discord.Me si le serveur n'est plus sur l'annuaire. Chaque bot retiré, c'est un jeton de moins qui peut fuir.
+### GameNight et les mentions (décision de Maxime, 23/11/2026)
+
+Les rôles du serveur **Gaming, Minecraft, Yama, Otaku, Chef-Otaku, The-Hell, Citoyen-Des-Etoile, Ranker et Régulars** ne sont **pas** mentionnables par tout le monde. Un bot sans le droit *Mentionner @everyone, @here et tous les rôles* peut écrire `@Minecraft` dans un message, mais **personne n'est notifié**.
+
+- **Quand on retire Administrateur à GameNight, il garde ce droit** (masque `395408788496`, 13 permissions). Il est dans le lien d'invitation de [PHASE_TEST.md](PHASE_TEST.md) § 3.
+- **Ce que le code fait aujourd'hui** : les pings de soirée et de tournoi visent les **membres** invités (`allowedMentions.users`), ce qui ne demande pas ce droit. Le bot n'envoie **jamais** @everyone ni @here (retiré dans `discord-rest.ts`, pour tous les envois). Le seul ping de **rôle** prévu est celui du rôle de jeu (`buildGameRolePing`, question Q19), pas encore branché : c'est lui qui a besoin de ce droit.
+- **Garde-fous** : `src/lib/discord-bot-permissions.test.ts` échoue si le masque perd ce droit, si la documentation ne donne plus le même masque, ou si une mention de rôle ou @everyone apparaît ailleurs que dans `notification-policy.ts`. La pré-vérification `/api/admin/tower-preflight` (lecture seule, `TOWER_DISCORD_PREFLIGHT_ENABLED`) liste les permissions qui manquent réellement au bot sur le serveur, dont celle-ci.
+- **Vérifier après le retrait d'Administrateur** : ouvrir la pré-vérification ; `botPermissions.missing` doit être vide.
+
+**Décision de Maxime (23/11)** : garder **MEE6 et YAGPDB**, **retirer Atlas** ; **garder Discord.Me** ; **couper les niveaux et la monnaie de MEE6 et d'UnbelievaBoat** (seul l'XP GameNight compte : désactiver le module Niveaux de MEE6 et l'économie d'UnbelievaBoat sur leur tableau de bord, puis retirer leurs rôles de niveau ou de boutique devenus inutiles). Chaque bot retiré, c'est un jeton de moins qui peut fuir.
 
 ---
 
@@ -61,7 +70,7 @@ Chaque bot a un **rôle intégré** à son nom (icône de robot, il ne peut pas 
 1. **Paramètres → Rôles →** rôle intégré du bot → *Permissions*.
 2. Cocher le socle et les permissions « en plus » du tableau du § 1, **seulement pour les fonctions vraiment utilisées** (regarder le tableau de bord du bot).
 3. Enregistrer. Rien ne change encore pour le bot, puisqu'il a toujours Administrateur par Workshop.
-4. Pour GameNight, le plus simple est de **réinviter** l'application avec le lien de `PHASE_TEST.md` (§ 3, permissions `395408657424`) : réinviter ajoute les droits sans rien retirer.
+4. Pour GameNight, le plus simple est de **réinviter** l'application avec le lien de `PHASE_TEST.md` (§ 3, permissions `395408788496`) : réinviter ajoute les droits sans rien retirer.
 
 ### Étape 2 — Ranger la hiérarchie (10 min)
 
@@ -81,7 +90,7 @@ Pour chaque salon ou catégorie privés utilisés par un bot :
 
 Ordre conseillé, du moins risqué au plus important :
 
-**Discord.Me → PatchBot → MonitoRSS → RPBot → Appy → UnbelievaBoat → Koya → Atlas → YAGPDB → MEE6 → Ticket Tool → GameNight.**
+**Atlas (à expulser) → Discord.Me → PatchBot → MonitoRSS → RPBot → Appy → UnbelievaBoat → Koya → YAGPDB → MEE6 → Ticket Tool → GameNight.**
 
 Pour chaque bot :
 

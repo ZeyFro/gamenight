@@ -4,6 +4,7 @@ import { getCurrentUser } from "@/lib/current-user";
 import { loadGameSuggestions } from "@/lib/game-suggestions";
 import { pageMetadata } from "@/lib/page-title";
 import { LibraryTabs } from "@/components/LibraryTabs";
+import { plural } from "@/lib/plural";
 
 export const metadata = pageMetadata("Suggestions de jeux");
 export default async function GameSuggestionsPage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
@@ -34,7 +35,7 @@ export default async function GameSuggestionsPage({ searchParams }: { searchPara
     <ul className="grid gap-3 sm:grid-cols-2">
       {result.suggestions.map(game => <li key={game.id} className="rounded-xl border border-border bg-surface p-4">
         <Link href={`/jeux/${encodeURIComponent(game.id)}`} className="font-semibold text-accent underline">{game.name}</Link>
-        <p className="mt-1 text-sm text-muted">Correspond aux préférences de {game.preferredByCount} participant{game.preferredByCount === 1 ? "" : "s"}.</p>
+        <p className="mt-1 text-sm text-muted">Correspond aux préférences de {game.preferredByCount} {plural(game.preferredByCount, "participant")}.</p>
         {!game.capacityKnown && <p className="text-xs text-muted">Capacité en joueurs à vérifier sur la fiche.</p>}
       </li>)}
     </ul>

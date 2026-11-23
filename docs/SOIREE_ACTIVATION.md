@@ -133,7 +133,7 @@ L'accès est coupé tout de suite, **sans redéploiement**. C'est le retour arri
 
 Sur le serveur The Tower, avec un compte qui a « Gérer le serveur » :
 
-1. Tape `/tower-admin importer`. Réponse attendue (visible de toi seul) : « ✅ Catalogue prêt : N défis ajoutés, M déjà présents. » (1ᵉʳ passage : 86 défis solo = 26 de départ + 60 de la saison 1).
+1. Tape `/tower-admin importer`. Réponse attendue (visible de toi seul) : « ✅ Catalogue prêt : N défis ajoutés, M déjà présents. » (1ᵉʳ passage : 89 défis solo = 26 de départ + 60 de la saison 1 + 3 « variété », dont 2 hors jeu et 1 à preuve ancienne).
 2. Tape `/tower-admin importer-equipe`. Réponse attendue : « ✅ Catalogue d'équipe prêt : N défis ajoutés… Aucune annonce n'a été envoyée. » (1ᵉʳ passage : 30 défis d'équipe = 10 + 20). **Exige `communityTeamsEnabled` = `true`** (relevé en 2.2) ; s'il vaut `false`, ne lance pas cette commande ce soir et préviens-moi.
 3. Relance chaque commande une seconde fois : « 0 ajouté, tout déjà présent » (l'import est idempotent).
 
@@ -188,7 +188,7 @@ Aucune fonction du dépôt ne lit les rôles Discord d'un joueur pour calculer u
 
 - `/tower-admin importer` et `/tower-admin importer-equipe` importent le **catalogue de défis** (titres, consignes, barème), **pas les étages des joueurs**.
 - `audit-tower-etage-roles.mjs` est en lecture seule : il ne peut rien resynchroniser.
-- Décision du cahier §7.2 : « le nouveau compteur démarre de zéro sans effacer les profils GameNight, les soirées ou les autres historiques ». Ce que chaque joueur retrouve donc, en une phrase exacte : **Ton niveau, ton étage XP et ton rang XP sont conservés ; tes étages Tower repartent de zéro et se gagnent par les défis, et ton grade Tower (Régulars, Irregular, Ranker, High Ranker) repart avec eux.** (le niveau, l'étage XP et le rang XP viennent de `CommunityMemberStats.xpTotal`, intacts en base ; les étages Tower viennent de `TowerChallengeProgress.floorsClimbed`, à 0 ; le grade Tower est calculé à partir de ces étages, Irregular étant attribué à la main).
+- Décision du cahier §7.2 : « le nouveau compteur démarre de zéro sans effacer les profils GameNight, les soirées ou les autres historiques ». Ce que chaque joueur retrouve donc, en une phrase exacte : **Ton niveau, ton niveau d’XP et ton rang XP sont conservés ; tes étages Tower repartent de zéro et se gagnent par les défis, et ton grade Tower (Régulars, Irregular, Ranker, High Ranker) repart avec eux.** (le niveau, le niveau d’XP et le rang XP viennent de `CommunityMemberStats.xpTotal`, intacts en base ; les étages Tower viennent de `TowerChallengeProgress.floorsClimbed`, à 0 ; le grade Tower est calculé à partir de ces étages, Irregular étant attribué à la main).
 
 ### Qu'est-ce qui a pu être perdu ?
 
@@ -435,7 +435,7 @@ Aucune action Discord ni Neon, aucune migration. Deux interrupteurs indépendant
 
 | Interrupteur | Ce qui change |
 | --- | --- |
-| `LAUNCH_TEXTS_ENABLED` | **Connexion** : « L'accès est réservé aux membres du serveur Discord The Tower. » sous le bouton, avec un lien « Rejoindre le serveur » si `DISCORD_INVITE_URL` est un lien `https://discord.gg/…` ou `https://discord.com/invite/…` valide (même validation que le message de refus ; sans la variable, la phrase seule). **Étages** : la phrase du § 4 bis (niveau, étage XP et rang XP conservés ; étages Tower repartis de zéro) apparaît une fois, discrète, sur `/tower` et `/ascension`. **`/sessions/[id]`** : « Présence vocale Discord » n'est plus rendue tant que `VOICE_PRESENCE_ENABLED` est éteint ; la galerie n'est plus rendue aux membres ordinaires quand `SESSION_MEDIA_BLOB_TOKEN` manque (le créateur et les admins invités voient « Les photos ne sont pas encore disponibles. » au lieu du message sur le stockage Blob). |
+| `LAUNCH_TEXTS_ENABLED` | **Connexion** : « L'accès est réservé aux membres du serveur Discord The Tower. » sous le bouton, avec un lien « Rejoindre le serveur » si `DISCORD_INVITE_URL` est un lien `https://discord.gg/…` ou `https://discord.com/invite/…` valide (même validation que le message de refus ; sans la variable, la phrase seule). **Étages** : la phrase du § 4 bis (niveau, niveau d’XP et rang XP conservés ; étages Tower repartis de zéro) apparaît une fois, discrète, sur `/tower` et `/ascension`. **`/sessions/[id]`** : « Présence vocale Discord » n'est plus rendue tant que `VOICE_PRESENCE_ENABLED` est éteint ; la galerie n'est plus rendue aux membres ordinaires quand `SESSION_MEDIA_BLOB_TOKEN` manque (le créateur et les admins invités voient « Les photos ne sont pas encore disponibles. » au lieu du message sur le stockage Blob). |
 | `NAV_TOWER_ENABLED` | Lien « The Tower » (`/tower`) dans la barre latérale (groupe « La communauté ») et le menu mobile (☰). La barre basse mobile reste à six onglets : sept ne tiennent pas à 320 px. |
 
 1. [ ] (Facultatif) Vercel → Production : vérifie que `DISCORD_INVITE_URL` est renseignée (lien d'invitation permanent du serveur The Tower, non secret).

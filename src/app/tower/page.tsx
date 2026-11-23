@@ -14,6 +14,7 @@ import { replaceTowerChallengeAction } from "./actions";
 import { TowerChallengeAppealForm } from "@/components/tower/TowerChallengeAppealForm";
 import { isTowerChallengeAppealWindowOpen } from "@/lib/tower-challenge-appeal-rules";
 import { TOWER_FLOORS_RESET_NOTICE, isLaunchTextsEnabled } from "@/lib/launch-texts";
+import { towerChallengeCategoryLabel, towerProofRuleNotice } from "@/lib/tower-challenge-categories";
 
 export const metadata = pageMetadata("The Tower");
 
@@ -88,8 +89,8 @@ export default async function TowerPage({ searchParams }: { searchParams: Promis
     <section className="grid gap-4 md:grid-cols-2" aria-label="Progression personnelle">
       <Card className="flex flex-col gap-3">
         <p className="text-sm font-medium text-accent">Ascension · XP GameNight</p>
-        <h2 className="text-2xl font-semibold text-foreground">Étage {ascension.floor}</h2>
-        <p className="text-sm text-muted">Niveau {ascension.level} · {Math.floor(ascension.progress * 100)} % vers le prochain étage</p>
+        <h2 className="text-2xl font-semibold text-foreground">Niveau d’XP {ascension.floor}</h2>
+        <p className="text-sm text-muted">Niveau {ascension.level} · {Math.floor(ascension.progress * 100)} % vers le prochain niveau d’XP</p>
         <Link href="/ascension" className="text-sm font-medium text-accent underline-offset-4 hover:underline">Voir le détail de l’ascension →</Link>
       </Card>
       <Card className="flex flex-col gap-3">
@@ -109,7 +110,10 @@ export default async function TowerPage({ searchParams }: { searchParams: Promis
           <h2 className="text-xl font-semibold text-foreground">{currentChallenge.title}</h2>
           <p className="text-sm text-muted">{challengeStatus[currentChallenge.status] ?? currentChallenge.status} · +{currentChallenge.rewardFloors} étage(s) personnels</p>
           <p className="whitespace-pre-wrap text-sm text-foreground">{currentChallenge.instructions}</p>
-          {currentChallenge.proofCode && <div className="rounded-lg bg-surface-hover p-3">
+          <p className="text-xs font-medium text-foreground" data-proof-rule={currentChallenge.allowsPastProof ? "ancienne" : "posterieure"}>
+            {towerChallengeCategoryLabel(currentChallenge.category) ? `${towerChallengeCategoryLabel(currentChallenge.category)} · ` : ""}{towerProofRuleNotice(currentChallenge.allowsPastProof)}
+          </p>
+          {currentChallenge.proofCode && !currentChallenge.allowsPastProof && <div className="rounded-lg bg-surface-hover p-3">
             <p className="text-sm font-semibold text-foreground">Code de preuve : <code>{currentChallenge.proofCode}</code></p>
             <p className="mt-1 text-xs text-muted">Inscris-le dans le jeu si possible. Sinon, ajoute-le à la composition GameNight qui accompagne la capture. Il associe les éléments de preuve, mais ne prouve pas la date de la capture.</p>
           </div>}
@@ -136,7 +140,8 @@ export default async function TowerPage({ searchParams }: { searchParams: Promis
           {team.attempt ? <>
             <p className="mt-1 text-sm text-foreground">{team.attempt.title} · {challengeStatus[team.attempt.status] ?? team.attempt.status}</p>
             <p className="whitespace-pre-wrap text-sm text-muted">{team.attempt.instructions}</p>
-            {team.attempt.proofCode && <p className="rounded-lg bg-surface-hover p-3 text-xs text-muted">
+            <p className="text-xs font-medium text-foreground">{towerProofRuleNotice(team.attempt.allowsPastProof)}</p>
+            {team.attempt.proofCode && !team.attempt.allowsPastProof && <p className="rounded-lg bg-surface-hover p-3 text-xs text-muted">
               Code de preuve : <code className="font-semibold text-foreground">{team.attempt.proofCode}</code>. Inscris-le dans le jeu si possible, sinon dans la composition GameNight jointe à la capture. Il associe les éléments, sans prouver la date de capture.
             </p>}
             <p className="text-xs text-muted">{team.attempt.participantCount} participant(s) confirmé(s) · +{team.attempt.rewardFloors} étage(s) personnel(s) chacun</p>

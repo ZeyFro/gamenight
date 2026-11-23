@@ -6,6 +6,7 @@ import { checkRateLimit, RATE_LIMIT_ERROR_KEY } from "@/lib/rate-limit";
 import { writeCommunityIdForUser } from "@/lib/community-stats";
 import { applyXpAdjustment, normalizeAdjustmentReason, parseXpValue } from "@/lib/admin-xp";
 import type { ActionFormResult } from "@/components/ActionForm";
+import { recordSensitiveOperation } from "@/lib/sensitive-operation-log";
 
 /**
  * Correction manuelle de l'XP d'un joueur (onglet « Joueurs » de /admin). Chaque
@@ -47,6 +48,7 @@ export async function adjustPlayerXpAction(formData: FormData): Promise<ActionFo
   // Rafraîchit la fiche dans tous les cas : après un échec « stale » ou « unchanged »,
   // l'admin doit revoir le solde réel avant de confirmer à nouveau.
   revalidatePath("/admin");
+  await recordSensitiveOperation({ actorId: admin.id, action: "player.xp_adjust", communityId, target: userId, outcome: result.ok ? "ok" : result.reason });
   if (!result.ok) return { ok: false, error: result.reason };
   return { ok: true };
 }

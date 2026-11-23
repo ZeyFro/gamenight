@@ -16,7 +16,7 @@
 
 | # | Critère | Responsable | Statut réel | Preuve attendue |
 | --- | --- | --- | --- | --- |
-| A1 | Migrations à jour | Claude Code | ✅ **151 migrations appliquées sur 151** dans `prisma/migrations`, 0 inachevée, 0 annulée, dernière `20261121100000_account_deletion_log`. Dernier run « Migrations Production » : **n° 27, vert**, 21/11 03:24 UTC (27 runs, tous verts). | Requête `SELECT` sur `_prisma_migrations` (faite) ; GitHub → Actions → « Migrations Production ». |
+| A1 | Migrations à jour | Claude Code | ✅ **151 migrations appliquées sur 151** dans `prisma/migrations`, 0 inachevée, 0 annulée, dernière `20261121100000_account_deletion_log`. Dernier run « Migrations Production » : **n° 27, vert**, 21/11 03:24 UTC (27 runs, tous verts). Les migrations s'appliquent **automatiquement à la fusion** dans `main` (aucune approbation : environnement sans relecteur, constaté sur #525 à #527) ; après chaque fusion à migration, vérifier que le run est vert. | Requête `SELECT` sur `_prisma_migrations` (faite) ; GitHub → Actions → « Migrations Production ». |
 | A2 | Production déployée sur le dernier `main`, état READY | Claude Code | ✅ à chaque fusion (dernier relevé : déploiement READY de #517) | Vercel → Deployments : le premier est « Production · Ready ». |
 | A3 | Aucune fusion pendant la semaine du lancement, Dependabot compris | Maxime | ✅ les 5 PR Dependabot (#501, #502, #504, #505, #506) restent ouvertes | Liste des PR ouvertes. |
 | A4 | Sauvegarde : retour arrière possible | Maxime + ChatGPT | 🔴 L'offre Neon gratuite ne garde que **6 heures** d'historique : une erreur vue le lendemain n'est plus réparable. Créer une **branche de sauvegarde** juste avant l'annonce. | Capture de la branche de sauvegarde datée dans la console Neon. |
@@ -35,7 +35,7 @@
 | # | Critère | Responsable | Statut réel | Preuve attendue |
 | --- | --- | --- | --- | --- |
 | C1 | **13 commandes enregistrées** | ChatGPT (guidé) + Maxime | 🔴 l'enregistrement s'arrêtait à 5/13 sur la limite de débit Discord ; corrigé par la **PR #518**. Après fusion : ouvrir `/admin/discord-commands`, « Enregistrer », recliquer tant qu'il reste des lignes « en attente ». | Capture du tableau : 13 lignes « enregistrée » ou « déjà à jour ». |
-| C2 | **Catalogue de défis rempli** | ChatGPT (guidé) | 🔴 **0 défi en base** (relevé du 22/11). Après C1 : `/tower-admin importer` (86 défis solo) puis `/tower-admin importer-equipe` (30 défis d'équipe, si les équipes sont activées). Aucune annonce n'est envoyée. | Réponse privée « X défis ajoutés » ; `/tower` montre des défis. |
+| C2 | **Catalogue de défis rempli** | ChatGPT (guidé) | 🔴 **0 défi en base** (relevé du 22/11). Après C1 : `/tower-admin importer` (89 défis solo, dont 2 hors jeu et 1 à preuve ancienne) puis `/tower-admin importer-equipe` (30 défis d'équipe, si les équipes sont activées). Aucune annonce n'est envoyée. | Réponse privée « X défis ajoutés » ; `/tower` montre des défis. |
 | C3 | Bot sans Administrateur | ChatGPT (guidé) | 🔴 le rôle **Workshop** (Administrateur) est porté par 12 bots, et GameNight a Administrateur via **AppBot** : suivre [PERMISSIONS_BOTS.md](PERMISSIONS_BOTS.md) | Capture des rôles de chaque bot, sans Administrateur ; tests de [PERMISSIONS_BOTS.md](PERMISSIONS_BOTS.md) passés. |
 | C4 | Message du guide corrigé | ChatGPT | 🔴 il dit encore « Tes étages actuels restent en place » ; texte de remplacement dans [MESSAGES_LANCEMENT.md](MESSAGES_LANCEMENT.md) | Capture du message édité, datée. |
 | C5 | Salon de retours et de bugs | ChatGPT | 🔴 à créer ou désigner, avec un message épinglé | Lien du salon. |
@@ -93,7 +93,7 @@ Le triage de l'audit marque 15 constats « corrigé ». **Mais 5 d'entre eux ne 
 | V1-22 | Conditions des API tierces | corrigé | ✅ |
 | V1-23 | Lien « Aller au contenu » | action humaine | ✅ `SKIP_LINK_ENABLED` allumé |
 | V3-02 | Connexion : « réservé aux membres » | corrigé | 🔴 **non visible** : `LAUNCH_TEXTS_ENABLED` éteint |
-| V3-11 | Deux « étages » côte à côte | reste | 🟠 décision de Maxime (nom de l'étage XP) |
+| V3-11 | Deux « étages » côte à côte | codé | ✅ décision du 23/11 : « Niveau d’XP » pour l’XP, « Étage » pour la Tour (PR Code 8) |
 | V3-12 | Phrase sur la conservation des étages | corrigé | 🔴 **non visible** sur le site : `LAUNCH_TEXTS_ENABLED` éteint. À dire au moins dans Discord (C4). |
 | V3-15 | The Tower dans le menu | corrigé | 🔴 **non visible** : `NAV_TOWER_ENABLED` éteint. La Tour n'est atteignable que par l'adresse `/tower`. |
 | V3-18 | Blocs techniques sur la page de soirée | corrigé | 🔴 **non visible** : `LAUNCH_TEXTS_ENABLED` éteint |
@@ -101,7 +101,7 @@ Le triage de l'audit marque 15 constats « corrigé ». **Mais 5 d'entre eux ne 
 | V4-01 | Dependabot | corrigé | ✅ actif (5 PR en attente) |
 | V4-15 | Isolation Preview / Production | action humaine | 🔴 écart trouvé (E4) |
 
-> **Total des 21 constats : 13 ✅, 3 🟠 (V1-14, V1-17, V3-11), 5 🔴 (V3-02, V3-12, V3-15, V3-18, V4-15).** Les constats V1-12 (EXIF), V3-07 et V3-08 (signalements) sont classés « après ouverture » ; ils restent sans objet tant que la galerie et la commande « Signaler » sont éteintes.
+> **Total des 21 constats : 14 ✅, 2 🟠 (V1-14, V1-17), 5 🔴 (V3-02, V3-12, V3-15, V3-18, V4-15).** Les constats V1-12 (EXIF), V3-07 et V3-08 (signalements) sont classés « après ouverture » ; ils restent sans objet tant que la galerie et la commande « Signaler » sont éteintes.
 
 **Décision demandée à Maxime pour V3-02, V3-12, V3-15 et V3-18.** Ces quatre corrections sont **déjà dans le code** et ne demandent qu'un interrupteur d'affichage : `LAUNCH_TEXTS_ENABLED` et `NAV_TOWER_ENABLED`, sans migration et sans risque pour les données. Les laisser éteints contredit le produit : la Tour hors du menu, et un visiteur extérieur qui ne sait pas que l'accès est réservé. Je recommande une **exception à la règle** pour ces deux interrupteurs d'affichage. Sinon, ces quatre constats restent rouges.
 
