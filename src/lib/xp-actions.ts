@@ -5,10 +5,7 @@ import { statsCommunityIdForSession } from "@/lib/community-stats";
 import { getDefaultCommunityId } from "@/lib/default-community";
 import { getMemberStats, lockCommunityProgress, ZERO_MEMBER_STATS, type CommunityProgress } from "@/lib/member-stats";
 import { announceLevelUp } from "@/lib/discord-level-up";
-import {
-  CREATE_SESSION_DAILY_XP_CAP, CREATE_SESSION_XP_WINDOW_MS,
-  computeAwardedAmount, didLevelUp, levelForXp, rankForLevel, titleForLevel,
-} from "@/lib/xp";
+import { CREATE_SESSION_DAILY_XP_CAP, CREATE_SESSION_XP_WINDOW_MS, computeAwardedAmount, didLevelUp, levelForXp, rankForLevel, titleForLevel, xpLevelLabel } from "@/lib/xp";
 import { createNotification } from "@/lib/notifications";
 import { logger } from "@/lib/logger";
 import { attemptDefaultRewardDelivery, persistRewardNotice, type RewardNotice } from "@/lib/reward-notifications";
@@ -89,7 +86,7 @@ export async function awardXp(
       }
       await createNotification({
         userId, communityId: id, type: "LEVEL_UP", title: "🎉 Level up !",
-        message: "Niveau " + result.beforeLevel + " → " + result.afterLevel + " · " + titleForLevel(result.afterLevel) + " · " + rankForLevel(result.afterLevel).name,
+        message: xpLevelLabel(result.beforeLevel) + " → " + xpLevelLabel(result.afterLevel) + " · " + titleForLevel(result.afterLevel) + " · " + rankForLevel(result.afterLevel).name,
       });
     }
     return { leveledUp: result.leveledUp, awarded: result.awarded };
