@@ -7,7 +7,9 @@ import { isMemberOfCommunity } from "@/lib/community-isolation";
 import { prisma } from "@/lib/prisma";
 import { wallClockNow } from "@/lib/wallclock";
 import { awardXp } from "@/lib/xp-actions";
-import { XP_AMOUNTS } from "@/lib/xp";
+import { TOURNAMENT_XP_MIN_ESTABLISHED_PARTICIPANTS, XP_AMOUNTS } from "@/lib/xp";
+import { countEstablishedParticipants, isTournamentXpEligible } from "@/lib/tournament-xp-eligibility";
+import { getDefaultCommunityId } from "@/lib/default-community";
 import { checkTournamentBadges } from "@/lib/badges";
 import { ACCENT_COLOR } from "@/lib/discord";
 import { logger } from "@/lib/logger";
@@ -572,29 +574,47 @@ async function announceTournamentFinalization(tournamentId: string, championId: 
         : m.player1Id === m.winnerId ? m.player2Id : m.player1Id)
       .filter((id): id is string => id !== null);
 
-    const award = async (userId: string, place: string, amount: number) =>
-      awardXp(userId, tournament.communityId, "TOURNAMENT_RESULT", `${tournamentId}:${place}${teamMode ? `:${userId}` : ""}`, amount);
-    const championMembers = teamMode
-      ? (tournament.championTeam?.members.map((m) => m.userId) ?? [])
-      : [championId];
-    for (const userId of championMembers) await award(userId, "1st", XP_AMOUNTS.TOURNAMENT_1ST);
-    const runnerUpMembers = runnerUpId
-      ? teamMode
-        ? (await prisma.tournamentTeamMember.findMany({ where: { teamId: runnerUpId }, select: { userId: true } })).map((m) => m.userId)
-        : [runnerUpId]
-      : [];
-    for (const userId of runnerUpMembers) await award(userId, "2nd", XP_AMOUNTS.TOURNAMENT_2ND);
-    const semifinalLoserMembers = teamMode
-      ? (await prisma.tournamentTeamMember.findMany({ where: { teamId: { in: semifinalLoserIds } }, select: { userId: true } })).map((m) => m.userId)
-      : semifinalLoserIds;
-    for (const userId of semifinalLoserMembers) {
-      await awardXp(userId, tournament.communityId, "TOURNAMENT_RESULT", `${tournamentId}:semi:${userId}`, XP_AMOUNTS.TOURNAMENT_SEMIFINALIST);
-    }
-
     const participantIds = await prisma.tournamentParticipant.findMany({
       where: { tournamentId },
       select: { userId: true },
     });
+
+    // Audit du 23/11/2026, constat 1.11 : l'XP du podium n'est versée que si au moins 3 participants sont des membres actifs
+    // établis (même ancienneté que les votants Tower). Sinon : aucun XP, le tournoi et son annonce restent inchangés. Le plafond
+    // par joueur (TOURNAMENT_XP_WEEKLY_CAP sur 7 jours) s'applique ensuite dans `awardXp`.
+    const membershipCommunityId = tournament.communityId ?? (await getDefaultCommunityId());
+    const memberships = await prisma.membership.findMany({
+      where: { communityId: membershipCommunityId, userId: { in: participantIds.map((p) => p.userId) } },
+      select: { status: true, joinedAt: true },
+    });
+    const now = new Date();
+    const xpEligible = isTournamentXpEligible(memberships, now);
+    if (!xpEligible) {
+      logger.warn("tournaments", "XP de tournoi non versée : moins de " + TOURNAMENT_XP_MIN_ESTABLISHED_PARTICIPANTS + " participants établis.", {
+        tournamentId, participants: participantIds.length, established: countEstablishedParticipants(memberships, now),
+      });
+    }
+    if (xpEligible) {
+      const award = async (userId: string, place: string, amount: number) =>
+        awardXp(userId, tournament.communityId, "TOURNAMENT_RESULT", `${tournamentId}:${place}${teamMode ? `:${userId}` : ""}`, amount);
+      const championMembers = teamMode
+        ? (tournament.championTeam?.members.map((m) => m.userId) ?? [])
+        : [championId];
+      for (const userId of championMembers) await award(userId, "1st", XP_AMOUNTS.TOURNAMENT_1ST);
+      const runnerUpMembers = runnerUpId
+        ? teamMode
+          ? (await prisma.tournamentTeamMember.findMany({ where: { teamId: runnerUpId }, select: { userId: true } })).map((m) => m.userId)
+          : [runnerUpId]
+        : [];
+      for (const userId of runnerUpMembers) await award(userId, "2nd", XP_AMOUNTS.TOURNAMENT_2ND);
+      const semifinalLoserMembers = teamMode
+        ? (await prisma.tournamentTeamMember.findMany({ where: { teamId: { in: semifinalLoserIds } }, select: { userId: true } })).map((m) => m.userId)
+        : semifinalLoserIds;
+      for (const userId of semifinalLoserMembers) {
+        await awardXp(userId, tournament.communityId, "TOURNAMENT_RESULT", `${tournamentId}:semi:${userId}`, XP_AMOUNTS.TOURNAMENT_SEMIFINALIST);
+      }
+    }
+
     for (const p of participantIds) {
       await checkTournamentBadges(p.userId, tournament.communityId);
     }
