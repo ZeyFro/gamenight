@@ -2,7 +2,8 @@
 
 import { revalidatePath } from "next/cache";
 import { requireAdmin } from "@/lib/admin";
-import { checkRateLimit, RATE_LIMIT_ERROR_KEY } from "@/lib/rate-limit";
+import { RATE_LIMIT_ERROR_KEY } from "@/lib/rate-limit";
+import { checkSharedRateLimit } from "@/lib/shared-rate-limit";
 import { triggerGlobalRelogin } from "@/lib/force-relogin";
 import { logger } from "@/lib/logger";
 import type { ActionFormResult } from "@/components/ActionForm";
@@ -29,7 +30,7 @@ import type { ActionFormResult } from "@/components/ActionForm";
 export async function forceReloginAction(): Promise<ActionFormResult> {
   const user = await requireAdmin();
   if (!user) return { ok: false, error: "unauthorized" };
-  if (!checkRateLimit(user.id, "forceRelogin", { limit: 1, windowMs: 10 * 60_000 })) {
+  if (!(await checkSharedRateLimit(user.id, "forceRelogin", { limit: 1, windowMs: 10 * 60_000 }))) {
     return { ok: false, error: RATE_LIMIT_ERROR_KEY };
   }
 

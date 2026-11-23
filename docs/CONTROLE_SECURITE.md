@@ -79,7 +79,7 @@ Adresse testée : `https://gamenight-zeyfro.vercel.app`.
 | # | Constat | Gravité |
 | --- | --- | --- |
 | T1 | **Le bot a le droit Administrateur** sur le serveur Discord (rôles Workshop et AppBot, voir `docs/PHASE_TEST.md`). Si son jeton fuit, la personne qui l'a contrôle tout le serveur. Il faut lui retirer ce droit et lui laisser seulement les 12 permissions utiles. | **Élevée** |
-| T2 | **Les limites de débit sont gardées en mémoire, une par serveur Vercel.** Avec plusieurs serveurs en parallèle, elles se contournent en partie. Elles freinent sans empêcher. | Moyenne |
+| T2 | **Les limites de débit sont gardées en mémoire, une par serveur Vercel.** Avec plusieurs serveurs en parallèle, elles se contournent en partie. Elles freinent sans empêcher. **Correctif (23/11)** : les actions sensibles (suppression et export de compte, reconnexion forcée, enregistrement des commandes) passent par un compteur partagé en base (`checkSharedRateLimit`), une fois la migration appliquée. | Moyenne → Faible |
 | T3 | **CSP en mode observation** (voir le point 1). | Moyenne |
 | T4 | **Journaux d'exécution gardés 1 heure** (offre Hobby) : on ne peut pas enquêter sur un incident plus ancien. | Moyenne |
 | T5 | **Une seule personne détient tous les accès** (Vercel, Neon, Discord, GitHub). Une double authentification sur chaque compte est indispensable. Ce point n'est pas vérifiable d'ici. | Moyenne |

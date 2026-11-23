@@ -4362,3 +4362,14 @@ model AccountDeletionLog {
   @@index([userId])
   @@index([createdAt])
 }
+
+// Limitation de débit partagée entre instances (src/lib/shared-rate-limit.ts), actions sensibles seulement.
+// Fenêtre fixe ; lignes expirées supprimées au fil des appels. Sans relation, aucune donnée personnelle.
+model RateLimitWindow {
+  key         String   @db.VarChar(255)
+  windowStart DateTime
+  count       Int      @default(0)
+
+  @@id([key, windowStart])
+  @@index([windowStart])
+}
