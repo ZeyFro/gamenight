@@ -4,6 +4,8 @@ const requireAdmin = vi.fn();
 vi.mock("@/lib/admin", () => ({ requireAdmin: () => requireAdmin() }));
 const logger = vi.hoisted(() => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn() }));
 vi.mock("@/lib/logger", () => ({ logger }));
+const recordSensitiveOperation = vi.hoisted(() => vi.fn());
+vi.mock("@/lib/sensitive-operation-log", () => ({ recordSensitiveOperation }));
 
 import { POST } from "./route";
 

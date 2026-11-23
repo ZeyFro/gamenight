@@ -6,6 +6,7 @@ import { checkRateLimit, RATE_LIMIT_ERROR_KEY } from "@/lib/rate-limit";
 import { triggerGlobalRelogin } from "@/lib/force-relogin";
 import { logger } from "@/lib/logger";
 import type { ActionFormResult } from "@/components/ActionForm";
+import { recordSensitiveOperation } from "@/lib/sensitive-operation-log";
 
 /**
  * Reconnexion forcée globale (voir `src/lib/force-relogin.ts`) — action très
@@ -37,8 +38,10 @@ export async function forceReloginAction(): Promise<ActionFormResult> {
     await triggerGlobalRelogin();
   } catch (error) {
     logger.error("force-relogin", error, { userId: user.id });
+    await recordSensitiveOperation({ actorId: user.id, action: "auth.force_relogin", outcome: "server_error" });
     return { ok: false, error: "server_error" };
   }
+  await recordSensitiveOperation({ actorId: user.id, action: "auth.force_relogin", outcome: "ok" });
 
   revalidatePath("/admin");
   return { ok: true };
