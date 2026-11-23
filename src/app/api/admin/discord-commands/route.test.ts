@@ -315,3 +315,76 @@ describe("POST /api/admin/discord-commands : limite de débit", () => {
     expect(statuses.slice(5)).toEqual([429, 429]);
   });
 });
+
+describe("POST /api/admin/discord-commands : mode bulk (tout enregistrer d’un coup)", () => {
+  const calls = () => fetchMock.mock.calls.map(([url, init]) => ({ url: String(url), method: (init as RequestInit | undefined)?.method ?? "GET", body: (init as RequestInit | undefined)?.body }));
+
+  it("un GET puis UN SEUL PUT sur le serveur The Tower avec le manifeste complet : jamais de POST, DELETE, ni d’URL globale", async () => {
+    fetchMock.mockImplementation(async (_url: string, init?: RequestInit) =>
+      init?.method === "PUT" ? new Response("[]", { status: 200 }) : new Response("[]", { status: 200 })
+    );
+    const response = await call({ mode: "bulk" });
+    expect(response.status).toBe(200);
+    const all = calls();
+    expect(all.map((c) => c.method)).toEqual(["GET", "PUT"]);
+    expect(all.every((c) => c.url === ENDPOINT)).toBe(true);
+    expect(all.some((c) => c.url.includes("/applications/") && !c.url.includes("/guilds/"))).toBe(false);
+    const sent = JSON.parse(String(all[1].body)) as { name: string }[];
+    expect(sent).toHaveLength(13);
+    const body = await response.json();
+    expect(body.commands).toHaveLength(13);
+    expect(body.commands.every((c: { status: string }) => c.status === "enregistrée")).toBe(true);
+    expect(JSON.stringify(body)).not.toContain(TOKEN);
+    expect(recordSensitiveOperation).toHaveBeenCalledWith(expect.objectContaining({ action: "discord.commands_bulk", outcome: "ok" }));
+  });
+
+  it("refus si le serveur porte une commande hors manifeste : 409, aucune écriture (un PUT la supprimerait)", async () => {
+    fetchMock.mockResolvedValue(new Response(JSON.stringify([{ id: "1", name: "commande-etrangere", type: 1, description: "x" }]), { status: 200 }));
+    const response = await call({ mode: "bulk" });
+    expect(response.status).toBe(409);
+    const body = await response.json();
+    expect(body.ok).toBe(false);
+    expect(body.failure.stage).toBe("outside_manifest");
+    expect(body.outsideManifest).toBe(1);
+    expect(calls().map((c) => c.method)).toEqual(["GET"]);
+  });
+
+  it("limite de débit Discord sur le PUT : 202 avec le délai, aucune boucle sans fin", async () => {
+    fetchMock.mockImplementation(async (_url: string, init?: RequestInit) =>
+      init?.method === "PUT" ? new Response(JSON.stringify({ retry_after: 90 }), { status: 429 }) : new Response("[]", { status: 200 })
+    );
+    const response = await call({ mode: "bulk" });
+    expect(response.status).toBe(202);
+    const body = await response.json();
+    expect(body.failure).toMatchObject({ stage: "rate_limit", http: 429 });
+    expect(calls().filter((c) => c.method === "PUT")).toHaveLength(1);
+  });
+
+  it("refus Discord du PUT (403 / 50013) : 502, toutes les lignes en échec", async () => {
+    fetchMock.mockImplementation(async (_url: string, init?: RequestInit) =>
+      init?.method === "PUT" ? new Response(JSON.stringify({ code: 50013 }), { status: 403 }) : new Response("[]", { status: 200 })
+    );
+    const response = await call({ mode: "bulk" });
+    expect(response.status).toBe(502);
+    const body = await response.json();
+    expect(body.failure).toMatchObject({ stage: "write", http: 403, code: "50013" });
+    expect(body.commands.every((c: { status: string }) => c.status === "échec")).toBe(true);
+  });
+
+  it("tout est déjà à jour : aucune écriture", async () => {
+    const { default: manifest } = await import("../../../../../scripts/discord-commands.json");
+    const installed = (manifest as { name: string; type?: number; description?: string; options?: object[]; default_member_permissions?: string | null }[]).map((c, i) => ({ id: String(i), ...c }));
+    fetchMock.mockResolvedValue(new Response(JSON.stringify(installed), { status: 200 }));
+    const response = await call({ mode: "bulk" });
+    expect(response.status).toBe(200);
+    expect(calls().map((c) => c.method)).toEqual(["GET"]);
+    const body = await response.json();
+    expect(body.commands.every((c: { status: string }) => c.status === "déjà à jour")).toBe(true);
+  });
+
+  it("garde les mêmes verrous que les autres modes (secret faux = 401, aucun appel Discord)", async () => {
+    const response = await call({ mode: "bulk" }, { "x-registration-secret": "mauvais" });
+    expect(response.status).toBe(401);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+});
