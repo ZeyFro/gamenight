@@ -10,12 +10,12 @@
 
 | Statut | Nombre |
 | --- | ---: |
-| ✅ Fait | 49 |
+| ✅ Fait | 51 |
 | Codé, non vérifié en réel | 11 |
 | Codé, éteint | 33 |
-| Partiel | 9 |
+| Partiel | 7 |
 | Partiel (côté Discord) | 5 |
-| Non fait | 7 |
+| Non fait | 6 |
 | Sans code (action humaine ou Discord) | 24 |
 | Reporté | 9 |
 
@@ -77,13 +77,13 @@
 | C052 | 16 | Le Sommet : classements, Hall of Fame, Rankers, défis entre équipes, distinctions, exploits, sur des données r | `TOWER_CHALLENGES_ENABLED` (allumé), `TEAM_RIVALRIES_ENABLED` (éteint) | Codé, éteint | Allumer (lot E) + tester | ChatGPT (Vercel) + Maxime | Capture après allumage |
 | C053 | 17 | Salons vocaux : groupes de jeu, équipes, événements, vocaux temporaires | `SESSION_VISIBILITY_ENABLED` (éteint), `DISCORD_TEAM_SPACES_ENABLED` (éteint) | Partiel (côté Discord) | Procédure prête (PROCEDURES_PREUVES.md § C053), preuve à capturer par ChatGPT + Maxime | ChatGPT + Maxime | Capture Discord datée ; procédure : PROCEDURES_PREUVES.md § C053 |
 | C054 | 19.1 | Permissions cohérentes, administrateurs vérifiés, salons privés protégés | aucun | ✅ Fait | — | — | Tests verts : `lib/tower-layout-permissions.test.ts`, `lib/s0-access-controls.integration.test.ts` |
-| C055 | 19.1 | Journalisation des opérations sensibles | aucun | Partiel | Finir le code (Code 6) | Claude Code | Test Vitest + PR verte |
+| C055 | 19.1 | Journalisation des opérations sensibles | aucun | ✅ Fait | — | — | Tests verts : `app/admin/sensitive-operations-guard.test.ts` (toute action d'administration qui écrit appelle le journal), `lib/sensitive-operation-log.test.ts`, `tower-challenges.integration.test.ts` (confirmation du capitaine journalisée une fois) |
 | C056 | 19.2 | Rôles de prestige séparés des rôles techniques ; permissions sensibles vérifiées avant application | aucun | Codé, non vérifié en réel | Procédure prête (PROCEDURES_PREUVES.md § C056), preuve à capturer par Maxime | Maxime | Tests verts : `lib/tower-layout-permissions.test.ts` ; capture en Production ; procédure : PROCEDURES_PREUVES.md § C056 |
 | C057 | 19.3 | Confidentialité des preuves, tickets et journaux de modération | `DISCORD_REPORT_COMMAND_ENABLED` (éteint), `TOWER_DISCORD_ANNOUNCE_ENABLED` (allumé) | Codé, éteint | Allumer (lot G) + tester | ChatGPT (Vercel) + Maxime | Tests verts : `lib/discord-report-command.test.ts` ; capture après allumage |
 | C058 | 19.4 | Anti-abus : récompenses multiples, votes frauduleux, validations doubles, participation artificielle, exploita | `COMMUNITY_ISOLATION_ENABLED` (présent (valeur cachée)) | ✅ Fait | — | — | Tests verts : `lib/tower-challenges.integration.test.ts`, `lib/community-scope.test.ts` |
 | C059 | 21.2 | Bot : commandes, boutons, menus, défis, preuves, votes, progression, événements, notifications | `TOWER_CHALLENGES_ENABLED` (allumé) | Partiel (côté Discord) | Procédure prête (PROCEDURES_PREUVES.md § C059), preuve à capturer par ChatGPT + Maxime | ChatGPT + Maxime | Capture Discord datée ; procédure : PROCEDURES_PREUVES.md § C059 |
 | C060 | 21.3 | Base de données : membres, équipes, défis, attributions, preuves, votes, récompenses, étages, saisons, classem | aucun | ✅ Fait | — | — | Tests verts : `lib/tower-challenges.integration.test.ts` |
-| C061 | 21.4 | Migrations : structure vérifiée, sauvegarde, tests, retour arrière, validation de la bascule | aucun | Partiel | Finir le code (Code 4) | Claude Code | Test Vitest + PR verte |
+| C061 | 21.4 | Migrations : structure vérifiée, sauvegarde, tests, retour arrière, validation de la bascule | aucun | ✅ Fait | — | — | Tests verts : `lib/migrations-criteres.test.ts` (structure, additivité, workflow de production, retour arrière, garde de build) ; sauvegarde et restauration Neon : action humaine, [MIGRATIONS.md](MIGRATIONS.md) § « Critères du cahier 21.4 et leur preuve » |
 | C062 | 21.5 | Environnements distincts, aucune donnée de production en test | aucun | ✅ Fait | — | — | Tests verts : `lib/notification-executor.preview.test.ts`, `lib/tower-challenges.integration.test.ts` |
 | C063 | 22.2 | Test : limite de 12 h entre deux attributions solo | aucun | ✅ Fait | — | — | Tests verts : `lib/tower-challenge-rules.test.ts` |
 | C064 | 22.2 | Test : expiration des défis à 48 h | aucun | ✅ Fait | — | — | Tests verts : `lib/tower-challenge-rules.test.ts` |
@@ -97,7 +97,7 @@
 | C072 | 22.2 | Test : attributions simultanées | aucun | ✅ Fait | — | — | Tests verts : `lib/tower-challenges.integration.test.ts` |
 | C073 | 22.2 | Test : permissions | aucun | ✅ Fait | — | — | Tests verts : `lib/s0-access-controls.integration.test.ts`, `lib/community-scope.test.ts` |
 | C074 | 22.2 | Test : isolation des communautés | aucun | ✅ Fait | — | — | Tests verts : `lib/community-scope.test.ts`, `lib/s0-access-controls.integration.test.ts` |
-| C075 | 22.2 | Test : bascule depuis les anciens étages | aucun | Non fait | Coder (Code 4) | Claude Code | Test Vitest + PR verte |
+| C075 | 22.2 | Test : bascule depuis les anciens étages | aucun | ✅ Fait | — | — | Tests verts : `lib/tower-bascule-etages.integration.test.ts` (XP, historique, badges conservés ; étages à zéro ; rôles « Étage N » jamais supprimés) |
 | C076 | 24 | Notifications configurables | `NOTIFICATION_CENTER_ENABLED` (éteint) | Codé, éteint | Allumer (lot C) + tester | ChatGPT (Vercel) + Maxime | Tests verts : `lib/notification-preferences.test.ts`, `lib/game-ping-optin.test.ts` ; capture après allumage |
 | C077 | 27 A | Équipes : recruteurs (≤ 2), invités de tournoi, relance 48 h, expiration 7 j, 8 joueurs max [#479] | `TEAM_RECRUITERS_ENABLED` (éteint) | Codé, éteint | Allumer (lot E) + tester | ChatGPT (Vercel) + Maxime | Tests verts : `lib/team-recruiters-rules.test.ts` ; capture après allumage |
 | C078 | 27 B | Votes de preuves dans Discord : boutons ✅/❌, fil par preuve, votants ≥ 3 jours [#476] | `TOWER_DISCORD_VOTES_ENABLED` (éteint) | Codé, éteint | Allumer (lot B) + tester | ChatGPT (Vercel) + Maxime | Tests verts : `lib/tower-vote-eligibility.test.ts`, `lib/tower-discord-votes.integration.test.ts` ; capture après allumage |
