@@ -1,3 +1,4 @@
+import { xpLevelLabel } from "@/lib/xp";
 import Image from "next/image";
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
@@ -70,7 +71,7 @@ export default async function AccueilV2Page() {
               )}
             </h1>
             <p className="mt-0.5 text-xs text-muted">
-              Niveau {d.level} · {d.title} · {d.rank.name}
+              {xpLevelLabel(d.level)} · {d.title} · {d.rank.name}
             </p>
           </div>
           <ButtonLink href="/guide" variant="ghost" size="sm" className="shrink-0 !px-2">

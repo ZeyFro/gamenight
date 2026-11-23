@@ -1,3 +1,4 @@
+import { xpLevelLabel } from "@/lib/xp";
 import Link from "next/link";
 import { boostersEnabled } from "@/lib/booster-support";
 import { redirect } from "next/navigation";
@@ -94,7 +95,7 @@ function ScoreboardRow({
               </Badge>
             )}
             <span className="truncate">
-              Niveau {entry.level} · {entry.title} · {entry.rank.name}
+              {xpLevelLabel(entry.level)} · {entry.title} · {entry.rank.name}
             </span>
           </p>
         </div>

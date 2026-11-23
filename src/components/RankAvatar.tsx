@@ -1,9 +1,9 @@
 "use client";
 
+import { xpLevelLabel, type Rank } from "@/lib/xp";
 import { useLayoutEffect, useRef, useState } from "react";
 import { motion, useReducedMotion } from "framer-motion";
 import { Avatar } from "@/components/ui/Avatar";
-import type { Rank } from "@/lib/xp";
 
 /**
  * Halo pulsant réservé au rang Légende (PR 8/9) — même technique que
@@ -115,8 +115,8 @@ export function RankAvatar({
         </span>
       </button>
       <span
-        title={`Niveau ${level}`}
-        aria-label={`Niveau ${level}`}
+        title={xpLevelLabel(level)}
+        aria-label={xpLevelLabel(level)}
         className="pointer-events-none absolute -bottom-1 -right-1 flex h-7 min-w-7 items-center justify-center rounded-full border-2 border-background bg-accent px-1.5 text-xs font-bold text-accent-foreground"
       >
         {level}

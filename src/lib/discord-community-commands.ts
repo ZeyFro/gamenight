@@ -1,3 +1,4 @@
+import { levelProgress, xpLevelLabel } from "@/lib/xp";
 import { z } from "zod";
 import { logger } from "@/lib/logger";
 import type { InteractionOutput } from "@/lib/discord-interactions";
@@ -93,8 +94,8 @@ function formatNumber(value: number | string): string {
 export function renderProfile(profile: CommunityProfileView): string {
   const lines = [
     `🏰 **${profile.displayName}** · ${profile.communityName}`,
-    `Niveau d’XP **${profile.floor}** · Niveau ${profile.level} (${profile.levelTitle}) · Rang ${profile.rankName}`,
-    `XP communauté : ${formatNumber(profile.xpTotal)} · encore ${formatNumber(profile.xpToNextFloor)} avant l’étage ${profile.floor + 1}`,
+    `${xpLevelLabel(profile.level)} (${profile.levelTitle}) · Rang ${profile.rankName}`,
+    `XP communauté : ${formatNumber(profile.xpTotal)} · encore ${formatNumber(levelProgress(profile.xpTotal).remaining)} avant le niveau d’XP ${profile.level + 1}`,
   ];
   if (profile.floorsWon !== null) {
     lines.push(`Étages gagnés par les défis : ${formatNumber(profile.floorsWon)}`);

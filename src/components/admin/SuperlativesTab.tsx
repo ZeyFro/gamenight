@@ -24,8 +24,8 @@ export async function SuperlativesTab() {
       <p className="text-sm text-muted">
         Les titres que le groupe peut voter après chaque soirée (MVP, le
         plus mort, le plus drôle…) et l&apos;XP bonus qu&apos;ils
-        rapportent. Pas de rôle admin dédié : tout le monde peut gérer
-        cette liste.
+        rapportent. Réservé aux administrateurs du groupe : les autres
+        membres ne peuvent ni voir ni modifier cette liste.
       </p>
 
       <Card>

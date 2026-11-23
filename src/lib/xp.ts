@@ -151,6 +151,37 @@ export const RANKS: Rank[] = [
   },
 ];
 
+/**
+ * Vocabulaire UNIQUE de la progression XP (audit de la production du 23/11/2026 : l'accueil affichait « Niveau 4, 92 % » et
+ * /tower « Niveau d'XP 1, 15 % », deux nombres pour la même personne). Le NIVEAU gagné avec l'XP s'appelle « Niveau d'XP »
+ * partout ; le RANG (Bronze, Argent, Or, Platine, Diamant, Légende) regroupe des niveaux ; « Étage » est réservé à la Tour.
+ */
+export function xpLevelLabel(level: number): string {
+  return `Niveau d’XP ${level}`;
+}
+
+/** Progression vers le niveau d'XP suivant : XP gagnée dans le niveau, XP nécessaire pour le franchir, fraction (0 à 1). */
+export function levelProgress(xp: number) {
+  const safe = Math.max(0, Math.floor(xp));
+  const level = levelForXp(safe);
+  const start = xpForLevel(level);
+  const needed = xpForLevel(level + 1) - start;
+  const earned = safe - start;
+  return { level, earned, needed, remaining: needed - earned, fraction: needed > 0 ? Math.min(1, earned / needed) : 1 };
+}
+
+/** Rang suivant et XP restante pour l'atteindre ; `null` au rang maximal. */
+export function rankProgress(xp: number) {
+  const safe = Math.max(0, Math.floor(xp));
+  const level = levelForXp(safe);
+  const current = rankForLevel(level);
+  const next = RANKS.find((rank) => rank.minLevel > current.minLevel) ?? null;
+  if (!next) return { current, next: null, remaining: null, fraction: 1 };
+  const start = xpForLevel(current.minLevel);
+  const target = xpForLevel(next.minLevel);
+  return { current, next, remaining: Math.max(0, target - safe), fraction: Math.min(1, Math.max(0, (safe - start) / (target - start))) };
+}
+
 export function rankForLevel(level: number): Rank {
   let current = RANKS[0];
   for (const rank of RANKS) {
