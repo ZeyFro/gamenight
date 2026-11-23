@@ -35,7 +35,7 @@ const ROULETTE_ERROR_MESSAGES: Record<string, string> = {
   [SESSION_QUOTA_ERROR_KEY]: SESSION_QUOTA_MESSAGE,
   [VALIDATION_ERROR_KEY]: VALIDATION_ERROR_MESSAGE,
   deadline_trop_proche:
-    "La deadline de proposition tombe déjà dans le passé — recule l'heure de la soirée ou raccourcis le délai.",
+    "La date limite de proposition tombe déjà dans le passé — recule l'heure de la soirée ou raccourcis le délai.",
 };
 
 export default async function RoulettePage({
