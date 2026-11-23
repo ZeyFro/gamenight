@@ -5,7 +5,7 @@ import { statsCommunityIdForSession } from "@/lib/community-stats";
 import { getDefaultCommunityId } from "@/lib/default-community";
 import { getMemberStats, lockCommunityProgress, ZERO_MEMBER_STATS, type CommunityProgress } from "@/lib/member-stats";
 import { announceLevelUp } from "@/lib/discord-level-up";
-import { CREATE_SESSION_DAILY_XP_CAP, CREATE_SESSION_XP_WINDOW_MS, computeAwardedAmount, didLevelUp, levelForXp, rankForLevel, titleForLevel, xpLevelLabel } from "@/lib/xp";
+import { CREATE_SESSION_XP_WINDOW_MS, DAILY_XP_CAPS, computeAwardedAmount, didLevelUp, levelForXp, rankForLevel, titleForLevel, xpLevelLabel } from "@/lib/xp";
 import { createNotification } from "@/lib/notifications";
 import { logger } from "@/lib/logger";
 import { attemptDefaultRewardDelivery, persistRewardNotice, type RewardNotice } from "@/lib/reward-notifications";
@@ -41,15 +41,15 @@ export async function awardXp(
       if (!user) return null;
       const scopedDb = scopedTransactionPrisma(tx, { communityIds: [id], includesDefault: false });
       await scopedDb.communityMemberStats.createMany({ data: [{ communityId: id, userId }], skipDuplicates: true });
-      if (reason === "CREATE_SESSION") {
-        // Plafond anti-farm (création puis suppression en boucle). Le verrou de la
+      if (reason === "CREATE_SESSION" || reason === "PARTICIPATE") {
+        // Plafond anti-farm (création puis suppression en boucle ; soirées fantômes à comptes complices). Le verrou de la
         // ligne de stats sérialise les créations simultanées du même membre : sans
         // lui, deux appels pourraient lire « 2 gains » et en inscrire chacun un.
         await tx.$queryRaw`SELECT "userId" FROM "CommunityMemberStats" WHERE "communityId" = ${id} AND "userId" = ${userId} FOR UPDATE`;
         const recentCreations = await scopedDb.xpEvent.count({
           where: { communityId: id, userId, reason, createdAt: { gte: new Date(Date.now() - CREATE_SESSION_XP_WINDOW_MS) } },
         });
-        if (recentCreations >= CREATE_SESSION_DAILY_XP_CAP) return null;
+        if (recentCreations >= DAILY_XP_CAPS[reason]) return null;
       }
       const stats = await scopedDb.communityMemberStats.findUniqueOrThrow({ where: { communityId_userId: { communityId: id, userId } } });
       const amount = computeAwardedAmount(baseAmount, stats.streakCount, applyStreak);

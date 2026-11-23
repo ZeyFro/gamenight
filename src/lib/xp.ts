@@ -42,6 +42,21 @@ export const CREATE_SESSION_DAILY_XP_CAP = 3;
 export const CREATE_SESSION_XP_WINDOW_MS = 24 * 60 * 60 * 1000;
 
 /**
+ * Plafond anti-farm des gains « présence » (audit du 23/11/2026, constat 1.9) : `PARTICIPATE` est versé à chaque votant de la
+ * proposition gagnante à la clôture, sans preuve de présence, et le créateur clôt lui-même. Des comptes complices pouvaient donc
+ * toucher 20 XP par soirée fantôme, sans limite. Même règle que « soirée créée » : au plus `PARTICIPATE_DAILY_XP_CAP` gains par
+ * membre et par communauté sur 24 h glissantes, comptés dans le ledger (une soirée supprimée garde son gain, donc compte encore).
+ * Une 4ᵉ soirée dans la journée ne rapporte plus d'XP de présence ; les soirées elles-mêmes ne sont pas limitées.
+ */
+export const PARTICIPATE_DAILY_XP_CAP = 3;
+
+/** Gains plafonnés par membre sur `CREATE_SESSION_XP_WINDOW_MS`, par motif. */
+export const DAILY_XP_CAPS = {
+  CREATE_SESSION: CREATE_SESSION_DAILY_XP_CAP,
+  PARTICIPATE: PARTICIPATE_DAILY_XP_CAP,
+} as const;
+
+/**
  * Formules pures du chantier XP/niveaux/rangs — aucune I/O ici
  * volontairement (ni Prisma, ni Discord), pour que `discord-level-up.ts`
  * puisse les utiliser sans créer de dépendance circulaire avec
