@@ -18,7 +18,9 @@ Objectif : prévenir Maxime **avant** l'arrêt, à 70 % puis 90 % d'une limite, 
 - **Vercel** : le tableau de bord envoie déjà des e-mails à l'approche des limites Hobby. Vérifier dans **Settings → Billing / Usage** que les notifications d'usage sont activées pour l'adresse de Maxime.
 - **Où** : une tâche planifiée protégée (`CRON_SECRET`), une fois par jour, comme les autres tâches (liste dans [CRONS.md](CRONS.md)).
 
-État : à coder dans un lot dédié (voir [CAHIER_FINAL.md](CAHIER_FINAL.md)) ; d'ici là, relever **Neon → Billing** et **Vercel → Usage** chaque semaine dans [SEMAINE_1.md](SEMAINE_1.md).
+État : **codé** (`HOSTING_ALERT_ENABLED`, route `GET /api/cron/hosting-usage`) pour la **taille de la base** : 200 sous 70 % de la limite, **503 au-delà**, ce qui fait prévenir par e-mail le moniteur externe (cron-job.org traite tout code hors 2xx comme un échec). Lecture seule, aucune clé supplémentaire.
+
+**Ce qui n'est PAS automatisé : le temps de calcul Neon** (100 h par mois, la limite la plus proche : ≈ 48 h le 22/11). Le lire par l'API Neon exigerait une clé d'API à **accès complet** au projet (elle peut supprimer la base et ses sauvegardes) et un appel externe que le dépôt interdit ; il n'existe pas de lecture par SQL. **Relevé à la main chaque semaine** : Neon → Billing (dans [SEMAINE_1.md](SEMAINE_1.md)), alerte à 70 h. Si Maxime veut quand même l'automatiser, c'est une décision à part, à prendre en connaissance de ce risque.
 
 ## 3. Partir plus tard vers un serveur local ou OVH
 

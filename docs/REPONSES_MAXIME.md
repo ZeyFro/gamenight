@@ -11,7 +11,7 @@ Le texte des réponses est dans [QUESTIONS_MAXIME.md](QUESTIONS_MAXIME.md) (sect
 | Q8 | Temps en vocal **oui**, avec les 4 migrations vocales | `VOICE_PRESENCE_ENABLED`, lot H | ⬜ vérifier que les 4 migrations sont appliquées, puis allumer |
 | Q9 | Défi d'équipe quotidien à **18 h** | `TOWER_TEAM_DAILY_ENABLED` + variables GitHub (lot B) | ⬜ allumage |
 | Q10 | « **Niveau d'XP** » (pas « Palier ») ; « Étage » réservé à la Tour | #539 | ✅ fusionné |
-| Q11–Q12 | Rester en **gratuit**, **alerte avant saturation** Neon/Vercel, plan de migration | [HEBERGEMENT.md](HEBERGEMENT.md) ; alerte : lot Code 9 | ⬜ alerte à coder (exige une clé `NEON_API_KEY` en lecture seule) |
+| Q11–Q12 | Rester en **gratuit**, **alerte avant saturation** Neon/Vercel, plan de migration | [HEBERGEMENT.md](HEBERGEMENT.md) ; `HOSTING_ALERT_ENABLED` + `GET /api/cron/hosting-usage` | ✅ alerte sur la **taille de la base** codée ; ⬜ **temps de calcul Neon à relever à la main** (clé d'API à accès complet jugée trop risquée, décision de Maxime si besoin) ; ⬜ allumage + appel quotidien sur cron-job.org (ChatGPT) |
 | Q13 | Pages légales : lien `mailto` dont le texte visible est « ZeyFro » | #539 | ✅ fusionné |
 | Q14 | Garder MEE6 et YAGPDB, **retirer Atlas** | [PERMISSIONS_BOTS.md](PERMISSIONS_BOTS.md) | ⬜ geste Discord (ChatGPT) |
 | Q15 | Garder Discord.Me | `PERMISSIONS_BOTS.md` | ✅ rien à faire |

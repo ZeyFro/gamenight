@@ -198,6 +198,21 @@
 
 ---
 
+## Lot I — Surveillance de l'hébergement (alerte avant saturation)
+
+**Variable (1)** : `HOSTING_ALERT_ENABLED` = `true` (Production). Facultatif : `HOSTING_STORAGE_LIMIT_BYTES` (défaut 1 Go = 1073741824).
+
+**Hors Vercel** : sur cron-job.org, **un appel par jour** à `GET /api/cron/hosting-usage` avec l'en-tête `Authorization: Bearer <CRON_SECRET>` et la **notification d'échec par e-mail activée** (le service traite tout code hors 2xx comme un échec).
+
+**Vérifier**
+- Appel manuel avec le bon secret : HTTP **200** et un corps `{"status":"ok","level":"ok",...}` avec la taille de la base (22 Mo ≈ 2 % le 22/11). Sans secret : 401.
+- Le corps rappelle « Temps de calcul Neon du mois : à relever à la main » : **relever Neon → Billing chaque semaine**, alerte à 70 h sur 100 h.
+- Pour tester l'alerte sans rien casser : `HOSTING_STORAGE_LIMIT_BYTES` à `20000000` (20 Mo), appel manuel : HTTP **503** `{"status":"alert"}` et e-mail du moniteur ; remettre la valeur d'origine.
+
+**Retour arrière** : supprimer `HOSTING_ALERT_ENABLED` (et l'appel du moniteur), Redeploy. Aucune donnée n'est écrite.
+
+---
+
 ## Journal des allumages (à remplir par ChatGPT)
 
 | Lot | Date et heure | Branche de sauvegarde | Vérifications OK | Retour arrière fait ? |
@@ -212,3 +227,4 @@
 | G | | | ☐ | |
 | G2 | | — | ☐ | |
 | H | | | ☐ | |
+| I | | — | ☐ | |
