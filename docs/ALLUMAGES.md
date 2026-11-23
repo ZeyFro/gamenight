@@ -12,6 +12,24 @@
 6. **Vérifier** pendant 30 minutes : les contrôles du lot, et Vercel → Logs (aucune erreur 500).
 7. **Retour arrière** (identique pour tous les lots) : supprimer les variables du lot (ou mettre `false`), puis Redeploy. Aucune donnée n'est perdue : une fonction éteinte garde ses données en base.
 
+## Premier lot prêt à allumer — Lot A0 (après #538 et #539)
+
+Ces cinq interrupteurs sont déjà dans le code de `main` et ont des tests ciblés. Le lot ne demande ni migration ni écriture dans Discord. Cible : Vercel → `gamenight` → Settings → Environment Variables → **Production seulement**, valeur `true`, type Plain. Faire un seul redeploy après avoir posé les cinq valeurs et attendre **Ready**.
+
+| Variable exacte | Valeur | Vérification après redeploy | Retour arrière |
+| --- | --- | --- | --- |
+| `PAGE_TITLES_ENABLED` | `true` | Ouvrir `/sessions` : le titre de l’onglet est « Soirées · GameNight ». Test : `src/lib/page-title.test.ts`. | Retirer la variable (ou la mettre à `false`) puis redeployer ; les titres propres aux pages disparaissent. |
+| `PAGE_TITLES_DYNAMIC_ENABLED` | `true` | Avec une session connectée, ouvrir une fiche de jeu `/jeux/[id]` : le titre de l’onglet reprend le nom du jeu. Ce réglage exige aussi `PAGE_TITLES_ENABLED=true`. Test : `src/lib/dynamic-page-title.test.ts`. | Retirer cette variable (ou la mettre à `false`) puis redeployer ; les titres statiques restent actifs si `PAGE_TITLES_ENABLED` reste à `true`. |
+| `GUIDE_V2_ENABLED` | `true` | Ouvrir `/guide` : vérifier la présence des sections « Jouer maintenant » et « Tournois ». Test : `src/lib/guide-sections.test.ts`. | Retirer la variable (ou la mettre à `false`) puis redeployer ; le guide revient à ses sections initiales. |
+| `HOME_V2_ENABLED` | `true` | Ouvrir `/` avec un compte membre : l’accueil version 2 s’affiche sans erreur et ses liens de navigation restent accessibles. Test : `src/lib/home-v2.test.ts`. | Retirer la variable (ou la mettre à `false`) puis redeployer ; l’accueil revient à la version précédente. |
+| `ADMIN_DASHBOARD_V2_ENABLED` | `true` | Avec un compte administrateur, ouvrir `/admin/tableau-de-bord` : les cartes de synthèse s’affichent. Les compteurs Discord indisponibles doivent être indiqués comme « indisponible », pas comme zéro. Cette page est en lecture seule. Tests : `src/lib/admin-dashboard-v2.test.ts` et `src/lib/admin-dashboard-v2.integration.test.ts`. | Retirer la variable (ou la mettre à `false`) puis redeployer ; le tableau de bord V2 se referme. |
+
+**Retour arrière complet du lot A0** : retirer les cinq variables (ou les mettre à `false`) puis redeployer. Les trois autres interrupteurs de l’ancien lot A — `LAUNCH_TEXTS_ENABLED`, `NAV_TOWER_ENABLED` et `MEDIA_PRIVACY_ENABLED` — étaient déjà `true` en Production au relevé Vercel du 23/11 ; ne pas les remplacer dans le cadre de A0. Vérifier directement la valeur de `COMMUNITY_ADMIN_ENABLED` avant toute action sur ce réglage sensible.
+
+Le lot A0 est inclus dans le lot A détaillé ci-dessous : après validation de A0, ces cinq lignes sont déjà satisfaites et ne doivent pas être ajoutées une seconde fois.
+
+---
+
 ## Avant le lot A (prérequis communs)
 
 | # | Geste | Qui | Fait ? |
