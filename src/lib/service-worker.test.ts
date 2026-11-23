@@ -200,7 +200,7 @@ describe("service worker hors ligne (L7-13)", () => {
     let push: Promise<unknown> | undefined;
     worker.handlers.push({ data: { json: () => ({ title: "Soirée", body: "Invitation", url: "//evil.example" }) }, waitUntil: (promise: Promise<unknown>) => { push = promise; } } as never);
     await push;
-    expect(worker.showNotification).toHaveBeenCalledWith("Soirée", { body: "Invitation", data: { url: "/" } });
+    expect(worker.showNotification).toHaveBeenCalledWith("Soirée", { body: "Invitation", icon: "/icon-192.png", data: { url: "/" } });
 
     let click: Promise<unknown> | undefined;
     worker.handlers.notificationclick({ notification: { data: { url: "//evil.example" }, close: vi.fn() }, waitUntil: (promise: Promise<unknown>) => { click = promise; } } as never);
@@ -214,6 +214,6 @@ describe("service worker hors ligne (L7-13)", () => {
     let push: Promise<unknown> | undefined;
     worker.handlers.push({ data: { json: () => null }, waitUntil: (promise: Promise<unknown>) => { push = promise; } } as never);
     await push;
-    expect(worker.showNotification).toHaveBeenCalledWith("GameNight", { body: "Nouvelle notification", data: { url: "/" } });
+    expect(worker.showNotification).toHaveBeenCalledWith("GameNight", { body: "Nouvelle notification", icon: "/icon-192.png", data: { url: "/" } });
   });
 });

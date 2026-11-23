@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useSyncExternalStore } from "react";
 import { Button } from "@/components/ui/Button";
+import { IOS_INSTALL_STEPS, IOS_VERSION_NOTE, PUSH_DENIED_MESSAGE, PUSH_UNSUPPORTED_MESSAGE, detectPushSupport, type PushSupport } from "@/lib/web-push-support";
 
 function applicationServerKey(key: string): Uint8Array<ArrayBuffer> {
   const base64 = key.replace(/-/g, "+").replace(/_/g, "/");
@@ -11,14 +12,32 @@ function applicationServerKey(key: string): Uint8Array<ArrayBuffer> {
   return bytes;
 }
 
+const subscribeNever = () => () => undefined;
+
+function readPushSupport(): PushSupport {
+  const nav = navigator as Navigator & { standalone?: boolean };
+  return detectPushSupport({
+    userAgent: nav.userAgent,
+    platform: nav.platform,
+    maxTouchPoints: nav.maxTouchPoints,
+    installed: nav.standalone === true || (typeof window.matchMedia === "function" && window.matchMedia("(display-mode: standalone)").matches),
+    hasServiceWorker: "serviceWorker" in navigator,
+    hasPushManager: "PushManager" in window,
+    hasNotification: "Notification" in window,
+  });
+}
+
 export function WebPushSettings({ publicKey, misconfigured = false }: { publicKey: string | null; misconfigured?: boolean }) {
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
   const [enabled, setEnabled] = useState(false);
+  // Inconnu côté serveur (null) : ni bouton ni guide tant que le navigateur n'a pas été lu.
+  const support = useSyncExternalStore(subscribeNever, readPushSupport, () => null);
 
   useEffect(() => {
     if (!publicKey || !("serviceWorker" in navigator)) return;
-    navigator.serviceWorker.getRegistration("/sw.js")
+    // Même chemin que l'enregistrement (`/service-worker.js`) : avec l'ancien `/sw.js`, l'abonnement existant n'était jamais détecté.
+    navigator.serviceWorker.getRegistration("/service-worker.js")
       .then((registration) => registration?.pushManager.getSubscription())
       .then((subscription) => setEnabled(Boolean(subscription)))
       .catch(() => undefined);
@@ -39,7 +58,7 @@ export function WebPushSettings({ publicKey, misconfigured = false }: { publicKe
       } else {
         if (!publicKey) throw new Error();
         const permission = await Notification.requestPermission();
-        if (permission !== "granted") throw new Error();
+        if (permission !== "granted") throw new Error("permission_denied");
         const subscription = await registration.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: applicationServerKey(publicKey) });
         const response = await fetch("/api/push/subscription", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(subscription.toJSON()) });
         if (!response.ok) {
@@ -53,7 +72,8 @@ export function WebPushSettings({ publicKey, misconfigured = false }: { publicKe
     } catch (error) {
       const code = error instanceof Error ? error.message : "";
       setMessage(
-        code === "not_configured" ? "Les notifications push ne sont pas disponibles : le serveur n’est pas configuré correctement. Préviens un administrateur."
+        code === "permission_denied" ? PUSH_DENIED_MESSAGE
+        : code === "not_configured" ? "Les notifications push ne sont pas disponibles : le serveur n’est pas configuré correctement. Préviens un administrateur."
         : code === "device_limit" ? "Tu as déjà 5 appareils abonnés : désactive-en un avant d’en ajouter."
         : code === "subscription_in_use" ? "Cet appareil est déjà abonné avec un autre compte."
         : "Impossible de modifier les notifications push. Vérifie les autorisations du navigateur.");
@@ -63,9 +83,19 @@ export function WebPushSettings({ publicKey, misconfigured = false }: { publicKe
   return (
     <div className="flex flex-col gap-3">
       <p className="text-sm text-muted">Les notifications de GameNight peuvent apparaître sur cet appareil quand le navigateur l’autorise.</p>
-      {publicKey
+      {publicKey && support === "ios_needs_install" && (
+        <div className="flex flex-col gap-2 rounded-lg border border-border bg-surface p-3 text-sm text-foreground">
+          <p className="font-medium">Pour recevoir les notifications sur iPhone</p>
+          <ol className="list-decimal pl-5 text-muted">
+            {IOS_INSTALL_STEPS.map((step) => <li key={step}>{step}</li>)}
+          </ol>
+          <p className="text-xs text-muted">{IOS_VERSION_NOTE}</p>
+        </div>
+      )}
+      {publicKey && support === "unsupported" && <p className="text-sm text-muted">{PUSH_UNSUPPORTED_MESSAGE}</p>}
+      {publicKey && support === "supported"
         ? <Button type="button" variant="secondary" disabled={busy} onClick={toggle}>{busy ? "Mise à jour…" : enabled ? "Désactiver sur cet appareil" : "Activer sur cet appareil"}</Button>
-        : <p className="text-sm text-muted">{misconfigured
+        : publicKey ? null : <p className="text-sm text-muted">{misconfigured
           ? "Les notifications push sont indisponibles : la configuration du serveur est incomplète ou invalide. Préviens un administrateur."
           : "Les notifications push sont désactivées par l’administrateur."}</p>}
       {message && <p role="status" className="text-sm text-muted">{message}</p>}
