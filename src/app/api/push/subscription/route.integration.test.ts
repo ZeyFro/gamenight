@@ -1,5 +1,6 @@
 import { createECDH } from "node:crypto";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { encodeVapidFixture } from "@/test-utils/vapid";
 
 // Postgres local 127.0.0.1 uniquement. Session et service push simulés : aucun envoi réel.
 const TEST_DATABASE_URL = process.env.TEST_DATABASE_URL;
@@ -36,8 +37,11 @@ suite("abonnements Web Push (Postgres)", () => {
     vi.clearAllMocks();
     vi.stubEnv("WEB_PUSH_ENABLED", "true");
     vi.stubEnv("WEB_PUSH_VAPID_SUBJECT", "mailto:test@example.test");
-    vi.stubEnv("WEB_PUSH_VAPID_PUBLIC_KEY", ecdh.getPublicKey().toString("base64url"));
-    vi.stubEnv("WEB_PUSH_VAPID_PRIVATE_KEY", ecdh.getPrivateKey().toString("base64url"));
+    // Clé privée complétée à 32 octets : `getPrivateKey()` en renvoie parfois 31 (zéro de tête, ~1 fois sur 256),
+    // ce qui rendait la configuration invalide (503) de façon aléatoire.
+    const vapid = encodeVapidFixture(ecdh);
+    vi.stubEnv("WEB_PUSH_VAPID_PUBLIC_KEY", vapid.publicKey);
+    vi.stubEnv("WEB_PUSH_VAPID_PRIVATE_KEY", vapid.privateKey);
     await db.$executeRawUnsafe('TRUNCATE "User" CASCADE');
     await db.user.createMany({ data: [
       { id: "alice", discordId: "1", discordName: "Alice" },
