@@ -13,6 +13,7 @@ import { enqueueRouletteDirectMessages } from "@/lib/roulette-dm";
 import { prisma } from "@/lib/prisma";
 import { getCurrentUser } from "@/lib/current-user";
 import { checkRateLimit } from "@/lib/rate-limit";
+import { DailyCreationLimitError, SESSION_QUOTA_ERROR_KEY } from "@/lib/creation-quota";
 import {
   createRouletteSessionSchema,
   createRouletteSchema,
@@ -95,6 +96,10 @@ export async function createSessionFromRouletteAction(formData: FormData) {
     decidedTime: date,
     createdById: user.id,
     notifiedUserIds: finalParticipantIds,
+    enforceDailyLimit: true,
+  }).catch((error: unknown) => {
+    if (error instanceof DailyCreationLimitError) redirect(`/roulette?error=${SESSION_QUOTA_ERROR_KEY}`);
+    throw error;
   });
 
   const xpResult = await awardXp(user.id, session.communityId,

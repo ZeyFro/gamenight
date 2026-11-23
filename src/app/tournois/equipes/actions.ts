@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { getCurrentUser } from "@/lib/current-user";
 import { checkRateLimit } from "@/lib/rate-limit";
+import { TOURNAMENT_QUOTA_ERROR_KEY } from "@/lib/creation-quota";
 import { idSchema } from "@/lib/validations";
 import { parsePlayerClassifiedDateTime } from "@/lib/player-classifieds-rules";
 import { createTeamTournamentSchema, matchReportSchema, teamEntrySchema } from "@/lib/tournament-teams-rules";
@@ -43,6 +44,7 @@ export async function createTeamTournamentAction(formData: FormData): Promise<vo
   if (!input.success) done("invalid");
   const result = await createTeamTournament(user.id, communityId, input.data);
   if (result.result === "created") done("created", result.tournamentId);
+  if (result.result === "daily_limit") done(TOURNAMENT_QUOTA_ERROR_KEY);
   done(result.result);
 }
 

@@ -7,6 +7,7 @@ import { isSessionAnnounceViaBotEnabledFor, pickCreationCommunityId } from "@/li
 import { requireCommunityBotAnnouncement } from "@/lib/community-announcement-required";
 import { createVotingSessionInTransaction } from "@/lib/session-creation";
 import { createOnce } from "@/lib/creation-intent";
+import { assertDailyCreationQuota } from "@/lib/creation-quota";
 import { availabilityPollAnswerSchema, parseAvailabilityPollInput } from "@/lib/session-availability-poll";
 import { formatDateTimeFr, toDateInputValue, toTimeInputValue, wallClockNow } from "@/lib/wallclock";
 import { resolveSessionSchedule, SESSION_SCHEDULE_ERROR_MESSAGES } from "@/lib/session-schedule";
@@ -159,6 +160,9 @@ export async function chooseAvailabilityPollSlot(userId: string, pollId: string,
     const participants = poll.participants.map(participant => participant.userId);
     const announceViaBot = await isSessionAnnounceViaBotEnabledFor(poll.communityId);
     await requireCommunityBotAnnouncement(poll.communityId, announceViaBot);
+    // Plafond de soirées par jour (audit 1.14) : après le rejeu, donc une soirée déjà créée par ce sondage ne compte
+    // pas deux fois ; `DailyCreationLimitError` annule la transaction (aucune soirée, aucune notification).
+    await assertDailyCreationQuota("SESSION", userId, tx);
     const session = await createVotingSessionInTransaction(tx, {
       createdById: userId, communityId: poll.communityId, date: slot.start,
       votingDeadline: schedule.votingDeadline, customReminderMessage: null, reminderTimings: [1440, 120],

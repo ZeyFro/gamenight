@@ -2,6 +2,7 @@ import { Prisma } from "@prisma/client";
 import { getScopedPrisma, scopedPrisma, scopedTransactionPrisma } from "@/lib/community-scoped-client";
 import { getCommunityTeamsCommunityId } from "@/lib/community-teams";
 import { prisma } from "@/lib/prisma";
+import { consumeDailyCreationQuota } from "@/lib/creation-quota";
 import { wallClockNow } from "@/lib/wallclock";
 import { advanceWinner, bracketSizeFor, declareWinner, totalRoundsFor } from "@/lib/tournaments";
 import { isTournamentScoresEnabled } from "@/lib/tournament-scores";
@@ -58,7 +59,7 @@ const activeMemberWhere = (communityId: string) => ({ user: { memberships: { som
 // Création, invitation, inscription
 // ---------------------------------------------------------------------------------------------------------------------
 
-export type CreateTeamTournamentResult = { result: "created"; tournamentId: string } | { result: "invalid_game" | "unavailable" };
+export type CreateTeamTournamentResult = { result: "created"; tournamentId: string } | { result: "invalid_game" | "unavailable" | "daily_limit" };
 
 /** Un membre actif crée un tournoi d'équipes (public ou privé) pour un jeu : il en est l'organisateur. Aucune annonce publique. */
 export async function createTeamTournament(userId: string, communityId: string, input: {
@@ -70,6 +71,9 @@ export async function createTeamTournament(userId: string, communityId: string, 
     const scopedDb = scopedTransactionPrisma(tx, { communityIds: [communityId], includesDefault: false });
     const game = await scopedDb.game.findUnique({ where: { id: input.gameId }, select: { id: true } });
     if (!game) return { result: "invalid_game" as const };
+    // Plafond de tournois par jour (audit 1.14), partagé avec le tournoi individuel : consommé dans cette transaction,
+    // après les contrôles, juste avant l'écriture (un refus n'écrit aucun tournoi).
+    if (!await consumeDailyCreationQuota("TOURNAMENT", userId, tx)) return { result: "daily_limit" as const };
     const tournament = await scopedDb.tournament.create({
       data: {
         name: input.name, gameId: input.gameId, createdById: userId, communityId, format: "TEAMS",
