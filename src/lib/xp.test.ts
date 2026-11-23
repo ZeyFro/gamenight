@@ -4,6 +4,7 @@ import {
   levelForXp,
   titleForLevel,
   rankForLevel,
+  LEVEL_TITLES,
   streakMultiplier,
   computeAwardedAmount,
   didLevelUp,
@@ -38,14 +39,25 @@ describe("titleForLevel", () => {
   it("renvoie le titre du palier courant, pas le suivant", () => {
     expect(titleForLevel(1)).toBe("Recrue");
     expect(titleForLevel(4)).toBe("Recrue");
-    expect(titleForLevel(5)).toBe("Noob");
-    expect(titleForLevel(9)).toBe("Noob");
-    expect(titleForLevel(10)).toBe("PAPED");
-    expect(titleForLevel(100)).toBe("Sans-vie");
+    expect(titleForLevel(5)).toBe("Apprenti");
+    expect(titleForLevel(9)).toBe("Apprenti");
+    expect(titleForLevel(10)).toBe("Habitué");
+    expect(titleForLevel(100)).toBe("Immortel");
   });
 
   it("plafonne au dernier titre au-delà du niveau 100", () => {
-    expect(titleForLevel(250)).toBe("Sans-vie");
+    expect(titleForLevel(250)).toBe("Immortel");
+  });
+
+  it("progression logique : paliers strictement croissants, du niveau 1 au sommet, sans titre moqueur pour un débutant", () => {
+    const levels = LEVEL_TITLES.map((tier) => tier.level);
+    expect(levels[0]).toBe(1);
+    expect([...levels].sort((x, y) => x - y)).toEqual(levels);
+    expect(new Set(levels).size).toBe(levels.length);
+    expect(new Set(LEVEL_TITLES.map((tier) => tier.title)).size).toBe(LEVEL_TITLES.length);
+    const beginners = LEVEL_TITLES.filter((tier) => tier.level < 20).map((tier) => tier.title);
+    for (const banned of ["Noob", "Victime", "PAPED", "Sans-vie"]) expect(beginners).not.toContain(banned);
+    expect(LEVEL_TITLES.at(-1)?.level).toBe(100);
   });
 });
 
