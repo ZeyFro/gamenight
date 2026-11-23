@@ -9,6 +9,8 @@ vi.mock("@/lib/shared-rate-limit", async () => {
   const { checkRateLimit } = await import("@/lib/rate-limit");
   return { checkSharedRateLimit: async (...args: Parameters<typeof checkRateLimit>) => checkRateLimit(...args) };
 });
+const recordSensitiveOperation = vi.hoisted(() => vi.fn());
+vi.mock("@/lib/sensitive-operation-log", () => ({ recordSensitiveOperation }));
 
 import { POST } from "./route";
 

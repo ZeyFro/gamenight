@@ -53,6 +53,9 @@ export default async function AdminPage({
         <p className="mt-1 text-sm text-muted">
           Réservé aux admins du groupe.
         </p>
+        <Link href="/admin/journal" className="mt-2 mr-4 inline-block text-sm font-medium text-accent hover:underline">
+          Journal des opérations sensibles →
+        </Link>
         {adminDashboardV2Enabled() && (
           <Link href="/admin/tableau-de-bord" className="mt-2 mr-4 inline-block text-sm font-medium text-accent hover:underline">
             Tableau de bord staff →

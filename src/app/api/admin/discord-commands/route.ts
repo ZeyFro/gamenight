@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { requireAdmin } from "@/lib/admin";
 import { logger } from "@/lib/logger";
 import { checkSharedRateLimit } from "@/lib/shared-rate-limit";
+import { recordSensitiveOperation } from "@/lib/sensitive-operation-log";
 import { isVercelPreview } from "@/lib/preview-safety";
 import {
   REGISTRATION_SECRET_HEADER,
@@ -60,5 +61,9 @@ export async function POST(request: Request) {
     stage: report.failure?.stage ?? null,
     http: report.failure?.http ?? null,
   });
+  // Journal des opérations sensibles (cahier §19.1) : seul l'enregistrement écrit dans Discord.
+  if (mode === "execute") {
+    await recordSensitiveOperation({ actorId: admin.id, action: "discord.commands_execute", outcome: report.ok ? "ok" : report.failure?.stage ?? "failed" });
+  }
   return respond(report, registrationHttpStatus(report));
 }
