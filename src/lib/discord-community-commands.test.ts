@@ -141,7 +141,8 @@ describe("/profil", () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
     const sent = JSON.parse(String((fetchMock.mock.calls[0] as unknown as [string, { body: string }])[1].body)) as { content: string };
     expect(sent.content).toContain("Maxime");
-    expect(sent.content).toContain("Niveau d’XP **1**");
+    expect(sent.content).toContain("Niveau d’XP 5");
+    expect(sent.content).not.toContain("étage");
     expect(sent.content).not.toContain(USER);
   });
 });
