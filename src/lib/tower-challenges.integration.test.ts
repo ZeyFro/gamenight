@@ -114,6 +114,7 @@ describe.skipIf(!url)("défis solo et votes persistants", () => {
     await db.user.createMany({ data: members.map(id => ({ id, discordId: id, discordName: id })) });
     await db.membership.createMany({ data: members.map(userId => ({
       communityId: userId === "tower-outsider" ? "tower-b" : "tower-a", userId, status: "ACTIVE",
+      joinedAt: new Date("2020-01-01T00:00:00Z"), // votants : plus de 7 jours d'ancienneté (appliqué même interrupteur éteint)
     })) });
     await db.towerChallengeDefinition.createMany({ data: ["tower-a", "tower-b"].map(communityId => ({
       id: communityId + "-easy", communityId, title: "Création libre",

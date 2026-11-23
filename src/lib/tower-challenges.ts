@@ -463,8 +463,9 @@ export async function voteTowerChallenge(input: unknown) {
     })) return { status: "SELF_VOTE" } as const;
     const createdAt = now();
     const discordVotes = isTowerDiscordVotesEnabled();
-    if (discordVotes) {
-      // Votants : compte GameNight actif depuis au moins 7 jours (Membership.joinedAt de la communauté).
+    {
+      // Votants : compte GameNight actif depuis au moins 7 jours (Membership.joinedAt de la communauté), QUEL QUE SOIT l'interrupteur
+      // des votes Discord (audit du 23/11/2026, constat 1.3 : interrupteur éteint, un faux compte votait dès son arrivée).
       const voter = await scopedDb.membership.findUnique({ where: { communityId_userId: { communityId, userId } }, select: { status: true, joinedAt: true } });
       const eligibility = towerVoterEligibility({ status: voter?.status, joinedAt: voter?.joinedAt, now: createdAt });
       if (eligibility === "NOT_ACTIVE") return { status: "VOTER_NOT_ACTIVE" } as const;

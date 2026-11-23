@@ -105,11 +105,18 @@ describe.skipIf(!url)("votes Discord des preuves Tower", () => {
     expect(await edits()).toHaveLength(0);
   });
 
-  it("garde le comportement historique quand le drapeau est éteint", async () => {
+  it("drapeau éteint : un vote par personne, non modifiable, sans édition de message", async () => {
     vi.stubEnv("TOWER_DISCORD_VOTES_ENABLED", "false");
-    expect((await vote("dv-new", true)).status).toBe("VOTED");
-    expect((await vote("dv-new", false)).status).toBe("ALREADY_VOTED");
+    expect((await vote("dv-old", true)).status).toBe("VOTED");
+    expect((await vote("dv-old", false)).status).toBe("ALREADY_VOTED");
     expect(await edits()).toHaveLength(0);
+  });
+
+  it("l'ancienneté de 7 jours s'applique AUSSI drapeau éteint (audit 23/11/2026, constat 1.3)", async () => {
+    vi.stubEnv("TOWER_DISCORD_VOTES_ENABLED", "false");
+    expect((await vote("dv-new", true)).status).toBe("VOTER_TOO_RECENT");
+    expect(await db.towerChallengeVote.count({ where: { attemptId, userId: "dv-new" } })).toBe(0);
+    expect((await vote("dv-old", true)).status).toBe("VOTED");
   });
 
   it("ouvre un fil par preuve à la soumission, une seule fois par rang de resoumission", async () => {
