@@ -22,6 +22,7 @@ import {
 import { createSession } from "./actions/session-lifecycle";
 import { Card } from "@/components/ui/Card";
 import { Button, ButtonLink } from "@/components/ui/Button";
+import { projectOrganizerEnabled } from "@/lib/projects-rules";
 import { SegmentedControl } from "@/components/ui/SegmentedControl";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { PullToRefresh } from "@/components/PullToRefresh";
@@ -215,6 +216,12 @@ export default async function SessionsPage({
           <ButtonLink href="/jouer-maintenant" variant="secondary" size="sm">
             🎮 Jouer maintenant
           </ButtonLink>
+          {/* Projets à organisateur (PROJECT_ORGANIZER_ENABLED) : page livrée sans aucun lien d’accès avant l’audit du 23/11. */}
+          {projectOrganizerEnabled() && (
+            <ButtonLink href="/projets" variant="secondary" size="sm">
+              📁 Projets
+            </ButtonLink>
+          )}
         </div>
       </div>
 

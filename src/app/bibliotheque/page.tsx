@@ -9,6 +9,7 @@ import { GameFilterDrawer } from "@/components/GameFilterDrawer";
 import { CoopEnrichmentTrigger } from "@/components/CoopEnrichmentTrigger";
 import { MarkAllCoopButton } from "@/components/MarkAllCoopButton";
 import { ButtonLink } from "@/components/ui/Button";
+import { isGamePlatformsEnabled } from "@/lib/game-platforms";
 import { pageMetadata } from "@/lib/page-title";
 import { plural } from "@/lib/plural";
 
@@ -83,9 +84,17 @@ export default async function BibliothequePage({
         <h1 className="text-xl font-semibold text-foreground sm:text-2xl">
           Ma bibliothèque
         </h1>
-        <ButtonLink href="/bibliotheque/ajouter" variant="primary" fullWidthOnMobile>
-          + Ajouter un jeu
-        </ButtonLink>
+        <div className="flex flex-wrap gap-2 max-sm:w-full">
+          {/* Ajout rapide et populaires par plateforme (GAME_PLATFORMS_ENABLED) : page livrée sans aucun lien d’accès avant l’audit du 23/11. */}
+          {isGamePlatformsEnabled() && (
+            <ButtonLink href="/bibliotheque/plateformes" variant="secondary" fullWidthOnMobile>
+              🎮 Par plateforme
+            </ButtonLink>
+          )}
+          <ButtonLink href="/bibliotheque/ajouter" variant="primary" fullWidthOnMobile>
+            + Ajouter un jeu
+          </ButtonLink>
+        </div>
       </div>
 
       <LibraryTabs active="perso" toVerifyCount={toVerifyCount} />
