@@ -15,6 +15,7 @@ import { pageMetadata } from "@/lib/page-title";
 import { isVoicePresenceEnabled } from "@/lib/session-voice-config";
 import Link from "next/link";
 import { adminDashboardV2Enabled } from "@/lib/admin-dashboard-v2";
+import { isTowerIrregularGrantsEnabled } from "@/lib/tower-irregular-rules";
 
 export const metadata = pageMetadata("Admin");
 
@@ -56,6 +57,15 @@ export default async function AdminPage({
         <Link href="/admin/journal" className="mt-2 mr-4 inline-block text-sm font-medium text-accent hover:underline">
           Journal des opérations sensibles →
         </Link>
+        {/* Pages d’administration livrées sans lien d’accès avant l’audit du 23/11 : état technique, grade Irregular. */}
+        <Link href="/admin/sante" className="mt-2 mr-4 inline-block text-sm font-medium text-accent hover:underline">
+          État technique →
+        </Link>
+        {isTowerIrregularGrantsEnabled() && (
+          <Link href="/admin/tower-irregular" className="mt-2 mr-4 inline-block text-sm font-medium text-accent hover:underline">
+            Grade Irregular →
+          </Link>
+        )}
         {adminDashboardV2Enabled() && (
           <Link href="/admin/tableau-de-bord" className="mt-2 mr-4 inline-block text-sm font-medium text-accent hover:underline">
             Tableau de bord staff →

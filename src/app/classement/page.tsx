@@ -1,3 +1,5 @@
+import Link from "next/link";
+import { boostersEnabled } from "@/lib/booster-support";
 import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/current-user";
 import { requireCommunityChosen } from "@/lib/community-picker";
@@ -158,6 +160,12 @@ export default async function ClassementPage({
           🏆 Classement
         </h1>
         <p className="mt-1 text-sm text-muted">Qui domine le groupe.</p>
+        {/* Mur des soutiens (DISCORD_BOOSTERS_ENABLED) : page livrée sans aucun lien d’accès avant l’audit du 23/11. */}
+        {boostersEnabled() && (
+          <Link href="/soutiens" className="gn-touch-target relative mt-2 inline-block text-sm text-accent hover:underline">
+            💜 Mur des soutiens →
+          </Link>
+        )}
       </div>
 
       <div className="lg:w-fit">
