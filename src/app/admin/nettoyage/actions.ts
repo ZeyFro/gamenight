@@ -7,11 +7,13 @@ import { enqueueSessionThreadDelete } from "@/lib/session-announce";
 import { enqueueTournamentAnnounceDelete, enqueueTournamentThreadDelete } from "@/lib/tournament-announce";
 import { listFailedDiscordCleanupDeliveries } from "@/lib/discord-cleanup-status";
 import { retryRewardDelivery } from "@/lib/reward-delivery-retry";
+import { recordSensitiveOperation } from "@/lib/sensitive-operation-log";
 
 export async function retryRewardDeliveryAction(formData: FormData) {
   const admin = await requireAdmin();
   if (!admin || !checkRateLimit(admin.id, "retryRewardDelivery")) return;
   await retryRewardDelivery(admin.id, String(formData.get("deliveryId") ?? ""));
+  await recordSensitiveOperation({ actorId: admin.id, action: "cleanup.retry_reward", target: String(formData.get("deliveryId") ?? ""), outcome: "requested" });
   revalidatePath("/admin");
 }
 
@@ -46,5 +48,6 @@ export async function retryDiscordCleanupAction(formData: FormData) {
     return;
   }
 
+  await recordSensitiveOperation({ actorId: admin.id, action: "cleanup.retry_discord", target: deliveryId, outcome: "requested" });
   revalidatePath("/admin");
 }

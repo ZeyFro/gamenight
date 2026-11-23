@@ -9,6 +9,7 @@ import { rankAvailabilityPollSlots } from "@/lib/session-availability-poll";
 import { answerAvailabilityPollAction, chooseAvailabilityPollSlotAction, closeAvailabilityPollAction } from "@/app/sessions/actions/availability-polls";
 import { formatDateTimeFr } from "@/lib/wallclock";
 import { Card } from "@/components/ui/Card";
+import { plural } from "@/lib/plural";
 
 const answerLabel = { AVAILABLE: "Oui", MAYBE: "Peut-être", UNAVAILABLE: "Non" } as const;
 const answerClass = { AVAILABLE: "border-emerald-500/40 bg-emerald-500/10", MAYBE: "border-amber-500/40 bg-amber-500/10", UNAVAILABLE: "border-border bg-background" } as const;
@@ -34,7 +35,7 @@ export default async function AvailabilityPollPage({ params, searchParams }: { p
   const canChoose = isCreator && !poll.sessionId && !poll.chosenSlotId;
   const chosenSession = poll.sessionId ? `/sessions/${poll.sessionId}` : null;
   return <main className="mx-auto flex w-full max-w-5xl flex-col gap-5 px-4 py-6">
-    <header className="flex flex-wrap items-start justify-between gap-3"><div><Link href="/sessions/sondages" className="text-sm text-accent hover:underline">← Tous les sondages</Link><h1 className="mt-2 text-2xl font-bold">{poll.title}</h1><p className="text-sm text-muted">{poll.status === "OPEN" ? "Sondage ouvert" : "Sondage clos"} · {poll.participants.length} participant{poll.participants.length === 1 ? "" : "s"}</p></div>{chosenSession && <Link href={chosenSession} className="rounded-lg bg-accent px-4 py-2 text-sm font-semibold text-white">Voir la soirée créée</Link>}</header>
+    <header className="flex flex-wrap items-start justify-between gap-3"><div><Link href="/sessions/sondages" className="text-sm text-accent hover:underline">← Tous les sondages</Link><h1 className="mt-2 text-2xl font-bold">{poll.title}</h1><p className="text-sm text-muted">{poll.status === "OPEN" ? "Sondage ouvert" : "Sondage clos"} · {poll.participants.length} {plural(poll.participants.length, "participant")}</p></div>{chosenSession && <Link href={chosenSession} className="rounded-lg bg-accent px-4 py-2 text-sm font-semibold text-white">Voir la soirée créée</Link>}</header>
     {query.error && <p role="alert" className="rounded-lg bg-destructive/10 p-3 text-sm text-destructive">{pageErrors[query.error] ?? "L’action n’a pas abouti. Recharge le sondage et réessaie."}</p>}
     <Card><div className="flex flex-col gap-3"><h2 className="font-semibold">Participants</h2><ul className="flex flex-wrap gap-2">{poll.participants.map(row => <li key={row.userId} className="rounded-full border border-border px-3 py-1 text-sm">{row.user.discordName}{row.userId === poll.createdById ? " · organisateur" : ""}</li>)}</ul>{canAnswer && <p className="text-xs text-muted">Tes réponses sont explicites. Une case vide reste « sans réponse ».</p>}</div></Card>
     {slots.map(slot => <Card key={slot.id}><section className="flex flex-col gap-4" aria-labelledby={`slot-${slot.id}`}>

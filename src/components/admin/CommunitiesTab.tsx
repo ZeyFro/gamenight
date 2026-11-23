@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/Button";
 import { activateCommunityAction, setCommunityAttendanceXpAction, setCommunityChannelAction, setCommunityGuideAction, setCommunityFreeGamesAction, setCommunitySteamPriceAlertsAction, setCommunityGroupPurchasePlansAction, setCommunityPlayerClassifiedsAction, setCommunityTeamsAction, setCommunityTowerLevelsPerFloorAction } from "@/app/admin/communautes/actions";
 import { setCommunitySessionGalleryAction } from "@/app/admin/communautes/actions";
 import { THREAD_CAPABLE_CHANNEL_TYPES, VOICE_CHANNEL_TYPES } from "@/lib/discord-rest";
+import { plural } from "@/lib/plural";
 
 const STATUS_LABELS: Record<string, { label: string; tone: "accent" | "neutral" | "warning" | "destructive" }> = {
   PENDING: { label: "En attente", tone: "warning" },
@@ -108,8 +109,7 @@ function CommunityCard({ community: c }: { community: AdminCommunityRow }) {
         <div>
           <h2 className="font-semibold text-foreground">{c.name}</h2>
           <p className="text-xs text-muted">
-            {c.slug} · serveur {c.discordGuildId ?? "inconnu"} · {c.activeMembers} membre
-            {c.activeMembers > 1 ? "s" : ""}
+            {c.slug} · serveur {c.discordGuildId ?? "inconnu"} · {c.activeMembers} {plural(c.activeMembers, "membre")}
           </p>
         </div>
         <Badge tone={status.tone}>{status.label}</Badge>

@@ -11,6 +11,7 @@ import { isCommunityQuickPollsEnabled } from "@/lib/community-quick-polls-input"
 import { isCommunityGameGraveyardEnabled } from "@/lib/community-game-graveyard-input";
 import { isCommunityExpressionsEnabled } from "@/lib/community-expressions-input";
 import { isCommunityHighlightsEnabled } from "@/lib/community-highlights-input";
+import { plural } from "@/lib/plural";
 
 export const metadata = pageMetadata("Lore du groupe");
 
@@ -28,7 +29,7 @@ export default async function GroupLorePage() {
         <div>
           <h2 className="text-lg font-semibold text-foreground">🏆 Hall of Fame du groupe</h2>
           <p className="mt-1 text-sm text-muted">
-            {unlockedCount} trophée{unlockedCount === 1 ? "" : "s"} débloqué{unlockedCount === 1 ? "" : "s"} sur {achievements.length}.
+            {unlockedCount} {plural(unlockedCount, "trophée")} {plural(unlockedCount, "débloqué")} sur {achievements.length}.
           </p>
         </div>
         <Link href="/profil/lore/devine-jeu" className="inline-flex min-h-11 items-center rounded-lg border border-border px-4 text-sm font-medium text-foreground hover:bg-surface-hover">

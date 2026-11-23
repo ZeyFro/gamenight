@@ -101,23 +101,37 @@ describe("getGroupStats", () => {
 });
 
 describe("getRecentGameNews", () => {
-  it("transforme les lignes du cache avec la limite par défaut de 5", async () => {
-    const publishedAt = new Date("2026-10-01T00:00:00Z");
-    prisma.gameNews.findMany.mockResolvedValue([
-      { id: "n1", title: "Patch 1.2", url: "https://x/1", publishedAt, game: { name: "Dota", coverUrl: null } },
-    ]);
+  const publishedAt = new Date("2026-10-01T00:00:00Z");
+  const row = (id: string, title: string) => ({ id, title, url: "https://x/" + id, publishedAt, game: { name: "Dota", coverUrl: null } });
+
+  it("transforme les lignes du cache (titre français) et lit assez de candidats pour filtrer", async () => {
+    prisma.gameNews.findMany.mockResolvedValue([row("n1", "Mise à jour 1.2 : les nouveautés de la saison")]);
     expect(await getRecentGameNews()).toEqual([
-      { id: "n1", gameName: "Dota", gameCoverUrl: null, title: "Patch 1.2", url: "https://x/1", publishedAt },
+      { id: "n1", gameName: "Dota", gameCoverUrl: null, title: "Mise à jour 1.2 : les nouveautés de la saison", url: "https://x/n1", publishedAt },
     ]);
-    expect(prisma.gameNews.findMany).toHaveBeenCalledWith(
-      expect.objectContaining({ orderBy: { publishedAt: "desc" }, take: 5 })
-    );
+    expect(prisma.gameNews.findMany).toHaveBeenCalledWith(expect.objectContaining({ orderBy: { publishedAt: "desc" }, take: 60 }));
   });
 
-  it("respecte une limite explicite", async () => {
-    prisma.gameNews.findMany.mockResolvedValue([]);
-    await getRecentGameNews(2);
-    expect(prisma.gameNews.findMany).toHaveBeenCalledWith(expect.objectContaining({ take: 2 }));
+  it("masque l'anglais et le russe, ne garde que le français", async () => {
+    prisma.gameNews.findMany.mockResolvedValue([
+      row("en", "Patch Notes 1.2"),
+      row("ru", "Обновление 1.2: новые карты"),
+      row("fr", "Le patch de l'été arrive demain"),
+      row("en2", "Summer Sale is live now"),
+    ]);
+    expect((await getRecentGameNews()).map(item => item.id)).toEqual(["fr"]);
+  });
+
+  it("respecte une limite explicite sur les actualités françaises", async () => {
+    prisma.gameNews.findMany.mockResolvedValue([
+      row("a", "Nouvelle extension disponible dès aujourd'hui"), row("b", "Le correctif de la saison est disponible"), row("c", "Découvrez notre nouveau mode de jeu"),
+    ]);
+    expect((await getRecentGameNews(2)).map(item => item.id)).toEqual(["a", "b"]);
+  });
+
+  it("aucune actualité française : liste vide (la card n'est pas affichée)", async () => {
+    prisma.gameNews.findMany.mockResolvedValue([row("en", "Patch Notes 1.2"), row("ru", "Новости игры")]);
+    expect(await getRecentGameNews()).toEqual([]);
   });
 });
 

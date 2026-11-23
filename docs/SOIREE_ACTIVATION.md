@@ -133,7 +133,7 @@ L'accès est coupé tout de suite, **sans redéploiement**. C'est le retour arri
 
 Sur le serveur The Tower, avec un compte qui a « Gérer le serveur » :
 
-1. Tape `/tower-admin importer`. Réponse attendue (visible de toi seul) : « ✅ Catalogue prêt : N défis ajoutés, M déjà présents. » (1ᵉʳ passage : 86 défis solo = 26 de départ + 60 de la saison 1).
+1. Tape `/tower-admin importer`. Réponse attendue (visible de toi seul) : « ✅ Catalogue prêt : N défis ajoutés, M déjà présents. » (1ᵉʳ passage : 89 défis solo = 26 de départ + 60 de la saison 1 + 3 « variété », dont 2 hors jeu et 1 à preuve ancienne).
 2. Tape `/tower-admin importer-equipe`. Réponse attendue : « ✅ Catalogue d'équipe prêt : N défis ajoutés… Aucune annonce n'a été envoyée. » (1ᵉʳ passage : 30 défis d'équipe = 10 + 20). **Exige `communityTeamsEnabled` = `true`** (relevé en 2.2) ; s'il vaut `false`, ne lance pas cette commande ce soir et préviens-moi.
 3. Relance chaque commande une seconde fois : « 0 ajouté, tout déjà présent » (l'import est idempotent).
 

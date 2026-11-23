@@ -6,6 +6,7 @@ import { toast } from "sonner";
 import { toggleVote } from "@/app/sessions/actions/proposals-votes";
 import { RATE_LIMIT_ERROR_KEY, RATE_LIMIT_MESSAGE } from "@/lib/rate-limit";
 import { haptics } from "@/lib/haptics";
+import { plural } from "@/lib/plural";
 
 export function VoteButton({
   proposalId,
@@ -74,7 +75,7 @@ export function VoteButton({
         transition={{ duration: 0.2 }}
         className="text-sm text-muted"
       >
-        {count} vote{count > 1 ? "s" : ""}
+        {count} {plural(count, "vote")}
       </motion.p>
     </div>
   );

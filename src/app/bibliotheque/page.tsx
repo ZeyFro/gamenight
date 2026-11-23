@@ -10,6 +10,7 @@ import { CoopEnrichmentTrigger } from "@/components/CoopEnrichmentTrigger";
 import { MarkAllCoopButton } from "@/components/MarkAllCoopButton";
 import { ButtonLink } from "@/components/ui/Button";
 import { pageMetadata } from "@/lib/page-title";
+import { plural } from "@/lib/plural";
 
 export const metadata = pageMetadata("Bibliothèque");
 
@@ -91,7 +92,7 @@ export default async function BibliothequePage({
 
       <div className="flex items-center justify-between gap-3">
         <p className="text-sm text-muted">
-          {games.length} jeu{games.length === 1 ? "" : "x"}
+          {games.length} {plural(games.length, "jeu", "jeux")}
           {filteredGames.length !== allGames.length && ` sur ${allGames.length}`}
         </p>
         <GameFilterDrawer

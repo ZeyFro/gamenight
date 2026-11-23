@@ -13,7 +13,9 @@ if (!process.env.TEST_DATABASE_URL) {
 // reprises de bail, etc.).
 const result = spawnSync(
   process.execPath,
-  ["node_modules/vitest/vitest.mjs", "run", "--maxWorkers=1"],
+  // Arguments supplémentaires (ex. --shard=1/4) transmis à vitest : la CI répartit les fichiers sur des jobs
+  // parallèles, chacun avec sa propre base ; sur une même base, les fichiers restent sérialisés.
+  ["node_modules/vitest/vitest.mjs", "run", "--maxWorkers=1", ...process.argv.slice(2)],
   { stdio: "inherit", env: process.env }
 );
 
