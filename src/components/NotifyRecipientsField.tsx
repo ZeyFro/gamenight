@@ -41,6 +41,7 @@ export function NotifyRecipientsField({
   label = "Qui prévenir ?",
   onSelectionChange,
   defaultSelection = "all",
+  defaultCheckedIds,
 }: {
   potes: NotifyRecipientCandidate[];
   tags?: NotifyTagOption[];
@@ -55,8 +56,13 @@ export function NotifyRecipientsField({
    * envoyait 31 MP (audit du nouveau joueur, 21/11/2026), contre la règle « MP seulement pour ce qui vise personnellement le joueur ».
    */
   defaultSelection?: "all" | "none";
+  /** Cases cochées au départ (création de soirée : personne, ou les amis). Prioritaire sur `defaultSelection`. */
+  defaultCheckedIds?: string[];
 }) {
-  const [checked, setChecked] = useState<string[]>(() => (defaultSelection === "none" ? [] : potes.map((p) => p.id)));
+  const [checked, setChecked] = useState<string[]>(() => {
+    if (defaultCheckedIds) return potes.filter((p) => defaultCheckedIds.includes(p.id)).map((p) => p.id);
+    return defaultSelection === "none" ? [] : potes.map((p) => p.id);
+  });
 
   function select(ids: string[]) {
     setChecked(ids);

@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { readFileSync } from "node:fs";
 import { afterEach, describe, expect, it } from "vitest";
 import { NotifyRecipientsField, type NotifyRecipientCandidate } from "./NotifyRecipientsField";
 
@@ -25,5 +26,33 @@ describe("NotifyRecipientsField : cases cochées au départ", () => {
     render(<NotifyRecipientsField potes={potes} defaultSelection="none" />);
     fireEvent.click(screen.getByText("Tout sélectionner"));
     expect(boxes().every((box) => box.checked)).toBe(true);
+  });
+  it("defaultCheckedIds : seules les personnes listées (les amis) sont cochées, et il l'emporte sur defaultSelection", () => {
+    render(<NotifyRecipientsField potes={potes} defaultSelection="all" defaultCheckedIds={["u2"]} />);
+    expect(boxes().map((box) => box.checked)).toEqual([false, false, true]);
+    cleanup();
+    render(<NotifyRecipientsField potes={potes} defaultCheckedIds={[]} />);
+    expect(boxes().map((box) => box.checked)).toEqual([false, false, false]);
+  });
+});
+
+describe("création de soirée : personne n'est prévenu d'office, vocabulaire sans jargon", () => {
+  const planning = readFileSync("src/components/sessions/SessionPlanningFields.tsx", "utf8");
+  const page = readFileSync("src/app/sessions/page.tsx", "utf8");
+  it("le formulaire de planification part de initialGuestIds (vide par défaut), jamais de tous les potes", () => {
+    expect(planning).toContain("initialGuestIds = []");
+    expect(planning).not.toMatch(/useState\(\(\) => potes\.map\(\(pote\) => pote\.id\)\)/);
+    expect(planning).toContain("defaultCheckedIds={initialGuestIds}");
+  });
+  it("la page ne pré-coche que les amis (Potes = amis allumé), sinon personne", () => {
+    expect(page).toContain("isFriendsEnabled() ? await listFriendIds(user.id) : []");
+  });
+  it("pas de « deadline », « custom » ni « session » dans les textes visibles du formulaire", () => {
+    const reminders = readFileSync("src/components/ReminderTimingsField.tsx", "utf8");
+    for (const source of [page, reminders]) {
+      expect(source).not.toMatch(/Deadline de vote|rappel custom|rappel perso\b/);
+    }
+    expect(page).toContain("Fin des votes");
+    expect(page).toContain("{pote}");
   });
 });

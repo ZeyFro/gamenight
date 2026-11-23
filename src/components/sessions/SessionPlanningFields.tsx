@@ -17,17 +17,19 @@ const errors = {
 };
 const inputClass = "min-w-0 rounded-lg border border-border bg-background px-3 py-3 text-base text-foreground focus:border-accent focus:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-background";
 
-export function SessionPlanningFields({ potes, tags, minDate, initialDate = "", initialTime = "" }: {
+export function SessionPlanningFields({ potes, tags, minDate, initialDate = "", initialTime = "", initialGuestIds = [] }: {
   potes: NotifyRecipientCandidate[];
   tags: NotifyTagOption[];
   minDate: string;
   initialDate?: string;
   initialTime?: string;
+  /** Personnes prévenues au départ : personne par défaut (MP seulement pour ce qui vise personnellement), ou les amis quand Potes est allumé. */
+  initialGuestIds?: string[];
 }) {
   const [date, setDate] = useState(initialDate);
   const [time, setTime] = useState(initialTime);
   const [recurrence, setRecurrence] = useState("");
-  const [guestIds, setGuestIds] = useState(() => potes.map((pote) => pote.id));
+  const [guestIds, setGuestIds] = useState(() => potes.filter((pote) => initialGuestIds.includes(pote.id)).map((pote) => pote.id));
   const [durationMinutes, setDurationMinutes] = useState(120);
   const [result, setResult] = useState<SlotSuggestionsResult | null>(null);
   const [pending, setPending] = useState(false);
@@ -71,7 +73,7 @@ export function SessionPlanningFields({ potes, tags, minDate, initialDate = "", 
         </select>
       </div>}
     </div>
-    <NotifyRecipientsField potes={potes} tags={tags} onSelectionChange={changeGuests} />
+    <NotifyRecipientsField potes={potes} tags={tags} onSelectionChange={changeGuests} defaultCheckedIds={initialGuestIds} />
     <section className="flex flex-col gap-3 rounded-xl border border-accent/30 bg-accent/5 p-4" aria-labelledby="slot-suggestions-title" aria-busy={pending}>
       <h3 id="slot-suggestions-title" className="text-sm font-semibold">✦ Trouver le bon créneau</h3>
       <p className="text-xs leading-relaxed text-muted">Pour toi et les personnes cochées, sur les 7 prochains jours. Départs entre 18 h et 23 h 30.</p>
