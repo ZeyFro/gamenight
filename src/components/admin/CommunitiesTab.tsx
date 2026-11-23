@@ -199,7 +199,7 @@ function CommunityCard({ community: c }: { community: AdminCommunityRow }) {
       {editable && (
         <form action={setCommunityTowerLevelsPerFloorAction} className="flex flex-wrap items-end gap-3 border-t border-border pt-4">
           <input type="hidden" name="communityId" value={c.id} />
-          <label className="flex flex-1 flex-col gap-1 text-xs text-muted">Niveaux par étage (5 à 20)
+          <label className="flex flex-1 flex-col gap-1 text-xs text-muted">Niveaux par niveau d’XP (5 à 20)
             <input type="number" name="levelsPerFloor" min={5} max={20} step={1} required defaultValue={c.towerLevelsPerFloor} className={SELECT_CLASS} />
           </label>
           <Button type="submit" size="sm">Enregistrer</Button>

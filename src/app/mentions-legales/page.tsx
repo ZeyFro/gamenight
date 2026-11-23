@@ -17,7 +17,7 @@ export default function MentionsLegalesPage() {
         <p>GameNight est un service privé d’organisation de soirées jeux, réservé aux membres de serveurs Discord partenaires.</p>
         <p>Éditeur : <LegalValue value={config.publisher} /></p>
         <p>Directeur de la publication : <LegalValue value={config.director} /></p>
-        <p>Contact : <LegalEmail email={config.contactEmail} /></p>
+        <p>Contact : <LegalEmail email={config.contactEmail} label={config.publisher} /></p>
       </section>
       <section className="flex flex-col gap-2">
         <h2>Hébergement</h2>
@@ -31,7 +31,7 @@ export default function MentionsLegalesPage() {
       <section className="flex flex-col gap-2">
         <h2>Signaler un contenu illicite</h2>
         <p>
-          Pour signaler un contenu manifestement illicite (photo, vidéo, message, bannière, lien), écris à <LegalEmail email={config.contactEmail} /> en
+          Pour signaler un contenu manifestement illicite (photo, vidéo, message, bannière, lien), écris à <LegalEmail email={config.contactEmail} label={config.publisher} /> en
           indiquant : la page ou le lien du contenu, sa description, le motif du signalement (avec le fondement légal si tu le connais), ton nom et
           ton adresse e-mail. Le contenu est examiné dans les meilleurs délais et retiré s’il est manifestement illicite.
         </p>

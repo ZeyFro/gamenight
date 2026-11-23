@@ -93,7 +93,7 @@ function formatNumber(value: number | string): string {
 export function renderProfile(profile: CommunityProfileView): string {
   const lines = [
     `🏰 **${profile.displayName}** · ${profile.communityName}`,
-    `Étage **${profile.floor}** · Niveau ${profile.level} (${profile.levelTitle}) · Rang ${profile.rankName}`,
+    `Niveau d’XP **${profile.floor}** · Niveau ${profile.level} (${profile.levelTitle}) · Rang ${profile.rankName}`,
     `XP communauté : ${formatNumber(profile.xpTotal)} · encore ${formatNumber(profile.xpToNextFloor)} avant l’étage ${profile.floor + 1}`,
   ];
   if (profile.floorsWon !== null) {
