@@ -9,6 +9,7 @@ import { getScopedPrisma } from "@/lib/community-scoped-client";
 import { prisma } from "@/lib/prisma";
 import { getCurrentUser } from "@/lib/current-user";
 import { checkRateLimit } from "@/lib/rate-limit";
+import { assertDailyCreationQuota, DailyCreationLimitError, TOURNAMENT_QUOTA_ERROR_KEY } from "@/lib/creation-quota";
 import {
   generateBracket,
   declareWinner,
@@ -132,6 +133,9 @@ export async function createTournamentAction(formData: FormData) {
   await requireCommunityBotAnnouncement(communityId, announceViaBot);
 
   const { result: tournament, replayed } = await createOnce(user.id, "TOURNAMENT", creationKey(formData.get("creationKey"), true), async (tx) => {
+    // Plafond du jour (audit 1.14) consommé DANS la transaction : un rejeu de la même intention n'y passe jamais, un
+    // refus annule tout avant la moindre écriture de tournoi ou de notification.
+    await assertDailyCreationQuota("TOURNAMENT", user.id, tx);
     await lockCreationMembers(tx, communityId, [user.id, ...notifiedUserIds]);
     const created = await tx.tournament.create({
       data: {
@@ -164,7 +168,10 @@ export async function createTournamentAction(formData: FormData) {
       }
     }
     return created;
-  }, (created) => created.id, (tx, id) => tx.tournament.findUniqueOrThrow({ where: { id } }));
+  }, (created) => created.id, (tx, id) => tx.tournament.findUniqueOrThrow({ where: { id } })).catch((error: unknown) => {
+    if (error instanceof DailyCreationLimitError) redirect(`/tournois/creer?error=${TOURNAMENT_QUOTA_ERROR_KEY}`);
+    throw error;
+  });
 
   // Webhook existant — UNIQUEMENT pour un tournoi resté sur ce chemin
   // (`announceViaBot=false`) : un tournoi bot a déjà enqueue son SEND ci-
