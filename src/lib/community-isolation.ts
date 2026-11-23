@@ -1,3 +1,4 @@
+import { friendPairKey, isFriendsEnabled } from "@/lib/friends-rules";
 import { communityRead } from "@/lib/community-read-context";
 import { profileVisibilityWhere } from "@/lib/profile-visibility";
 import type { Prisma } from "@prisma/client";
@@ -93,12 +94,28 @@ export async function communityMemberUserWhere(communityId: string | null): Prom
  * `/potes/[id]/*` : un `layout` Next n'est pas garanti de s'exécuter avant ses
  * pages enfants (navigation côté client), il ne suffit donc pas seul.
  */
-export async function canViewPote(viewerId: string, poteId: string): Promise<boolean> {
-  if (viewerId === poteId) return true;
+/**
+ * Accès à la fiche d’un membre : `self` (moi), `friend` (fiche complète), `stranger` (membre visible mais pas ami,
+ * POTES_FRIENDS_ENABLED allumé : fiche réduite, jamais les données du profil), `none` (autre communauté, profil masqué,
+ * inexistant : indistinct d’un pote inexistant). Éteint, tout membre visible est `friend` comme avant.
+ */
+export type PoteAccess = "self" | "friend" | "stranger" | "none";
+
+export async function getPoteAccess(viewerId: string, poteId: string): Promise<PoteAccess> {
+  if (viewerId === poteId) return "self";
   const scope = await getIsolationScope(viewerId);
   const where = memberUserWhere(scope);
   // Profil masqué par son propriétaire (PROFILE_VISIBILITY_ENABLED) : indistinct d'un pote inexistant.
-  return (await prisma.user.findFirst({ where: { id: poteId, ...where, ...profileVisibilityWhere() }, select: { id: true } })) !== null;
+  const visible = (await prisma.user.findFirst({ where: { id: poteId, ...where, ...profileVisibilityWhere() }, select: { id: true } })) !== null;
+  if (!visible) return "none";
+  if (!isFriendsEnabled()) return "friend";
+  const friendship = await prisma.friendship.findUnique({ where: { pairKey: friendPairKey(viewerId, poteId) }, select: { status: true } });
+  return friendship?.status === "ACCEPTED" ? "friend" : "stranger";
+}
+
+export async function canViewPote(viewerId: string, poteId: string): Promise<boolean> {
+  const access = await getPoteAccess(viewerId, poteId);
+  return access === "self" || access === "friend";
 }
 
 /**

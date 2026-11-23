@@ -2,7 +2,8 @@ import Link from "next/link";
 import type { ReactNode } from "react";
 import { notFound, redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/current-user";
-import { canViewPote } from "@/lib/community-isolation";
+import { getPoteAccess } from "@/lib/community-isolation";
+import { StrangerPoteCard } from "@/components/potes/StrangerPoteCard";
 import { prisma } from "@/lib/prisma";
 import { getMemberStatsForViewer, projectUserProgress } from "@/lib/member-stats";
 import { Badge } from "@/components/ui/Badge";
@@ -55,7 +56,10 @@ export default async function PoteLayout({
 
   // Multi-communautés (PR4) : fiche d'un membre d'une autre communauté =
   // indistinct d'un pote inexistant (contrôle aussi répété dans chaque page).
-  if (!(await canViewPote(user.id, id))) notFound();
+  // Potes = amis : un membre visible mais pas ami (POTES_FRIENDS_ENABLED) n’a droit qu’à une fiche réduite.
+  const access = await getPoteAccess(user.id, id);
+  if (access === "none") notFound();
+  if (access === "stranger") return <StrangerPoteCard viewerId={user.id} poteId={id} />;
   const rawPote = await prisma.user.findUnique({ where: { id } });
   if (!rawPote) notFound();
   const pote = projectUserProgress(rawPote, await getMemberStatsForViewer(id, user.id));

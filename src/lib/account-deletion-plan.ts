@@ -35,6 +35,8 @@ export const USER_RELATION_PLAN: Record<string, RelationRule> = {
   "UserGame.userId": del("bibliothèque personnelle"),
   "UserGameRefusal.userId": del("préférences personnelles"),
   "UserGameLevel.userId": del("niveau de jeu auto-déclaré"),
+  "Friendship.requesterId": del("demandes d’ami envoyées et amitiés (donnée personnelle : relation entre deux personnes)"),
+  "Friendship.addresseeId": del("demandes d’ami reçues et amitiés (donnée personnelle)"),
   "GamePingOptIn.userId": del("abonnements personnels aux jeux suivis"),
   "WeeklyAvailability.userId": del("disponibilités récurrentes"),
   "AvailabilityOverride.userId": del("disponibilités ponctuelles"),
