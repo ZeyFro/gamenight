@@ -85,3 +85,24 @@ describe("GET /api/igdb/search", () => {
     expect(response.status).toBe(502);
   });
 });
+
+describe("GET /api/igdb/search : limite de débit par membre (audit du 23/11/2026, A04)", () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it("au-delà de 30 recherches par minute : 429, et IGDB n'est plus appelé", async () => {
+    getValidSession.mockResolvedValue({ user: { discordId: "limite-igdb-A" } });
+    searchIgdbGames.mockResolvedValue([]);
+    const call = () => GET(new NextRequest("http://localhost/api/igdb/search?q=zelda"));
+    for (let i = 0; i < 30; i++) expect((await call()).status).toBe(200);
+    const limited = await call();
+    expect(limited.status).toBe(429);
+    expect(limited.headers.get("Retry-After")).toBe("10");
+    expect(searchIgdbGames).toHaveBeenCalledTimes(30);
+  });
+
+  it("le plafond est propre à chaque membre", async () => {
+    getValidSession.mockResolvedValue({ user: { discordId: "limite-igdb-B" } });
+    searchIgdbGames.mockResolvedValue([]);
+    expect((await GET(new NextRequest("http://localhost/api/igdb/search?q=zelda"))).status).toBe(200);
+  });
+});
