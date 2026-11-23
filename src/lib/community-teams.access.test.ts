@@ -6,7 +6,7 @@ vi.mock("@/lib/community-isolation", () => ({ resolveActiveCommunityId: mocks.re
 vi.mock("@/lib/community-scoped-client", () => ({ getScopedPrisma: vi.fn() }));
 vi.mock("@/lib/prisma", () => ({ prisma: { membership: { findUnique: mocks.membershipFindUnique }, $transaction: mocks.transaction } }));
 
-import { getCommunityTeamsCommunityId, joinCommunityTeam } from "./community-teams";
+import { getCommunityTeamsCommunityId, joinCommunityTeam, waitBeforeSerializationRetry } from "./community-teams";
 
 describe("community teams access", () => {
   beforeEach(() => vi.clearAllMocks());
@@ -42,12 +42,24 @@ describe("community teams access", () => {
     expect(mocks.transaction).toHaveBeenCalledTimes(4);
   });
 
-  it("joinCommunityTeam : conflit persistant → l’erreur remonte après 3 relances (jamais avalée)", async () => {
+  it("joinCommunityTeam : conflit persistant → l’erreur remonte après 5 relances espacées (jamais avalée)", async () => {
     mocks.resolveActiveCommunityId.mockResolvedValue("community-1");
     mocks.membershipFindUnique.mockResolvedValue({ status: "ACTIVE", community: { status: "ACTIVE", communityTeamsEnabled: true } });
     const known = (code: string) => new Prisma.PrismaClientKnownRequestError("x", { code, clientVersion: "test" });
     mocks.transaction.mockRejectedValue(known("P2034"));
     await expect(joinCommunityTeam("user-1", "community-1", "team-1")).rejects.toMatchObject({ code: "P2034" });
-    expect(mocks.transaction).toHaveBeenCalledTimes(4);
+    expect(mocks.transaction).toHaveBeenCalledTimes(6);
+  });
+
+  it("attente avant relance : croissante (25, 50, 100, 200, 400 ms + part aléatoire < 25 ms), seulement pour P2034, 5 au plus", async () => {
+    const known = (code: string) => new Prisma.PrismaClientKnownRequestError("x", { code, clientVersion: "test" });
+    const waits: number[] = [];
+    const sleep = async (ms: number) => { waits.push(ms); };
+    for (let retry = 0; retry < 5; retry++) await expect(waitBeforeSerializationRetry(known("P2034"), retry, sleep)).resolves.toBe(true);
+    expect(waits.map((ms, retry) => ms >= 25 * 2 ** retry && ms < 25 * 2 ** retry + 25)).toEqual([true, true, true, true, true]);
+    await expect(waitBeforeSerializationRetry(known("P2034"), 5, sleep)).resolves.toBe(false);
+    await expect(waitBeforeSerializationRetry(known("P2002"), 0, sleep)).resolves.toBe(false);
+    await expect(waitBeforeSerializationRetry(new Error("autre"), 0, sleep)).resolves.toBe(false);
+    expect(waits).toHaveLength(5);
   });
 });
