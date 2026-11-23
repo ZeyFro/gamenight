@@ -3970,6 +3970,10 @@ model TowerChallengeDefinition {
   measureAppId Int?
   measureTarget Int?
   measureAchievement String? @db.VarChar(100)
+  // §9.1 : vrai = une preuve antérieure à l’attribution est acceptée (le code de preuve n’est pas exigé), affiché explicitement.
+  allowsPastProof Boolean @default(false)
+  // §8.5 : catégorie de variété (GAMING, CREATIF, ARTISTIQUE, ABSURDE, HUMOUR, COOPERATION, DECOUVERTE, LONGUE_DUREE, HORS_JEU).
+  category String? @db.VarChar(30)
   attempts TowerChallengeAttempt[]
 
   @@unique([id, communityId])
