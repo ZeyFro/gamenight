@@ -64,6 +64,8 @@ import { GameWarnings } from "@/components/GameWarnings";
 import { readSessionPreparation } from "@/lib/session-preparation";
 import { SessionPreparationPanel } from "@/components/sessions/SessionPreparationPanel";
 import { SessionGallery } from "@/components/sessions/SessionGallery";
+import { SessionPhotosLink } from "@/components/sessions/SessionPhotosLink";
+import { discordPhotosChannelUrl } from "@/lib/discord-photos-channel";
 import { isSessionVideoEnabled } from "@/lib/session-gallery";
 import { canManageSessionContent } from "@/lib/session-content-access";
 import { readSessionVoicePresence } from "@/lib/session-voice-presence";
@@ -859,6 +861,8 @@ export default async function SessionDetailPage({
       )}
 
       {preparation && <SessionPreparationPanel sessionId={session.id} userId={user.id} participants={preparation} />}
+
+      {discordPhotosChannelUrl() && <SessionPhotosLink url={discordPhotosChannelUrl()!} />}
 
       {shouldShowSessionGallery({ galleryEnabled, storageReady: galleryStorageReady, canManage: canManageContent, launchTexts }) && (
         <SessionGallery

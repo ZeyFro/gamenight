@@ -38,7 +38,7 @@ export default function ConditionsPage() {
         <p>
           En ajoutant une photo, une vidéo ou une bannière, tu confirmes avoir le droit de la publier et, si d’autres personnes y sont reconnaissables
           ou audibles, avoir obtenu leur accord. Tu autorises les membres invités à la soirée à la consulter. Une personne visible dans un média peut
-          demander son retrait par e-mail à <LegalEmail email={config.contactEmail} /> ; l’auteur, le créateur de la soirée ou un administrateur peuvent
+          demander son retrait par e-mail à <LegalEmail email={config.contactEmail} label={config.publisher} /> ; l’auteur, le créateur de la soirée ou un administrateur peuvent
           aussi le supprimer.
         </p>
       </section>
@@ -63,7 +63,7 @@ export default function ConditionsPage() {
       </section>
       <section className="flex flex-col gap-2">
         <h2>Modification des conditions, droit applicable</h2>
-        <p>Ces conditions peuvent évoluer ; la date de dernière mise à jour est le {LEGAL_LAST_UPDATED}. Elles sont soumises au droit français. Contact : <LegalEmail email={config.contactEmail} />.</p>
+        <p>Ces conditions peuvent évoluer ; la date de dernière mise à jour est le {LEGAL_LAST_UPDATED}. Elles sont soumises au droit français. Contact : <LegalEmail email={config.contactEmail} label={config.publisher} />.</p>
       </section>
     </LegalPage>
   );

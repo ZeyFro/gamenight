@@ -15,7 +15,7 @@ export default function ConfidentialitePage() {
     <LegalPage title="Politique de confidentialité">
       <section className="flex flex-col gap-2">
         <h2>Responsable du traitement</h2>
-        <p>Éditeur : <LegalValue value={config.publisher} />. Contact pour toute question ou demande : <LegalEmail email={config.contactEmail} />.</p>
+        <p>Éditeur : <LegalValue value={config.publisher} />. Contact pour toute question ou demande : <LegalEmail email={config.contactEmail} label={config.publisher} />.</p>
       </section>
       <section className="flex flex-col gap-2">
         <h2>Données collectées, finalités, durées</h2>
@@ -86,7 +86,7 @@ export default function ConfidentialitePage() {
         <h2>Tes droits</h2>
         <p>
           Tu peux demander l’accès à tes données, leur rectification, leur effacement, leur portabilité, la limitation ou l’opposition à un traitement, et retirer un
-          consentement. Écris à <LegalEmail email={config.contactEmail} /> ; réponse sous un mois.
+          consentement. Écris à <LegalEmail email={config.contactEmail} label={config.publisher} /> ; réponse sous un mois.
           {deletionOpen
             ? " Tu peux aussi exporter tes données et supprimer ton compte toi-même depuis les paramètres de ton profil."
             : " L’export et la suppression en libre-service ne sont pas encore disponibles : la demande se fait par e-mail."}
