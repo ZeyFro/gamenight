@@ -32,9 +32,10 @@ describe("secret de route", () => {
 });
 
 describe("mode et code HTTP", () => {
-  it("accepte seulement check et execute", () => {
+  it("accepte seulement check, execute et bulk", () => {
     expect(parseRegistrationMode({ mode: "check" })).toBe("check");
     expect(parseRegistrationMode({ mode: "execute" })).toBe("execute");
+    expect(parseRegistrationMode({ mode: "bulk" })).toBe("bulk");
     for (const body of [null, undefined, {}, { mode: "delete" }, { mode: "Check" }, "check", 3]) expect(parseRegistrationMode(body)).toBeNull();
   });
   it("200 si ok, 503 pour la configuration, 502 sinon", () => {
@@ -42,6 +43,7 @@ describe("mode et code HTTP", () => {
     expect(registrationHttpStatus({ ...base, ok: true, failure: null })).toBe(200);
     expect(registrationHttpStatus({ ...base, ok: false, failure: { stage: "config" } })).toBe(503);
     expect(registrationHttpStatus({ ...base, ok: false, failure: { stage: "read", http: 403 } })).toBe(502);
+    expect(registrationHttpStatus({ ...base, ok: false, failure: { stage: "outside_manifest" } })).toBe(409);
   });
 });
 

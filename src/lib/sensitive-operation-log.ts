@@ -16,6 +16,7 @@ export const SENSITIVE_OPERATIONS = [
   "tower.appeal_decide", "tower.arbiter_appoint", "tower.arbiter_configure",
   "cleanup.retry_reward", "cleanup.retry_discord",
   "discord.commands_execute",
+  "discord.commands_bulk",
 ] as const;
 export type SensitiveOperation = (typeof SENSITIVE_OPERATIONS)[number];
 
