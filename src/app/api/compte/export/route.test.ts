@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({ user: vi.fn(), build: vi.fn(), rateLimit: vi.fn() }));
 vi.mock("@/lib/current-user", () => ({ getCurrentUser: mocks.user }));
-vi.mock("@/lib/rate-limit", () => ({ checkRateLimit: mocks.rateLimit }));
+vi.mock("@/lib/shared-rate-limit", () => ({ checkSharedRateLimit: mocks.rateLimit }));
 vi.mock("@/lib/account-export", async () => {
   const actual = await vi.importActual<typeof import("@/lib/account-export")>("@/lib/account-export");
   return { ...actual, buildAccountExport: mocks.build };

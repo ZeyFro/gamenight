@@ -3,7 +3,7 @@
 import { notFound, redirect } from "next/navigation";
 import { signOut } from "@/auth";
 import { getCurrentUser } from "@/lib/current-user";
-import { checkRateLimit } from "@/lib/rate-limit";
+import { checkSharedRateLimit } from "@/lib/shared-rate-limit";
 import { isAccountDeletionConfirmed, isAccountDeletionEnabled } from "@/lib/account-deletion-flag";
 import { AccountBlobUnavailableError, deleteAccount } from "@/lib/account-deletion";
 
@@ -16,7 +16,7 @@ export async function deleteMyAccountAction(formData: FormData): Promise<void> {
   if (!isAccountDeletionEnabled()) notFound();
   const user = await getCurrentUser({ recordActivity: false });
   if (!user) redirect("/");
-  if (!checkRateLimit(user.id, "deleteMyAccount", { limit: 3, windowMs: 60_000 })) redirect("/profil/compte?erreur=rate_limited");
+  if (!(await checkSharedRateLimit(user.id, "deleteMyAccount", { limit: 3, windowMs: 60_000 }))) redirect("/profil/compte?erreur=rate_limited");
   if (!isAccountDeletionConfirmed(String(formData.get("confirmation") ?? ""), user.discordName)) redirect("/profil/compte?erreur=confirmation");
 
   let result: Awaited<ReturnType<typeof deleteAccount>>;

@@ -4,8 +4,9 @@ import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { getCurrentUser } from "@/lib/current-user";
 import { checkRateLimit } from "@/lib/rate-limit";
-import { getCommunityTeamsCommunityId, createCommunityTeam, joinCommunityTeam, leaveCommunityTeam, setCommunityTeamRecruitment, transferCommunityTeamCaptain, dissolveCommunityTeam } from "@/lib/community-teams";
+import { getCommunityTeamsCommunityId, createCommunityTeam, joinCommunityTeam, leaveCommunityTeam, setCommunityTeamRecruitment, setCommunityTeamIdentity, transferCommunityTeamCaptain, dissolveCommunityTeam } from "@/lib/community-teams";
 import { communityTeamSchema } from "@/lib/community-teams-rules";
+import { parseTeamIdentity } from "@/lib/team-identity";
 import { idSchema } from "@/lib/validations";
 import { getTeamRecruitmentCriteriaCommunityId, saveTeamRecruitmentCriteria } from "@/lib/team-recruitment-criteria";
 import { parseTeamRecruitmentCriteriaForm } from "@/lib/team-recruitment-criteria-rules";
@@ -77,6 +78,16 @@ function doneManagement(result: string): never {
   revalidatePath("/equipes");
   revalidatePath("/equipes/gestion");
   redirect(`/equipes/gestion?result=${result}`);
+}
+
+export async function setCommunityTeamIdentityAction(formData: FormData): Promise<void> {
+  const { user, communityId } = await authorizedUser("setCommunityTeamIdentity");
+  const teamId = idSchema.safeParse(formData.get("teamId"));
+  const color = formData.get("noColor") === "on" ? "" : formData.get("color");
+  const identity = parseTeamIdentity(color, formData.get("emblem"));
+  if (!teamId.success || !identity) doneManagement("invalid");
+  const result = await setCommunityTeamIdentity(user.id, communityId, teamId.data, identity);
+  doneManagement(result === "saved" ? "identity_saved" : result);
 }
 
 export async function transferCommunityTeamCaptainAction(formData: FormData): Promise<void> {
