@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import React from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 const { change, replace, refresh } = vi.hoisted(() => ({ change: vi.fn(), replace: vi.fn(), refresh: vi.fn() }));
 vi.mock("@/app/serveurs/actions", () => ({ changeCommunityAction: change }));
@@ -41,5 +41,31 @@ describe("sélecteur permanent", () => {
     expect(select.value).toBe("a");
     expect(select.disabled).toBe(true);
     expect(screen.getByText("Vrai nom A")).toBeTruthy();
+  });
+});
+
+describe("icône du serveur : jamais d'image cassée", () => {
+  afterEach(cleanup);
+  const withIcon = [{ id: "a", name: "The Tower", slug: "a", discordGuildId: "123", iconHash: "abc" }] as never;
+  it("sans iconHash : l'initiale du serveur dans un rond, aucune image", () => {
+    const { container } = render(<CommunitySwitcher communities={communities} currentId="a" />);
+    expect(screen.getByTestId("community-icon-fallback").textContent).toBe("V");
+    expect(container.querySelector("img")).toBeNull();
+  });
+  it("avec un iconHash : l'image Discord est affichée", () => {
+    const { container } = render(<CommunitySwitcher communities={withIcon} currentId="a" />);
+    expect(container.querySelector("img")?.getAttribute("src")).toContain("/icons/123/abc.png");
+    expect(screen.queryByTestId("community-icon-fallback")).toBeNull();
+  });
+  it("image en erreur (hash périmé, 404) : repli sur l'initiale, plus d'image cassée", () => {
+    const { container } = render(<CommunitySwitcher communities={withIcon} currentId="a" />);
+    fireEvent.error(container.querySelector("img")!);
+    expect(container.querySelector("img")).toBeNull();
+    expect(screen.getByTestId("community-icon-fallback").textContent).toBe("T");
+  });
+  it("aucun serveur courant : aucune icône", () => {
+    const { container } = render(<CommunitySwitcher communities={communities} currentId={null} />);
+    expect(container.querySelector("img")).toBeNull();
+    expect(screen.queryByTestId("community-icon-fallback")).toBeNull();
   });
 });
