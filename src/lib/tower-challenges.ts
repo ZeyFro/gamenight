@@ -11,7 +11,7 @@ import { canClaimSoloChallenge, canSubmitChallengeProof, canReceiveChallengeRewa
 import { canResubmitAfterNoQuorum, challengeVoteDeadline, evaluateChallengeVote, TOWER_CHALLENGE_VOTE_QUORUM } from "@/lib/tower-challenge-voting";
 import { enqueueTowerChallengeEvent, refreshTowerProofMessage, requeueTowerRejectionNotices } from "@/lib/tower-challenge-announcements";
 import { isTowerDiscordVotesEnabled, towerVoterEligibility } from "@/lib/tower-vote-eligibility";
-import { TOWER_SOLO_IMPORT_PACK, TOWER_TEAM_IMPORT_PACK, towerChallengeDefinitionContentSchema } from "@/lib/tower-challenge-import-packs";
+import { TOWER_SOLO_IMPORT_PACK, TOWER_TEAM_IMPORT_PACK, towerChallengeDefinitionContentSchema, towerImportDefinitionData } from "@/lib/tower-challenge-import-packs";
 import { getTowerSchoolSeason } from "@/lib/tower-challenge-seasons";
 import { filterChallengesPlayable, isGamePlatformsEnabled, isPlayableByGroup, isPlayableOnPlayerPlatforms, loadGamePlatforms } from "@/lib/game-platforms";
 import { createTowerChallengeProofCode, towerProofSatisfiesCodeRule } from "@/lib/tower-challenge-proof-rules";
@@ -47,6 +47,10 @@ type ChallengeMeta = {
   staffReportedAt: Date | null;
   archivedAt: Date | null;
   appealStatus: string | null;
+  /** §9.1 : défi qui accepte une preuve antérieure à l'attribution (code de preuve non exigé). */
+  allowsPastProof: boolean;
+  /** §8.5 : catégorie de variété du défi, ou null. */
+  category: string | null;
 };
 
 async function loadChallengeMeta(scopedDb: Prisma.TransactionClient, communityId: string, attemptId: string): Promise<ChallengeMeta> {
@@ -58,9 +62,11 @@ async function loadChallengeMeta(scopedDb: Prisma.TransactionClient, communityId
       RETURNING id, "proofCode"
     )
     SELECT a.id, COALESCE(generated."proofCode", a."proofCode") AS "proofCode",
-      a."rejectedAt", a."staffReportedAt", a."archivedAt", appeal.status AS "appealStatus"
+      a."rejectedAt", a."staffReportedAt", a."archivedAt", appeal.status AS "appealStatus",
+      COALESCE(definition."allowsPastProof", false) AS "allowsPastProof", definition.category AS "category"
     FROM "TowerChallengeAttempt" a
     LEFT JOIN generated ON generated.id = a.id
+    LEFT JOIN "TowerChallengeDefinition" definition ON definition.id = a."definitionId" AND definition."communityId" = a."communityId"
     LEFT JOIN "TowerChallengeAppeal" appeal ON appeal."communityId" = a."communityId" AND appeal."attemptId" = a.id
     WHERE a.id = ${attemptId} AND a."communityId" = ${communityId}
   `;
@@ -419,8 +425,11 @@ export async function submitTowerChallengeProof(input: unknown) {
     }
     if (attempt.status !== "ASSIGNED") return { status: "CLOSED" } as const;
     const metadata = await loadChallengeMeta(scopedDb, communityId, attemptId);
-    if (!metadata.proofCode) return { status: "PROOF_CODE_UNAVAILABLE" } as const;
-    if (!towerProofSatisfiesCodeRule(proofText, metadata.proofCode)) return { status: "PROOF_CODE_REQUIRED" } as const;
+    // §9.1 : un défi qui accepte une preuve ancienne ne peut pas exiger le code généré à l'attribution.
+    if (!metadata.allowsPastProof) {
+      if (!metadata.proofCode) return { status: "PROOF_CODE_UNAVAILABLE" } as const;
+      if (!towerProofSatisfiesCodeRule(proofText, metadata.proofCode)) return { status: "PROOF_CODE_REQUIRED" } as const;
+    }
     const submittedAt = now();
     // Resoumission après un rejet sans quorum : nouvelle fenêtre de 48 h (resubmitUntil), l'attribution initiale reste inchangée.
     const inWindow = attempt.quorumResubmissions > 0 && attempt.resubmitUntil
@@ -1136,7 +1145,7 @@ export async function importSoloTowerChallengeStarterPack(input: unknown) {
     const titles = new Set(existing.map(definition => definition.title.toLowerCase()));
     const missing = TOWER_SOLO_IMPORT_PACK.filter(challenge => !titles.has(challenge.title.toLowerCase()));
     if (missing.length) await scopedDb.towerChallengeDefinition.createMany({
-      data: missing.map(challenge => ({ ...challenge, communityId: community.id, mode: "SOLO" as const, active: true })),
+      data: missing.map(challenge => ({ ...towerImportDefinitionData(challenge), communityId: community.id, mode: "SOLO" as const, active: true })),
     });
     return { status: "IMPORTED", added: missing.length, alreadyPresent: TOWER_SOLO_IMPORT_PACK.length - missing.length } as const;
   });
@@ -1158,7 +1167,7 @@ export async function importTeamTowerChallengeStarterPack(input: unknown) {
     const titles = new Set(existing.map(definition => definition.title.toLowerCase()));
     const missing = TOWER_TEAM_IMPORT_PACK.filter(challenge => !titles.has(challenge.title.toLowerCase()));
     if (missing.length) await scopedDb.towerChallengeDefinition.createMany({
-      data: missing.map(challenge => ({ ...challenge, communityId: community.id, mode: "TEAM" as const, active: true })),
+      data: missing.map(challenge => ({ ...towerImportDefinitionData(challenge), communityId: community.id, mode: "TEAM" as const, active: true })),
     });
     return { status: "IMPORTED", added: missing.length, alreadyPresent: TOWER_TEAM_IMPORT_PACK.length - missing.length } as const;
   });
