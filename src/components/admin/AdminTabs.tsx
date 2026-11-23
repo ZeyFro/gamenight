@@ -47,17 +47,20 @@ const TABS: { key: AdminTabKey; label: string }[] = [
 /** `showCommunities` : drapeau COMMUNITY_ADMIN_ENABLED (onglet « Communautés » masqué sinon). */
 export function AdminTabs({ active, showCommunities = false }: { active: AdminTabKey; showCommunities?: boolean }) {
   return (
-    <div className="flex gap-4 overflow-x-auto border-b border-border">
+    // Retour à la ligne (jamais de défilement horizontal) : 9 onglets ne tiennent pas sur 320 px, et un onglet caché hors écran
+    // passait inaperçu. Chaque lien garde une cible tactile d’au moins 44 px.
+    <nav aria-label="Sections de l’administration" className="flex flex-wrap gap-x-1 border-b border-border">
       {TABS.filter((tab) => showCommunities || tab.key !== "communautes").map((tab) => (
         <TabLink
           key={tab.key}
           href={`/admin?tab=${tab.key}`}
           active={active === tab.key}
           layoutId="admin-tabs-underline"
+          className="flex min-h-11 items-center"
         >
           {tab.label}
         </TabLink>
       ))}
-    </div>
+    </nav>
   );
 }
