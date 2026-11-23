@@ -234,7 +234,7 @@
 | `DISCORD_ROLE_SELF_CREATION_ENABLED` | **Ne pas allumer** | Remplacé par `DISCORD_ROLE_AUTOCREATE_ENABLED` (lot G, création par la file, jamais en direct) | — | — |
 | `VOICE_PRESENCE_WORKER_MODE` | **Ne jamais poser sur Vercel** | Réservé au worker auto-hébergé du vocal ; vide partout ailleurs | — | — |
 
-## Regroupement en 5 redéploiements (moins de codes 2FA)
+## Regroupement en 6 redéploiements, R0 à R5 (moins de codes 2FA)
 
 Principe : une même fenêtre de redéploiement peut porter plusieurs lots **tant qu'ils ne partagent pas de risque** ; chaque redéploiement est suivi de 30 minutes de contrôles (les « À vérifier » de chaque lot). Une vérification en échec retire **seulement les variables de ce lot** (retour arrière ci-dessus), jamais tout. Une **branche de sauvegarde Neon** (nom `avant-RX-AAAAMMJJ`) est créée juste avant R2, R3, R4 et R5, qui écrivent en base ou dans Discord. Le quota de déploiements de Vercel est de 100 par jour : aucun souci avec 5.
 
