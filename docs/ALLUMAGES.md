@@ -271,6 +271,25 @@ Le dépôt ne déclare **aucune** tâche planifiée dans `vercel.json` : tout le
 
 **Contrôle de planification (à refaire après création)** : lister les 18 ou 19 tâches ; vérifier que chacune porte l'en-tête `Authorization`, le fuseau Europe/Paris et l'e-mail d'échec ; déclencher chacune à la main ; le lendemain du changement d'heure (29/03/2027 et 31/10/2027), vérifier qu'une seule ligne `team-<jour>` existe pour le défi de 18 h.
 
+### (c) Ordre des prochains lots d'interrupteurs
+
+Rien n'est allumé aujourd'hui par les PR récentes : les plafonds anti-abus (#569 XP de présence, #583 temps Steam, #584 XP de tournoi, #585 XP de vote, #586 créations par jour) n'ont **aucun interrupteur** et agissent dès le déploiement de `main`. Leurs valeurs sont à faire valider par Maxime (voir `AUDIT_FINAL.md`). Ordre à suivre, un lot à la fois (règles du début du document) :
+
+| Ordre | Lot | Variables (Production) | Branche Neon avant | Tâches cron-job.org à créer en même temps (numéros du tableau (b)) |
+| --- | --- | --- | --- | --- |
+| 0 | Prérequis P1 à P6 | aucune | non | #1 à #4 (exécuteur, rappels, clôtures, `/api/health`) |
+| 1 | A1 | 7 variables, affichage seulement | non | — |
+| 2 | A2 | `COMMUNITY_ADMIN_ENABLED` (+ `HOME_V2_ENABLED` facultatif) | non | — |
+| 3 | B (The Tower) | 7 variables, dont `TOWER_STEAM_AUTOVALIDATE_ENABLED` (plafond de 2 h par jour actif) et `TOWER_TEAM_DAILY_ENABLED` (variable GitHub aussi) | **oui** | #15 ; #19 seulement si le workflow GitHub est abandonné |
+| 4 | C, D | 10 et 8 variables | non | — |
+| 5 | E (équipes, tournois) | 8 variables | **oui** | #16, #17, #18 selon les variables allumées |
+| 6 | F | 7 variables | non | #13 si les jeux gratuits sont allumés |
+| 7 | G, G2 (écritures Discord) | 10 variables, puis 7 commandes | **oui** | #14 si `DISCORD_BOOSTERS_ENABLED` |
+| 8 | H (rétention, Web Push, présence vocale, CSP) | une décision par ligne | **oui** | #12 pour la rétention (simulation d'abord) |
+| 9 | I (alerte d'hébergement) | `HOSTING_ALERT_ENABLED` | non | #5 |
+
+Avant de commencer, relever le quota Vercel (100 déploiements par jour en offre gratuite) : chaque « Redeploy » en consomme un ; un lot = un seul Redeploy. Après chaque lot, remplir la ligne du journal ci-dessous, sans valeur de secret.
+
 ## Journal des allumages (à remplir par ChatGPT)
 
 | Lot | Date et heure | Branche de sauvegarde | Vérifications OK | Retour arrière fait ? |
