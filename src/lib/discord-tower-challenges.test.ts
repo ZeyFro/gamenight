@@ -3,7 +3,7 @@ import { beforeEach, afterEach, describe, expect, it, vi } from "vitest";
 const mocks = vi.hoisted(() => ({
   verify: vi.fn(), actor: vi.fn(), claim: vi.fn(), state: vi.fn(), proof: vi.fn(), vote: vi.fn(), settle: vi.fn(),
   edit: vi.fn(), readProof: vi.fn(), leaderboard: vi.fn(), seasonVote: vi.fn(), seasonBallot: vi.fn(),
-  teams: vi.fn(), teamChallenge: vi.fn(), joinTeam: vi.fn(), warn: vi.fn(), error: vi.fn(),
+  teams: vi.fn(), teamChallenge: vi.fn(), joinTeam: vi.fn(), confirmTeam: vi.fn(), warn: vi.fn(), error: vi.fn(),
 }));
 vi.mock("@/lib/logger", () => ({ logger: { warn: mocks.warn, error: mocks.error } }));
 vi.mock("@/lib/discord-signature", () => ({ verifyDiscordSignature: mocks.verify }));
@@ -19,6 +19,7 @@ vi.mock("@/lib/tower-challenges", () => ({
   getTowerSeasonLeaderboard: mocks.leaderboard, getTowerSeasonVote: mocks.seasonVote,
   castTowerSeasonVote: mocks.seasonBallot,
   listDiscordTowerTeams: mocks.teams, getTeamDailyTowerChallenge: mocks.teamChallenge, joinTowerTeamChallenge: mocks.joinTeam,
+  confirmTowerTeamParticipant: mocks.confirmTeam,
 }));
 import { handleDiscordInteraction } from "./discord-interactions";
 import commands from "../../scripts/discord-commands.json";
@@ -199,6 +200,55 @@ describe("parcours Discord The Tower signé", () => {
     await join.runTower?.();
     expect(mocks.joinTeam).toHaveBeenCalledWith({ ...actor, attemptId: "team_attempt_1" });
     expect(mocks.edit.mock.calls.at(-1)?.[0].content).toContain("Tu participes à ce défi d'équipe.");
+  });
+  // Audit du 23/11/2026 (1.5) : le capitaine confirme les participants ; boutons existants du bot, aucune commande à enregistrer.
+  describe("confirmation des participants d'équipe par le capitaine", () => {
+    const teamState = (over: Record<string, unknown> = {}) => ({ status: "TEAM_CHALLENGE", team: { id: "team_1", name: "Les grimpeurs", memberCount: 3 },
+      attempt: { id: "team_attempt_1", title: "Le défi collectif", instructions: "Jouez ensemble.", rewardFloors: 2,
+        status: "ASSIGNED", assignedAt: new Date(), expiresAt: new Date(Date.now() + 48 * 3600000), submittedAt: null },
+      participantCount: 1, joined: true, confirmed: true, isCaptain: false, pendingParticipants: [], pendingReward: false, ...over });
+    const buttonsOf = (call: { components?: { components: { label: string; custom_id: string }[] }[] }) => (call.components ?? []).flatMap(row => row.components);
+
+    it("le capitaine voit un bouton « Confirmer » par participant en attente, et son clic appelle la confirmation", async () => {
+      mocks.teamChallenge.mockResolvedValue(teamState({ isCaptain: true, pendingParticipants: [{ userId: "member_2", name: "Alice" }, { userId: "member_3", name: "Bob" }] }));
+      mocks.confirmTeam.mockResolvedValue({ status: "CONFIRMED", teamId: "team_1", replayed: false });
+      const view = await run(payload("gn:tower:team:team_1")); await view.runTower?.();
+      const buttons = buttonsOf(mocks.edit.mock.calls.at(-1)?.[0]);
+      expect(buttons.map(item => item.custom_id)).toEqual(expect.arrayContaining(["gn:tower:confirm:team_attempt_1:member_2", "gn:tower:confirm:team_attempt_1:member_3"]));
+      expect(buttons.find(item => item.custom_id.endsWith(":member_2"))?.label).toBe("Confirmer Alice");
+      const click = await run(payload("gn:tower:confirm:team_attempt_1:member_2")); await click.runTower?.();
+      expect(mocks.confirmTeam).toHaveBeenCalledWith({ ...actor, attemptId: "team_attempt_1", participantId: "member_2" });
+      expect(mocks.edit.mock.calls.at(-1)?.[0].content).toContain("Participant confirmé.");
+    });
+
+    it("un non-capitaine n'a aucun bouton de confirmation et reçoit un refus clair s'il tente quand même", async () => {
+      mocks.teamChallenge.mockResolvedValue(teamState({ isCaptain: false, pendingParticipants: [] }));
+      const view = await run(payload("gn:tower:team:team_1")); await view.runTower?.();
+      expect(buttonsOf(mocks.edit.mock.calls.at(-1)?.[0]).some(item => item.custom_id.startsWith("gn:tower:confirm:"))).toBe(false);
+      mocks.confirmTeam.mockResolvedValue({ status: "NOT_CAPTAIN" });
+      const click = await run(payload("gn:tower:confirm:team_attempt_1:member_2")); await click.runTower?.();
+      expect(mocks.edit.mock.calls.at(-1)?.[0].content).toBe("Seul le capitaine de l'équipe peut confirmer les participants.");
+    });
+
+    it("un participant en attente voit la mention d'attente et n'a pas le bouton « Déposer la preuve »", async () => {
+      mocks.teamChallenge.mockResolvedValue(teamState({ confirmed: false }));
+      const view = await run(payload("gn:tower:team:team_1")); await view.runTower?.();
+      const sent = mocks.edit.mock.calls.at(-1)?.[0];
+      expect(sent.content).toContain("attend la confirmation du capitaine");
+      expect(buttonsOf(sent).some(item => item.custom_id.startsWith("gn:tower:proof:"))).toBe(false);
+      mocks.teamChallenge.mockResolvedValue(teamState({ confirmed: true }));
+      const confirmedView = await run(payload("gn:tower:team:team_1")); await confirmedView.runTower?.();
+      expect(buttonsOf(mocks.edit.mock.calls.at(-1)?.[0]).some(item => item.custom_id.startsWith("gn:tower:proof:"))).toBe(true);
+    });
+
+    it("pas de bouton de confirmation une fois le résultat connu, et l'identifiant du bouton reste sous 100 caractères", async () => {
+      mocks.teamChallenge.mockResolvedValue(teamState({ isCaptain: true, pendingParticipants: [{ userId: "member_2", name: "Alice" }],
+        attempt: { ...teamState().attempt, status: "APPROVED" } }));
+      const view = await run(payload("gn:tower:team:team_1")); await view.runTower?.();
+      expect(buttonsOf(mocks.edit.mock.calls.at(-1)?.[0]).some(item => item.custom_id.startsWith("gn:tower:confirm:"))).toBe(false);
+      const longest = "gn:tower:confirm:" + "c".repeat(25) + ":" + "u".repeat(25);
+      expect(longest.length).toBeLessThan(100);
+    });
   });
   it("refuse un acteur indisponible et masque les erreurs internes", async () => {
     mocks.actor.mockResolvedValue(null);

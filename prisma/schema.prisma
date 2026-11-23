@@ -4156,6 +4156,8 @@ model TowerChallengeAttemptParticipant {
   userId String
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
   joinedAt DateTime @default(now())
+  // Audit du 23/11/2026 (1.5) : seul un participant CONFIRMÉ par le capitaine est récompensé. Null = en attente de confirmation.
+  confirmedAt DateTime?
   rewardedAt DateTime?
 
   @@id([attemptId, userId])

@@ -7,7 +7,7 @@ import { towerTransactionBudget, setTowerStatementDeadline } from "@/lib/tower-d
 import { logger } from "@/lib/logger";
 import { towerRejectionAnnouncementJoin } from "@/lib/tower-rejection-notice";
 import { scopedTransactionPrisma } from "@/lib/community-scoped-client";
-import { canClaimSoloChallenge, canSubmitChallengeProof, canReceiveChallengeReward, getTowerParisDayKey, isTowerTeamDailyDue } from "@/lib/tower-challenge-rules";
+import { canClaimSoloChallenge, canSubmitChallengeProof, canReceiveChallengeReward, canReceiveTeamReward, getTowerParisDayKey, isTowerTeamDailyDue } from "@/lib/tower-challenge-rules";
 import { canResubmitAfterNoQuorum, challengeVoteDeadline, evaluateChallengeVote, TOWER_CHALLENGE_VOTE_QUORUM } from "@/lib/tower-challenge-voting";
 import { enqueueTowerChallengeEvent, refreshTowerProofMessage, requeueTowerRejectionNotices } from "@/lib/tower-challenge-announcements";
 import { isTowerDiscordVotesEnabled, towerVoterEligibility } from "@/lib/tower-vote-eligibility";
@@ -24,6 +24,7 @@ const actorSchema = z.object({ communityId: id, userId: id });
 const claimSchema = actorSchema.extend({ requestKey: z.string().regex(/^[a-zA-Z0-9_-]{16,100}$/) });
 const attemptSchema = actorSchema.extend({ attemptId: id });
 const teamChallengeSchema = actorSchema.extend({ teamId: id });
+const confirmParticipantSchema = attemptSchema.extend({ participantId: id });
 const proofSchema = attemptSchema.extend({
   proofText: z.string().trim().min(1).max(1500),
   proofChannelId: z.string().regex(/^[0-9]{16,20}$/),
@@ -267,7 +268,7 @@ export async function getTeamDailyTowerChallenge(input: unknown, deadline?: Date
         members: { some: { userId, user: { memberships: { some: { communityId, status: "ACTIVE" } } } } },
       },
       select: {
-        id: true, name: true,
+        id: true, name: true, captainId: true, createdById: true,
         members: { where: { user: { memberships: { some: { communityId, status: "ACTIVE" } } } }, select: { userId: true } },
       },
     });
@@ -314,14 +315,24 @@ export async function getTeamDailyTowerChallenge(input: unknown, deadline?: Date
     const metadata = await loadChallengeMeta(scopedDb, communityId, attempt.id);
     await setTowerStatementDeadline(transaction, deadline);
     const participation = await scopedDb.towerChallengeAttemptParticipant.findUnique({
-        where: { attemptId_userId: { attemptId: attempt.id, userId } }, select: { rewardedAt: true },
+        where: { attemptId_userId: { attemptId: attempt.id, userId } }, select: { rewardedAt: true, confirmedAt: true },
       });
     await setTowerStatementDeadline(transaction, deadline);
-    const participants = await scopedDb.towerChallengeAttemptParticipant.count({ where: { communityId, attemptId: attempt.id } });
+    const participants = await scopedDb.towerChallengeAttemptParticipant.count({ where: { communityId, attemptId: attempt.id, confirmedAt: { not: null } } });
+    // Le capitaine voit les participants à confirmer (au plus 4 : une rangée de boutons Discord) ; les autres n'en voient aucun.
+    const isCaptain = (team.captainId ?? team.createdById) === userId;
+    const pendingParticipants = isCaptain
+      ? await scopedDb.towerChallengeAttemptParticipant.findMany({
+          where: { communityId, attemptId: attempt.id, confirmedAt: null }, orderBy: { joinedAt: "asc" }, take: 4,
+          select: { userId: true, user: { select: { discordName: true } } },
+        })
+      : [];
     return {
       status: "TEAM_CHALLENGE" as const, team: { id: team.id, name: team.name, memberCount: team.members.length },
       attempt: { ...attempt, ...metadata }, participantCount: participants, joined: Boolean(participation),
-      pendingReward: attempt.status === "APPROVED" && Boolean(participation && !participation.rewardedAt),
+      confirmed: Boolean(participation?.confirmedAt), isCaptain,
+      pendingParticipants: pendingParticipants.map(row => ({ userId: row.userId, name: row.user.discordName })),
+      pendingReward: attempt.status === "APPROVED" && Boolean(participation?.confirmedAt && !participation.rewardedAt),
     };
   }, deadline);
 }
@@ -359,7 +370,7 @@ export async function getTowerTeamDailyStates(input: unknown) {
         towerChallengeAttempts: {
           where: { communityId: actor.communityId, requestKey }, take: 1,
           select: { id: true, userId: true, title: true, instructions: true, status: true, rewardFloors: true, expiresAt: true,
-            participants: { select: { userId: true, rewardedAt: true } } },
+            participants: { select: { userId: true, rewardedAt: true, confirmedAt: true } } },
         },
       },
       orderBy: { name: "asc" }, take: 25,
@@ -370,12 +381,12 @@ export async function getTowerTeamDailyStates(input: unknown) {
       id: team.id, name: team.name, memberCount: team.members.length,
       attempt: team.towerChallengeAttempts[0] ? {
         ...team.towerChallengeAttempts[0], ...metadataById.get(team.towerChallengeAttempts[0].id),
-        participantCount: team.towerChallengeAttempts[0].participants.length,
+        participantCount: team.towerChallengeAttempts[0].participants.filter(participant => participant.confirmedAt).length,
         joined: team.towerChallengeAttempts[0].participants.some(participant => participant.userId === actor.userId),
         userRewarded: Boolean(team.towerChallengeAttempts[0].participants.find(participant => participant.userId === actor.userId)?.rewardedAt),
         rewardedCount: team.towerChallengeAttempts[0].participants.filter(participant => participant.rewardedAt).length,
         pendingReward: team.towerChallengeAttempts[0].status === "APPROVED"
-          && team.towerChallengeAttempts[0].participants.some(participant => participant.userId === actor.userId && !participant.rewardedAt),
+          && team.towerChallengeAttempts[0].participants.some(participant => participant.userId === actor.userId && participant.confirmedAt && !participant.rewardedAt),
       } : null,
     })) };
   });
@@ -391,13 +402,50 @@ export async function joinTowerTeamChallenge(input: unknown) {
     const attempt = await scopedDb.towerChallengeAttempt.findFirst({
       where: { id: attemptId, communityId, teamId: { not: null }, status: "ASSIGNED", expiresAt: { gt: now() },
         team: { community: { communityTeamsEnabled: true }, members: { some: { userId, user: { memberships: { some: { communityId, status: "ACTIVE" } } } } } },
-      }, select: { id: true, teamId: true },
+      }, select: { id: true, teamId: true, userId: true, team: { select: { captainId: true, createdById: true } } },
     });
     if (!attempt?.teamId) return { status: "UNAVAILABLE" } as const;
+    // Audit du 23/11/2026 (1.5) : le capitaine et l'auteur du défi sont confirmés d'office ; tout autre participant attend la
+    // confirmation du capitaine et n'est pas récompensé d'ici là.
+    const captainId = attempt.team?.captainId ?? attempt.team?.createdById ?? null;
+    const confirmedAt = userId === captainId || userId === attempt.userId ? now() : null;
     const created = await scopedDb.towerChallengeAttemptParticipant.createMany({
-      data: [{ communityId, attemptId, userId }], skipDuplicates: true,
+      data: [{ communityId, attemptId, userId, confirmedAt }], skipDuplicates: true,
     });
-    return { status: "JOINED" as const, teamId: attempt.teamId, replayed: created.count === 0 };
+    return { status: "JOINED" as const, teamId: attempt.teamId, replayed: created.count === 0, confirmed: confirmedAt !== null };
+  });
+}
+
+/**
+ * Le capitaine de l'équipe confirme un participant nommé d'un défi d'équipe (audit du 23/11/2026, constat 1.5). Capitaine =
+ * `captainId`, à défaut le créateur de l'équipe. Un autre membre reçoit `NOT_CAPTAIN`. Rejouable sans effet.
+ */
+export async function confirmTowerTeamParticipant(input: unknown) {
+  const parsed = confirmParticipantSchema.safeParse(input);
+  if (!parsed.success) return { status: "INVALID" } as const;
+  const { communityId, userId, attemptId, participantId } = parsed.data;
+  return withTower({ communityId, userId }, async scopedDb => {
+    await scopedDb.$queryRaw`SELECT id FROM "TowerChallengeAttempt" WHERE id = ${attemptId} AND "communityId" = ${communityId} FOR UPDATE`;
+    const attempt = await scopedDb.towerChallengeAttempt.findFirst({
+      where: { id: attemptId, communityId, teamId: { not: null } },
+      select: { id: true, teamId: true, status: true, team: { select: { captainId: true, createdById: true } } },
+    });
+    if (!attempt?.teamId) return { status: "UNAVAILABLE" } as const;
+    const metadata = await loadChallengeMeta(scopedDb, communityId, attemptId);
+    if (metadata.archivedAt) return { status: "ARCHIVED" } as const;
+    const captainId = attempt.team?.captainId ?? attempt.team?.createdById ?? null;
+    if (captainId !== userId) return { status: "NOT_CAPTAIN" } as const;
+    // Confirmation possible seulement tant que le défi est en cours : après le résultat, la liste des récompensés est figée.
+    if (attempt.status !== "ASSIGNED" && attempt.status !== "SUBMITTED") return { status: "CLOSED" } as const;
+    const participant = await scopedDb.towerChallengeAttemptParticipant.findUnique({
+      where: { attemptId_userId: { attemptId, userId: participantId } }, select: { confirmedAt: true },
+    });
+    if (!participant) return { status: "UNAVAILABLE" } as const;
+    if (participant.confirmedAt) return { status: "CONFIRMED" as const, teamId: attempt.teamId, replayed: true };
+    await scopedDb.towerChallengeAttemptParticipant.update({
+      where: { attemptId_userId: { attemptId, userId: participantId } }, data: { confirmedAt: now() },
+    });
+    return { status: "CONFIRMED" as const, teamId: attempt.teamId, replayed: false };
   });
 }
 
@@ -416,8 +464,8 @@ export async function submitTowerChallengeProof(input: unknown) {
     const attempt = await scopedDb.towerChallengeAttempt.findFirst({ where: { id: attemptId, communityId } });
     if (!attempt) return { status: "UNAVAILABLE" } as const;
     if (attempt.teamId) {
-      const participant = await scopedDb.towerChallengeAttemptParticipant.findUnique({ where: { attemptId_userId: { attemptId, userId } }, select: { userId: true } });
-      if (!participant) return { status: "UNAVAILABLE" } as const;
+      const participant = await scopedDb.towerChallengeAttemptParticipant.findUnique({ where: { attemptId_userId: { attemptId, userId } }, select: { confirmedAt: true } });
+      if (!participant?.confirmedAt) return { status: "UNAVAILABLE" } as const;
     } else if (attempt.userId !== userId) return { status: "UNAVAILABLE" } as const;
     if (attempt.submittedAt) {
       if (attempt.proofText !== proofText || attempt.proofChannelId !== proofChannelId || attempt.proofMessageId !== proofMessageId) return { status: "CONFLICT" } as const;
@@ -436,7 +484,7 @@ export async function submitTowerChallengeProof(input: unknown) {
       ? submittedAt < attempt.resubmitUntil
       : canSubmitChallengeProof(attempt.assignedAt, submittedAt) && submittedAt < attempt.expiresAt;
     if (!inWindow) return { status: "EXPIRED" } as const;
-    if (attempt.teamId && await scopedDb.towerChallengeAttemptParticipant.count({ where: { communityId, attemptId } }) < 2) {
+    if (attempt.teamId && await scopedDb.towerChallengeAttemptParticipant.count({ where: { communityId, attemptId, confirmedAt: { not: null } } }) < 2) {
       return { status: "TEAM_NEEDS_PARTICIPANTS" } as const;
     }
     await scopedDb.towerChallengeAttempt.update({ where: { id: attemptId }, data: {
@@ -745,14 +793,21 @@ async function awardTeamParticipant(scopedDb: Prisma.TransactionClient, input: {
   const { communityId, attemptId, userId } = input;
   await scopedDb.$queryRaw`SELECT "attemptId" FROM "TowerChallengeAttemptParticipant" WHERE "communityId" = ${communityId} AND "attemptId" = ${attemptId} AND "userId" = ${userId} FOR UPDATE`;
   const participation = await scopedDb.towerChallengeAttemptParticipant.findUnique({
-    where: { attemptId_userId: { attemptId, userId } }, select: { rewardedAt: true },
+    where: { attemptId_userId: { attemptId, userId } }, select: { rewardedAt: true, confirmedAt: true },
   });
   if (!participation || participation.rewardedAt) return false;
+  // Audit du 23/11/2026 (1.5) : un participant que le capitaine n'a pas confirmé n'est jamais récompensé.
+  if (!participation.confirmedAt) return false;
   const actor = { communityId, userId };
   const member = await scopedDb.membership.findUnique({ where: { communityId_userId: actor }, select: { status: true } });
   if (member?.status !== "ACTIVE") return false;
   await lockProgress(scopedDb, actor);
   if (!canReceiveChallengeReward(await rewardedTowerCompletions(scopedDb, actor, current), current)) return false;
+  // Plafond d'équipe : au plus 3 récompenses d'équipe par personne et par jour de Paris (sans erreur bloquante pour l'équipe).
+  const teamRewards = await scopedDb.towerChallengeAttemptParticipant.findMany({
+    where: { ...actor, rewardedAt: { gte: new Date(current.getTime() - 48 * 3600000), lte: current } }, select: { rewardedAt: true },
+  });
+  if (!canReceiveTeamReward(teamRewards.flatMap(row => row.rewardedAt ? [row.rewardedAt] : []), current)) return false;
   const attempt = await scopedDb.towerChallengeAttempt.findFirst({ where: { id: attemptId, communityId, status: "APPROVED", teamId: { not: null } }, select: { rewardFloors: true } });
   if (!attempt) return false;
   await scopedDb.towerChallengeProgress.update({ where: { communityId_userId: actor }, data: { floorsClimbed: { increment: BigInt(attempt.rewardFloors) } } });
@@ -782,7 +837,7 @@ export async function settleTowerChallenge(input: unknown) {
       if (!attempt.teamId) return { status: "APPROVED", rewardFloors: attempt.rewardFloors, replayed: true } as const;
       let rewardedMembers = 0;
       for (const participant of participants) if (await awardTeamParticipant(scopedDb, { communityId, attemptId, userId: participant.userId }, now())) rewardedMembers++;
-      const pendingRewards = await scopedDb.towerChallengeAttemptParticipant.count({ where: { communityId, attemptId, rewardedAt: null } });
+      const pendingRewards = await scopedDb.towerChallengeAttemptParticipant.count({ where: { communityId, attemptId, rewardedAt: null, confirmedAt: { not: null } } });
       const ownReward = await scopedDb.towerChallengeAttemptParticipant.findUnique({ where: { attemptId_userId: { attemptId, userId } }, select: { rewardedAt: true } });
       return { status: "APPROVED", rewardFloors: attempt.rewardFloors, rewardedMembers, pendingRewards, userRewarded: Boolean(ownReward?.rewardedAt), replayed: true } as const;
     }
@@ -847,7 +902,7 @@ export async function settleTowerChallenge(input: unknown) {
     }
     await enqueueTowerChallengeEvent(scopedDb, communityId, attemptId, "success");
     const pendingRewards = attempt.teamId
-      ? await scopedDb.towerChallengeAttemptParticipant.count({ where: { communityId, attemptId, rewardedAt: null } }) : 0;
+      ? await scopedDb.towerChallengeAttemptParticipant.count({ where: { communityId, attemptId, rewardedAt: null, confirmedAt: { not: null } } }) : 0;
     const ownReward = attempt.teamId
       ? await scopedDb.towerChallengeAttemptParticipant.findUnique({ where: { attemptId_userId: { attemptId, userId } }, select: { rewardedAt: true } })
       : null;

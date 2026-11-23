@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { canClaimSoloChallenge, canSubmitChallengeProof, canReceiveChallengeReward, getTowerParisDayKey, isTowerTeamDailyDue } from "./tower-challenge-rules";
+import { canClaimSoloChallenge, canSubmitChallengeProof, canReceiveChallengeReward, canReceiveTeamReward, TOWER_TEAM_DAILY_REWARD_CAP, getTowerParisDayKey, isTowerTeamDailyDue } from "./tower-challenge-rules";
 import * as m_p10 from "./tower-challenge-rules";
 import * as m_p11 from "./tower-challenge-rules";
 import * as m_p12 from "./tower-challenge-rules";
@@ -157,5 +157,27 @@ describe("tower-challenge-rules · p13-preuve-expiree", () => {
     expect(m_p13.isChallengeProofExpired(a, new Date('2026-03-15T08:00:00Z'))).toBe(true);
     expect(m_p13.isChallengeProofExpired(a, new Date('2026-03-10T07:00:00Z'))).toBe(false);
     expect(() => m_p13.isChallengeProofExpired(a, new Date(NaN))).toThrow(RangeError);
+  });
+});
+
+// Décision de Maxime (audit du 23/11/2026, constat 1.5) : une personne gagne au plus 3 récompenses d'équipe par jour de Paris.
+describe("plafond des récompenses d'équipe par jour", () => {
+  const now = date("2026-10-30T18:00:00Z"); // 19:00 à Paris (CET)
+  it("le plafond vaut 3", () => expect(TOWER_TEAM_DAILY_REWARD_CAP).toBe(3));
+  it("accepte tant qu'il y a moins de 3 gains d'équipe le même jour de Paris, refuse le 4ᵉ", () => {
+    const today = ["2026-10-30T07:00:00Z", "2026-10-30T09:00:00Z", "2026-10-30T11:00:00Z"].map(date);
+    expect(canReceiveTeamReward([], now)).toBe(true);
+    expect(canReceiveTeamReward(today.slice(0, 2), now)).toBe(true);
+    expect(canReceiveTeamReward(today, now)).toBe(false);
+    expect(canReceiveTeamReward([...today, date("2026-10-30T12:00:00Z")], now)).toBe(false);
+  });
+  it("compte par jour de Paris : un gain d'hier soir (22:30 UTC = 23:30 Paris) ne compte pas aujourd'hui, un gain d'aujourd'hui à 00:30 Paris compte", () => {
+    const yesterdayEvening = date("2026-10-29T22:30:00Z");
+    expect(canReceiveTeamReward([yesterdayEvening, yesterdayEvening, yesterdayEvening], now)).toBe(true);
+    const justAfterMidnightParis = date("2026-10-29T23:30:00Z"); // 00:30 le 30/10 à Paris (CET)
+    expect(canReceiveTeamReward([justAfterMidnightParis, justAfterMidnightParis, justAfterMidnightParis], now)).toBe(false);
+  });
+  it("refuse une récompense datée du futur", () => {
+    expect(() => canReceiveTeamReward([date("2026-10-31T00:00:00Z")], now)).toThrow(RangeError);
   });
 });
