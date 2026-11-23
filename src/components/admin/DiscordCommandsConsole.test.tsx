@@ -29,13 +29,33 @@ function typeSecret() {
 }
 
 describe("DiscordCommandsConsole", () => {
+  it("enregistrement partiel (202, limite de débit) : 13 lignes, délai affiché, et un second clic relance sans ressaisir le secret", async () => {
+    const commands = Array.from({ length: 13 }, (_, i) => ({ name: `cmd${i}`, kind: "chat", status: i < 5 ? "enregistrée" : "en attente" }));
+    reply(202, { mode: "execute", ok: false, commands, outsideManifest: 0, failure: { stage: "rate_limit", command: "cmd5", http: 429, retryAfterSeconds: 12 } });
+    render(<DiscordCommandsConsole />);
+    typeSecret();
+    fireEvent.click(screen.getByRole("button", { name: "Enregistrer" }));
+    await waitFor(() => expect(screen.getByText(/Attends 12 s/)).toBeTruthy());
+    expect(screen.getAllByRole("row")).toHaveLength(14);
+    expect(screen.getByLabelText("Résumé").textContent).toContain("5 enregistrée · 8 en attente sur 13 commandes");
+    expect(screen.getByRole("status").textContent).toContain("HTTP 202");
+
+    reply(200, { mode: "execute", ok: true, commands: commands.map((c) => ({ ...c, status: c.status === "enregistrée" ? "déjà à jour" : "enregistrée" })), outsideManifest: 0, failure: null });
+    const again = screen.getByRole("button", { name: "Enregistrer" }) as HTMLButtonElement;
+    expect(again.disabled).toBe(false);
+    fireEvent.click(again);
+    await waitFor(() => expect(screen.getByLabelText("Résumé").textContent).toContain("8 enregistrée · 5 déjà à jour"));
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect((fetchMock.mock.calls[1] as [string, RequestInit])[1].headers).toMatchObject({ "x-registration-secret": SECRET });
+  });
+
   it("boutons désactivés tant qu'aucun secret n'est saisi", () => {
     render(<DiscordCommandsConsole />);
     expect((screen.getByRole("button", { name: "Vérifier" }) as HTMLButtonElement).disabled).toBe(true);
     expect((screen.getByRole("button", { name: "Enregistrer" }) as HTMLButtonElement).disabled).toBe(true);
   });
 
-  it("Vérifier : POST mode check avec l'en-tête x-registration-secret, affiche le tableau, efface le secret", async () => {
+  it("Vérifier : POST mode check avec l'en-tête x-registration-secret, affiche le tableau, garde le secret en mémoire seulement", async () => {
     reply(200, {
       mode: "check",
       ok: true,
@@ -62,8 +82,10 @@ describe("DiscordCommandsConsole", () => {
     expect(screen.getByText("absente")).toBeTruthy();
     expect(screen.getByText(/2 commande\(s\) du serveur hors manifeste/)).toBeTruthy();
     expect(screen.getByRole("status").textContent).toContain("HTTP 200");
-    expect(input.value).toBe("");
+    expect(input.value).toBe(SECRET);
     expect(storage).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "Effacer le secret" }));
+    expect(input.value).toBe("");
     expect(log).not.toHaveBeenCalled();
     expect(document.body.textContent).not.toContain(SECRET);
   });

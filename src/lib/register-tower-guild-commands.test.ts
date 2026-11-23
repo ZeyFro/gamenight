@@ -12,6 +12,7 @@ import {
 
 const SECRET = "jeton-secret-ne-doit-jamais-sortir";
 const env = { DISCORD_CLIENT_ID: "123456789", TOWER_DISCORD_GUILD_ID: EXPECTED_GUILD_ID, DISCORD_BOT_TOKEN: SECRET };
+const noSleep = async () => {};
 const json = (status: number, body: unknown) => new Response(JSON.stringify(body), { status });
 const collect = () => {
   const out: string[] = [];
@@ -92,7 +93,7 @@ describe("register-tower-guild-commands : manifeste", () => {
     const fetchImpl = vi.fn();
     const c = collect();
     const commands = [{ name: "Mauvais", type: 1, description: "x" }];
-    expect(await run({ argv: ["--execute"], env, fetchImpl, commands, ...c })).toBe(1);
+    expect(await run({ argv: ["--execute"], env, fetchImpl, commands, sleep: noSleep, ...c })).toBe(1);
     expect(fetchImpl).not.toHaveBeenCalled();
     expect(c.err.join("\n")).toContain("Manifeste invalide");
   });
@@ -200,7 +201,7 @@ describe("register-tower-guild-commands : --execute", () => {
   it("GET puis un POST par commande du manifeste, dans l'ordre, sur la route du serveur", async () => {
     const fetchImpl = vi.fn().mockResolvedValueOnce(json(200, [])).mockResolvedValue(json(201, {}));
     const c = collect();
-    expect(await run({ argv: ["--execute"], env, fetchImpl, ...c })).toBe(0);
+    expect(await run({ argv: ["--execute"], env, fetchImpl, sleep: noSleep, ...c })).toBe(0);
     const calls = fetchImpl.mock.calls;
     expect(calls.map((x) => x[1].method ?? "GET")).toEqual(["GET", ...manifest.map(() => "POST")]);
     expect(calls).toHaveLength(manifest.length + 1);
@@ -211,7 +212,7 @@ describe("register-tower-guild-commands : --execute", () => {
 
   it("aucun PUT, aucun DELETE, aucun PATCH ; corps = manifeste sans integration_types/contexts", async () => {
     const fetchImpl = vi.fn().mockResolvedValueOnce(json(200, [{ name: "autre-bot", type: 1 }])).mockResolvedValue(json(200, {}));
-    await run({ argv: ["--execute"], env, fetchImpl, ...collect() });
+    await run({ argv: ["--execute"], env, fetchImpl, sleep: noSleep, ...collect() });
     const methods = fetchImpl.mock.calls.map((x) => x[1].method ?? "GET");
     expect(methods.filter((m) => !["GET", "POST"].includes(m))).toEqual([]);
     expect(fetchImpl.mock.calls.slice(1).map((x) => JSON.parse(x[1].body))).toEqual(loaded);
@@ -220,7 +221,7 @@ describe("register-tower-guild-commands : --execute", () => {
 
   it("envoie le jeton uniquement dans l'en-tête Authorization", async () => {
     const fetchImpl = vi.fn().mockResolvedValueOnce(json(200, [])).mockResolvedValue(json(201, {}));
-    await run({ argv: ["--execute"], env, fetchImpl, ...collect() });
+    await run({ argv: ["--execute"], env, fetchImpl, sleep: noSleep, ...collect() });
     for (const call of fetchImpl.mock.calls) {
       expect(call[1].headers.Authorization).toBe(`Bot ${SECRET}`);
       expect(String(call[0])).not.toContain(SECRET);
@@ -231,7 +232,7 @@ describe("register-tower-guild-commands : --execute", () => {
   it("403 code 50001 à la lecture : message dédié, code affiché, aucun POST, aucun secret", async () => {
     const fetchImpl = vi.fn().mockResolvedValue(json(403, { code: 50001, message: "Missing Access" }));
     const c = collect();
-    expect(await run({ argv: ["--execute"], env, fetchImpl, ...c })).toBe(1);
+    expect(await run({ argv: ["--execute"], env, fetchImpl, sleep: noSleep, ...c })).toBe(1);
     expect(fetchImpl).toHaveBeenCalledTimes(1);
     const all = [...c.out, ...c.err].join("\n");
     expect(all).toContain("HTTP 403, code 50001");
@@ -240,24 +241,36 @@ describe("register-tower-guild-commands : --execute", () => {
     expect(all).not.toContain(SECRET);
   });
 
-  it("échec du POST n : s'arrête, nomme la commande, n'envoie pas les suivantes", async () => {
+  it("échec du POST n (403) : s'arrête, nomme la commande, n'envoie pas les suivantes, une ligne par commande", async () => {
     const fetchImpl = vi
       .fn()
       .mockResolvedValueOnce(json(200, []))
       .mockResolvedValueOnce(json(201, {}))
-      .mockResolvedValueOnce(json(429, { code: 0, retry_after: 3 }));
+      .mockResolvedValueOnce(json(403, { code: 50013 }));
     const c = collect();
-    expect(await run({ argv: ["--execute"], env, fetchImpl, ...c })).toBe(1);
+    expect(await run({ argv: ["--execute"], env, fetchImpl, sleep: noSleep, ...c })).toBe(1);
     expect(fetchImpl).toHaveBeenCalledTimes(3);
-    expect(c.out).toEqual([`/${manifestNames[0]} : enregistrée sur The Tower.`]);
+    expect(c.out).toHaveLength(manifestNames.length);
+    expect(c.out[0]).toBe(`/${manifestNames[0]} : enregistrée sur The Tower.`);
+    expect(c.out[1]).toBe(`/${manifestNames[1]} : échec`);
+    expect(c.out.slice(2).every((line) => line.endsWith(": en attente"))).toBe(true);
     expect(c.err.join("\n")).toContain(`/${manifestNames[1]}`);
-    expect(c.err.join("\n")).toContain("429");
+    expect(c.err.join("\n")).toContain("50013");
+  });
+
+  it("429 répété : s'arrête sans boucler, conseille d'attendre puis de relancer", async () => {
+    const fetchImpl = vi.fn().mockResolvedValueOnce(json(200, [])).mockResolvedValue(json(429, { code: 0, retry_after: 3 }));
+    const c = collect();
+    expect(await run({ argv: ["--execute"], env, fetchImpl, sleep: noSleep, ...c })).toBe(1);
+    expect(fetchImpl).toHaveBeenCalledTimes(4);
+    expect(c.err.join("\n")).toContain("relancer dans 3 s");
+    expect(c.out.every((line) => line.endsWith(": en attente"))).toBe(true);
   });
 
   it("erreur réseau : nom d'erreur seulement, pas de secret", async () => {
     const fetchImpl = vi.fn().mockRejectedValue(Object.assign(new Error(`boom ${SECRET}`), { name: "TypeError" }));
     const c = collect();
-    expect(await run({ argv: ["--execute"], env, fetchImpl, ...c })).toBe(1);
+    expect(await run({ argv: ["--execute"], env, fetchImpl, sleep: noSleep, ...c })).toBe(1);
     expect([...c.out, ...c.err].join("\n")).not.toContain(SECRET);
   });
 });

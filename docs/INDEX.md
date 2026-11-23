@@ -31,6 +31,8 @@
 
 ## Exploitation et sécurité
 
+- [Capacité : 100, 500 ou 1 000 membres ?](CAPACITE.md) — limites réelles de Vercel, Neon, Discord et des tâches, seuils de casse, coûts, minimum à faire.
+- [Lancement : la ligne d’arrivée (GO / NO-GO)](LANCEMENT_GO.md) — liste fermée des critères, état réel des 21 constats et des migrations.
 - [Permissions des bots](PERMISSIONS_BOTS.md) — rôle et droits minimaux de chaque bot du serveur, plan pas à pas pour retirer Administrateur (Workshop, AppBot) sans rien casser.
 - [Fiche de l'application](FICHE_APPLICATION.md) — pages, rôles, interrupteurs en Production, données, tâches automatiques, limites des offres gratuites, 10 risques d'ouverture.
 - [Plan de tests par rôle](PLAN_TESTS.md) — parcours, résultat et preuve attendus du visiteur à l'admin, et tests à faire par un humain.
