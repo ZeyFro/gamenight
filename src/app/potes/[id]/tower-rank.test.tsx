@@ -9,7 +9,7 @@ vi.mock("@/lib/prisma", () => ({ prisma: { user: { findUnique: mocks.find } } })
 vi.mock("@/lib/member-stats", () => ({ getMemberStatsForViewer: async () => ({}), projectUserProgress: (user: unknown) => user }));
 vi.mock("@/lib/tower-personal-progress", () => ({ getTowerProgressForProfile: mocks.tower }));
 vi.mock("@/lib/tower-season-awards", () => ({ getTowerSeasonAwardsForProfile: mocks.awards }));
-vi.mock("next/navigation", () => ({ redirect: (url: string) => { throw Error(`REDIRECT:${url}`); }, notFound: () => { throw Error("NOT_FOUND"); } }));
+vi.mock("next/navigation", () => ({ usePathname: () => "/potes/friend", redirect: (url: string) => { throw Error(`REDIRECT:${url}`); }, notFound: () => { throw Error("NOT_FOUND"); } }));
 vi.mock("@/components/RankAvatar", () => ({ RankAvatar: () => null }));
 vi.mock("@/components/PoteTabs", () => ({ PoteTabs: () => null }));
 vi.mock("@/components/PlayerEquipment", () => ({ PlayerEquipment: () => null }));

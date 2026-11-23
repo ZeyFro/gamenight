@@ -8,6 +8,7 @@ import { prisma } from "@/lib/prisma";
 import { getMemberStatsForViewer, projectUserProgress } from "@/lib/member-stats";
 import { Badge } from "@/components/ui/Badge";
 import { PoteTabs } from "@/components/PoteTabs";
+import { PoteHero } from "@/components/PoteHero";
 import { RankAvatar } from "@/components/RankAvatar";
 import { ColorDot } from "@/components/ColorDot";
 import { levelForXp, rankForLevel } from "@/lib/xp";
@@ -80,6 +81,16 @@ export default async function PoteLayout({
 
   return (
     <div className="mx-auto flex w-full max-w-4xl flex-col gap-6 px-4 py-8 sm:px-6 sm:py-12">
+      <PoteHero
+        poteId={id}
+        compact={
+          <div className="flex flex-wrap items-center gap-3">
+            <Link href="/potes" className="text-sm text-muted hover:text-foreground hover:underline">← Potes</Link>
+            <Link href={`/potes/${id}`} className="text-sm text-accent hover:underline">Aperçu de {pote.discordName}</Link>
+            <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${rank.colorClass}`}>{rank.name}</span>
+          </div>
+        }
+      >
       <ProfileCosmeticsRoot view={presentation}>
         <Link
           href="/potes"
@@ -116,6 +127,7 @@ export default async function PoteLayout({
       <PlayerEquipment user={pote} />
       {isPlayerMatchingEnabled() && <PlayerMatchingProfile user={pote} />}
       <GamingIdentifiers user={pote} />
+      </PoteHero>
 
       <PoteTabs poteId={id} />
 

@@ -7,7 +7,7 @@ vi.mock("@/lib/community-stats", () => ({ writeCommunityIdForUser: async () => "
 vi.mock("@/lib/xp-shop", () => ({ getEquippedShopItems: async () => ({ TITLE: null, FRAME: null, COLOR: null }) }));
 vi.mock("@/lib/prisma", () => ({ prisma: { user: { findUnique: mocks.find } } }));
 vi.mock("@/lib/member-stats", () => ({ getMemberStatsForViewer: async () => ({}), projectUserProgress: (user: unknown) => user }));
-vi.mock("next/navigation", () => ({ redirect: (url: string) => { throw Error(`REDIRECT:${url}`); }, notFound: () => { throw Error("NOT_FOUND"); } }));
+vi.mock("next/navigation", () => ({ usePathname: () => "/potes/friend", redirect: (url: string) => { throw Error(`REDIRECT:${url}`); }, notFound: () => { throw Error("NOT_FOUND"); } }));
 vi.mock("@/components/RankAvatar", () => ({ RankAvatar: () => null }));
 vi.mock("@/components/PoteTabs", () => ({ PoteTabs: () => null }));
 import PoteLayout from "./layout";

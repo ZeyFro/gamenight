@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useRef } from "react";
 import { usePathname } from "next/navigation";
 import { TabLink } from "@/components/ui/TabLink";
 
@@ -22,9 +23,12 @@ const TAB_LABELS = [
 export function PoteTabs({ poteId }: { poteId: string }) {
   const pathname = usePathname();
   const base = `/potes/${poteId}`;
+  // Ouvert directement sur un onglet à droite (Badges, Récompenses), la barre défile jusqu’à lui sur téléphone.
+  const bar = useRef<HTMLDivElement>(null);
+  useEffect(() => { bar.current?.querySelector("[aria-current=page]")?.scrollIntoView?.({ inline: "center", block: "nearest" }); }, [pathname]);
 
   return (
-    <div className="flex gap-4 overflow-x-auto border-b border-border">
+    <div ref={bar} className="flex gap-4 overflow-x-auto border-b border-border">
       {TAB_LABELS.map(({ suffix, label }) => {
         const href = `${base}${suffix}`;
         return (
