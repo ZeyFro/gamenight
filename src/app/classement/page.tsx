@@ -24,6 +24,7 @@ import { SegmentedControl } from "@/components/ui/SegmentedControl";
 import { pageMetadata } from "@/lib/page-title";
 import { formatDurationFr } from "@/lib/wallclock";
 import { plural } from "@/lib/plural";
+import { membersLabel } from "@/lib/group-stats-rules";
 
 export const metadata = pageMetadata("Classement");
 
@@ -160,7 +161,7 @@ export default async function ClassementPage({
         <h1 className="text-xl font-semibold text-foreground sm:text-2xl">
           🏆 Classement
         </h1>
-        <p className="mt-1 text-sm text-muted">Qui domine le groupe.</p>
+        <p className="mt-1 text-sm text-muted">Qui domine le groupe : {membersLabel(entries.length)} du serveur, toi compris.</p>
         {/* Mur des soutiens (DISCORD_BOOSTERS_ENABLED) : page livrée sans aucun lien d’accès avant l’audit du 23/11. */}
         {boostersEnabled() && (
           <Link href="/soutiens" className="gn-touch-target relative mt-2 inline-block text-sm text-accent hover:underline">

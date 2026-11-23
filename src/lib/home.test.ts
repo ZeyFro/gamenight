@@ -32,6 +32,7 @@ beforeEach(() => {
 });
 
 const emptyStats = () => {
+  prisma.user.count.mockResolvedValue(9); // membres actifs du serveur (toi compris)
   scopedDb.groupSessionStats.aggregate.mockResolvedValue({ _sum: { totalSessionsPlayed: null } });
   scopedDb.groupGameStat.groupBy.mockResolvedValue([]);
   scopedDb.groupGameStat.aggregate.mockResolvedValue({ _sum: { totalPlayMinutes: null } });
@@ -50,6 +51,7 @@ describe("getGroupStats", () => {
       gamePlayTimes: [],
       bestActiveStreak: null,
       activePlayers: 0,
+      members: 9,
     });
   });
 
@@ -69,6 +71,7 @@ describe("getGroupStats", () => {
       gamePlayTimes: [{ gameId: "g1", name: "Mario Kart", playedMinutes: 180 }],
       bestActiveStreak: { discordName: "Zoé", streakCount: 7 },
       activePlayers: 5,
+      members: 9,
     });
     expect(prisma.game.findUnique).toHaveBeenCalledWith(expect.objectContaining({ where: { id: "g1" } }));
   });
@@ -76,10 +79,23 @@ describe("getGroupStats", () => {
   it("n'utilise jamais les lignes Session (compteurs durables uniquement)", async () => {
     emptyStats();
     await getGroupStats("viewer");
-    expect(scopedDb.groupSessionStats.aggregate).toHaveBeenCalledWith({ _sum: { totalSessionsPlayed: true } });
+    expect(scopedDb.groupSessionStats.aggregate).toHaveBeenCalledWith({ where: { communityId: { in: ["community"] } }, _sum: { totalSessionsPlayed: true } });
     expect(scopedDb.groupGameStat.groupBy).toHaveBeenCalledWith(
       expect.objectContaining({ by: ["gameId"], orderBy: { _sum: { playCount: "desc" } }, take: 1 })
     );
+  });
+
+  it("jamais « 0 soirée jouée » à côté d'un jeu joué 8 fois, ni plus de joueurs actifs que de membres", async () => {
+    emptyStats();
+    scopedDb.groupSessionStats.aggregate.mockResolvedValue({ _sum: { totalSessionsPlayed: 0 } });
+    scopedDb.groupGameStat.groupBy.mockResolvedValue([{ gameId: "g1", _sum: { playCount: 8 } }]);
+    prisma.game.findUnique.mockResolvedValue({ name: "Deadlock", coverUrl: null });
+    scopedDb.communityMemberStats.count.mockResolvedValue(12);
+    const stats = await getGroupStats("viewer");
+    expect(stats.totalSessionsPlayed).toBe(8);
+    expect(stats.mostPlayedGame?.count).toBe(8);
+    expect(stats.activePlayers).toBe(9);
+    expect(stats.members).toBe(9);
   });
 
   it("fenêtres temporelles : streak actif 24 h, joueur actif 7 jours", async () => {

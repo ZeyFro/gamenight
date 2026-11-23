@@ -42,6 +42,7 @@ import { PodiumSpot } from "@/components/PodiumSpot";
 import { PullToRefresh } from "@/components/PullToRefresh";
 import { Stagger, StaggerItem } from "@/components/motion";
 import { plural } from "@/lib/plural";
+import { activePlayersCaption } from "@/lib/group-stats-rules";
 
 // Fix bug remonté (certains utilisateurs ne peuvent pas se connecter,
 // erreur "pkceCodeVerifier value could not be parsed" côté serveur) —
@@ -396,7 +397,7 @@ async function HomeContent({
                   className="text-lg font-semibold tabular-nums text-foreground"
                 />
                 <p className="text-xs text-muted">
-                  {plural(groupStats.activePlayers, "joueur")} {plural(groupStats.activePlayers, "actif")}
+                  {activePlayersCaption(groupStats.activePlayers, groupStats.members)}
                 </p>
               </div>
               {groupStats.mostPlayedGame && (
