@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import { MessageCategory } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { requireAdmin } from "@/lib/admin";
+import { recordSensitiveOperation, sensitiveTarget } from "@/lib/sensitive-operation-log";
 import {
   ALL_MESSAGE_CATEGORIES,
   MAX_MESSAGE_TEXT_LENGTH,
@@ -22,6 +23,7 @@ function parseCategories(formData: FormData): MessageCategory[] {
 export async function addMessageTemplate(formData: FormData) {
   const user = await requireAdmin();
   if (!user) redirect("/");
+  await recordSensitiveOperation({ actorId: user.id, action: "admin.messages", target: sensitiveTarget(formData), outcome: "requested" });
 
   const text = normalizeMessageText(String(formData.get("text") ?? ""));
   if (!text || text.length > MAX_MESSAGE_TEXT_LENGTH) return;
@@ -50,6 +52,7 @@ export async function addMessageTemplate(formData: FormData) {
 export async function updateMessageTemplate(formData: FormData) {
   const user = await requireAdmin();
   if (!user) redirect("/");
+  await recordSensitiveOperation({ actorId: user.id, action: "admin.messages", target: sensitiveTarget(formData), outcome: "requested" });
 
   const id = String(formData.get("id") ?? "");
   const text = normalizeMessageText(String(formData.get("text") ?? ""));
@@ -74,6 +77,7 @@ export async function updateMessageTemplate(formData: FormData) {
 export async function toggleMessageTemplateActive(formData: FormData) {
   const user = await requireAdmin();
   if (!user) redirect("/");
+  await recordSensitiveOperation({ actorId: user.id, action: "admin.messages", target: sensitiveTarget(formData), outcome: "requested" });
 
   const id = String(formData.get("id") ?? "");
   if (!id) return;
@@ -91,6 +95,7 @@ export async function toggleMessageTemplateActive(formData: FormData) {
 export async function deleteMessageTemplate(formData: FormData) {
   const user = await requireAdmin();
   if (!user) redirect("/");
+  await recordSensitiveOperation({ actorId: user.id, action: "admin.messages", target: sensitiveTarget(formData), outcome: "requested" });
 
   const id = String(formData.get("id") ?? "");
   if (!id) return;

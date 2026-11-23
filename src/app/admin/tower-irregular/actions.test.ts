@@ -1,13 +1,14 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
-  getCurrentUser: vi.fn(), communityId: vi.fn(), grant: vi.fn(), revoke: vi.fn(), rateLimit: vi.fn(),
+  getCurrentUser: vi.fn(), communityId: vi.fn(), grant: vi.fn(), revoke: vi.fn(), rateLimit: vi.fn(), record: vi.fn(),
 }));
 vi.mock("@/lib/current-user", () => ({ getCurrentUser: mocks.getCurrentUser }));
 vi.mock("@/lib/tower-irregular", () => ({
   getTowerIrregularCommunityId: mocks.communityId, grantTowerIrregular: mocks.grant, revokeTowerIrregular: mocks.revoke,
 }));
 vi.mock("@/lib/rate-limit", () => ({ checkRateLimit: mocks.rateLimit }));
+vi.mock("@/lib/sensitive-operation-log", async () => ({ ...(await vi.importActual<typeof import("@/lib/sensitive-operation-log")>("@/lib/sensitive-operation-log")), recordSensitiveOperation: mocks.record }));
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
 vi.mock("next/navigation", () => ({ redirect: (url: string) => { throw new Error(`REDIRECT:${url}`); } }));
 
@@ -27,6 +28,13 @@ describe("actions Irregular (staff)", () => {
     mocks.rateLimit.mockReturnValue(true);
     mocks.grant.mockResolvedValue("granted");
     mocks.revoke.mockResolvedValue("revoked");
+  });
+
+  it("journalise l'attribution et le retrait du grade Irregular (C055), avec le code court du résultat", async () => {
+    await expect(grantTowerIrregularAction(form({ userId: "cible-1" }))).rejects.toThrow("result=granted");
+    expect(mocks.record).toHaveBeenCalledWith({ actorId: "staff", action: "tower.irregular_grant", communityId: "community-1", target: "cible-1", outcome: "granted" });
+    await expect(revokeTowerIrregularAction(form({ userId: "cible-1" }))).rejects.toThrow("result=revoked");
+    expect(mocks.record).toHaveBeenCalledWith({ actorId: "staff", action: "tower.irregular_revoke", communityId: "community-1", target: "cible-1", outcome: "revoked" });
   });
 
   it("refuse un visiteur et une communauté sans la fonctionnalité, sans rien écrire", async () => {

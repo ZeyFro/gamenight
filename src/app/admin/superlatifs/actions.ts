@@ -4,12 +4,14 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { requireAdmin } from "@/lib/admin";
+import { recordSensitiveOperation, sensitiveTarget } from "@/lib/sensitive-operation-log";
 
 const DEFAULT_XP_REWARD = 20;
 
 export async function addSuperlativeCategory(formData: FormData) {
   const user = await requireAdmin();
   if (!user) redirect("/");
+  await recordSensitiveOperation({ actorId: user.id, action: "admin.superlatives", target: sensitiveTarget(formData), outcome: "requested" });
 
   const icon = String(formData.get("icon") ?? "").trim();
   const name = String(formData.get("name") ?? "").trim();
@@ -38,6 +40,7 @@ export async function addSuperlativeCategory(formData: FormData) {
 export async function updateSuperlativeCategory(formData: FormData) {
   const user = await requireAdmin();
   if (!user) redirect("/");
+  await recordSensitiveOperation({ actorId: user.id, action: "admin.superlatives", target: sensitiveTarget(formData), outcome: "requested" });
 
   const id = String(formData.get("id") ?? "");
   const icon = String(formData.get("icon") ?? "").trim();
@@ -68,6 +71,7 @@ export async function updateSuperlativeCategory(formData: FormData) {
 export async function toggleSuperlativeCategoryActive(formData: FormData) {
   const user = await requireAdmin();
   if (!user) redirect("/");
+  await recordSensitiveOperation({ actorId: user.id, action: "admin.superlatives", target: sensitiveTarget(formData), outcome: "requested" });
 
   const id = String(formData.get("id") ?? "");
   if (!id) return;
@@ -85,6 +89,7 @@ export async function toggleSuperlativeCategoryActive(formData: FormData) {
 export async function deleteSuperlativeCategory(formData: FormData) {
   const user = await requireAdmin();
   if (!user) redirect("/");
+  await recordSensitiveOperation({ actorId: user.id, action: "admin.superlatives", target: sensitiveTarget(formData), outcome: "requested" });
 
   const id = String(formData.get("id") ?? "");
   if (!id) return;

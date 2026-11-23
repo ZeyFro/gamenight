@@ -4,11 +4,13 @@ const mocks = vi.hoisted(() => ({
   create: vi.fn(),
   update: vi.fn(),
   requireAdmin: vi.fn(),
+  record: vi.fn(),
 }));
 
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
 vi.mock("next/navigation", () => ({ redirect: vi.fn(() => { throw new Error("redirect"); }) }));
 vi.mock("@/lib/admin", () => ({ requireAdmin: mocks.requireAdmin }));
+vi.mock("@/lib/sensitive-operation-log", async () => ({ ...(await vi.importActual<typeof import("@/lib/sensitive-operation-log")>("@/lib/sensitive-operation-log")), recordSensitiveOperation: mocks.record }));
 vi.mock("@/lib/prisma", () => ({ prisma: { messageTemplate: { create: mocks.create, update: mocks.update } } }));
 
 import { addMessageTemplate, updateMessageTemplate } from "./actions";
@@ -24,6 +26,12 @@ describe("phrases Discord personnalisables : actions /admin/messages", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.requireAdmin.mockResolvedValue({ id: "admin-1" });
+  });
+
+  it("journalise chaque action d'administration (C055) : acteur, action fixe, cible, jamais le texte saisi", async () => {
+    await addMessageTemplate(form({ id: "m-1", text: "Texte secret saisi par l'admin", category: "x" }));
+    expect(mocks.record).toHaveBeenCalledWith({ actorId: "admin-1", action: "admin.messages", target: "m-1", outcome: "requested" });
+    expect(JSON.stringify(mocks.record.mock.calls)).not.toContain("secret");
   });
 
   it("refuse l'accès à un non-admin (aucune écriture)", async () => {
