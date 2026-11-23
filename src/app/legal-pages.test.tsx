@@ -46,6 +46,18 @@ describe("pages légales (flag allumé)", () => {
     expect(renderToStaticMarkup(createElement(ConditionsPage))).toContain("15 ans");
   });
 
+  it("lien de contact : texte visible = nom de l'éditeur (« ZeyFro », décision Q13), adresse seulement dans le mailto", () => {
+    vi.stubEnv("LEGAL_PAGES_ENABLED", "true");
+    vi.stubEnv("LEGAL_PUBLISHER", "ZeyFro");
+    vi.stubEnv("LEGAL_CONTACT_EMAIL", "contact@exemple.fr");
+    for (const page of [MentionsLegalesPage, ConfidentialitePage, ConditionsPage]) {
+      const html = renderToStaticMarkup(createElement(page));
+      expect(html).toContain('href="mailto:contact@exemple.fr"');
+      expect(html).toMatch(/<a href="mailto:contact@exemple\.fr"[^>]*>ZeyFro<\/a>/);
+      expect(html.replace(/href="mailto:[^"]*"/g, "")).not.toContain("contact@exemple.fr");
+    }
+  });
+
   it("la politique cite les sous-traitants et leurs régions, et les droits RGPD", () => {
     vi.stubEnv("LEGAL_PAGES_ENABLED", "true");
     const html = renderToStaticMarkup(createElement(ConfidentialitePage));

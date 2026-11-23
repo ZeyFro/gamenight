@@ -89,8 +89,8 @@ export default async function TowerPage({ searchParams }: { searchParams: Promis
     <section className="grid gap-4 md:grid-cols-2" aria-label="Progression personnelle">
       <Card className="flex flex-col gap-3">
         <p className="text-sm font-medium text-accent">Ascension · XP GameNight</p>
-        <h2 className="text-2xl font-semibold text-foreground">Étage {ascension.floor}</h2>
-        <p className="text-sm text-muted">Niveau {ascension.level} · {Math.floor(ascension.progress * 100)} % vers le prochain étage</p>
+        <h2 className="text-2xl font-semibold text-foreground">Niveau d’XP {ascension.floor}</h2>
+        <p className="text-sm text-muted">Niveau {ascension.level} · {Math.floor(ascension.progress * 100)} % vers le prochain niveau d’XP</p>
         <Link href="/ascension" className="text-sm font-medium text-accent underline-offset-4 hover:underline">Voir le détail de l’ascension →</Link>
       </Card>
       <Card className="flex flex-col gap-3">

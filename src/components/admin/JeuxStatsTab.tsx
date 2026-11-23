@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { Card } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
 import { Stagger, StaggerItem } from "@/components/motion";
+import { plural } from "@/lib/plural";
 
 /**
  * Onglet "Jeux-stats" du hub /admin — contenu déplacé depuis l'ancien
@@ -45,8 +46,7 @@ export async function JeuxStatsTab() {
               >
                 <span className="font-medium text-foreground">{game.name}</span>
                 <Badge tone={game._count.statTypes > 0 ? "accent" : "neutral"}>
-                  {game._count.statTypes} stat
-                  {game._count.statTypes > 1 ? "s" : ""}
+                  {game._count.statTypes} {plural(game._count.statTypes, "stat")}
                 </Badge>
               </Link>
             </StaggerItem>

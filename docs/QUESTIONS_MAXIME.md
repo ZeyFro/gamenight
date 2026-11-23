@@ -1,5 +1,30 @@
 # Questions pour Maxime — une seule liste
 
+## Réponses de Maxime (23 novembre 2026)
+
+| # | Décision |
+| --- | --- |
+| Q1–Q4 | **Rien n'est exclu** : internationalisation, IA, Discord Activities, habillage Discord, bot permanent, rangs importés et VIP restent dans la feuille de route, **après le lancement**. Contradiction signalée ci-dessous pour l'IA. |
+| Q5 | Oui : **une semaine de simulation**, puis effacement réel. |
+| Q6 | **Pas de galerie dans l'application** : les photos vont sur Discord. `SESSION_VIDEO_ENABLED` reste éteint. La page d'une soirée affiche un lien vers le salon Discord **📸・photos-soirées**. |
+| Q7 | Oui : guide des 3 clés VAPID dans [WEB_PUSH_VAPID.md](WEB_PUSH_VAPID.md) ; ChatGPT les pose dans Vercel. |
+| Q8 | **Oui**, avec les 4 migrations du vocal. |
+| Q9 | Oui, **18 h**. |
+| Q10 | **« Niveau d'XP »** pour l'XP (pas « Palier ») ; « Étage » reste réservé à la Tour. |
+| Q11–Q12 | **Rester en gratuit** (Neon et Vercel), avec une **alerte avant saturation** et [HEBERGEMENT.md](HEBERGEMENT.md) (migration future vers un serveur local ou OVH). |
+| Q13 | Pages légales : lien `mailto` dont le texte visible est **« ZeyFro »**. |
+| Q14 | Garder **MEE6 et YAGPDB**, **retirer Atlas**. |
+| Q15 | **Garder** Discord.Me. |
+| Q16 | **Couper** les niveaux et la monnaie de MEE6 et d'UnbelievaBoat : seul l'XP GameNight compte. |
+| Q17–Q19 | **Oui aux trois** (MP personnels seulement, annonces publiques pour les moments marquants, mention d'un rôle de jeu seulement pour ceux qui l'ont demandé). |
+| Q20 | Classements : **règle actuelle conservée**. Nouveau besoin **« Potes = amis »** (élément C128 du cahier final) : demande d'ami à accepter, recherche par pseudo, un non-ami voit seulement si une soirée est publique (il peut la rejoindre) ou privée (sur invitation). |
+| Q21 | **Maintenant** : les PR à migration sont fusionnées une par une ; à chaque fois, la ligne « APPROBATION À FAIRE : #numéro » indique à ChatGPT le run « Migrations Production » à approuver. |
+
+### Contradiction à trancher plus tard : l'IA et les preuves
+
+Le cahier dit, § 9 : « **Aucune IA ne doit valider automatiquement les preuves dans la version initiale.** » (repris § 20 et dans la règle des défis mesurables Steam). Garder C098 « Validation IA des preuves » dans la feuille de route est compatible **seulement après la version initiale**, et seulement si la règle du cahier est changée par Maxime à ce moment-là. Tant qu'elle ne l'est pas, aucune IA ne valide une preuve.
+
+
 > 23 novembre 2026. Tout ce qui demande **ton** choix, regroupé ici pour ne pas te solliciter au fil de l'eau. Pour chaque question, coche une case. Ma recommandation est marquée ⭐. Quand une question n'a pas de réponse, je ne fais rien sur ce sujet.
 
 ## A. Les 9 éléments reportés du cahier

@@ -5,6 +5,7 @@ import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { retryDiscordCleanupAction, retryRewardDeliveryAction } from "@/app/admin/nettoyage/actions";
 import { listFailedRewardDeliveries } from "@/lib/reward-delivery-retry";
+import { plural } from "@/lib/plural";
 
 const ROLE_LABELS: Record<string, string> = {
   "thread-delete": "Suppression du fil",
@@ -128,7 +129,7 @@ export async function NettoyageTab({ userId }: { userId: string }) {
                     </span>
                   </div>
                   <p className="text-xs text-muted">
-                    {entry.attempts} tentative{entry.attempts === 1 ? "" : "s"} — {entry.errorClass ?? "erreur inconnue"}
+                    {entry.attempts} {plural(entry.attempts, "tentative")} — {entry.errorClass ?? "erreur inconnue"}
                     {entry.lastError ? ` — ${entry.lastError}` : ""}
                   </p>
                 </div>

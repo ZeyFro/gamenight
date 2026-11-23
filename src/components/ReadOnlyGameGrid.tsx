@@ -8,6 +8,7 @@ import { Card } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
 import { Avatar } from "@/components/ui/Avatar";
 import { Stagger, StaggerItem } from "@/components/motion";
+import { plural } from "@/lib/plural";
 
 export interface ReadOnlyGameOwner {
   id: string;
@@ -162,7 +163,7 @@ function ReadOnlyGameCard({
           </div>
           {owners.length > 0 && (
             <p className="text-xs text-muted">
-              {owners.length} pote{owners.length > 1 ? "s" : ""} :{" "}
+              {owners.length} {plural(owners.length, "pote")} :{" "}
               {owners.map((o) => o.discordName).join(", ")}
             </p>
           )}

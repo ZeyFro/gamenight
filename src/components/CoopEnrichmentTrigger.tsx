@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { enrichGamesForCoopFilter } from "@/app/bibliotheque/actions";
+import { plural } from "@/lib/plural";
 
 /** Limite le lot enrichi en un passage — "progressif", pas d'explosion de requêtes IGDB si toute la biblio manque de cache. */
 const MAX_BATCH = 15;
@@ -60,7 +61,7 @@ export function CoopEnrichmentTrigger({
         className="h-3 w-3 shrink-0 animate-spin rounded-full border-2 border-accent border-t-transparent"
       />
       {running
-        ? `Enrichissement de ${batch.length} jeu${batch.length > 1 ? "x" : ""} pour le filtre Coop…`
+        ? `Enrichissement de ${batch.length} ${plural(batch.length, "jeu", "jeux")} pour le filtre Coop…`
         : "Préparation de l'enrichissement…"}
     </p>
   );

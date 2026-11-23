@@ -2,7 +2,7 @@
 
 import { useState, type FormEvent } from "react";
 
-type Mode = "check" | "execute";
+type Mode = "check" | "execute" | "bulk";
 type CommandRow = { name: string; kind: "chat" | "message"; status: string };
 type Report = {
   mode?: Mode;
@@ -20,6 +20,7 @@ export const STATUS_HELP: Record<number, string> = {
   202: "Enregistrement partiel : Discord limite le débit. Attends le délai indiqué puis clique à nouveau sur « Enregistrer » : les commandes déjà à jour sont sautées.",
   400: "Requête invalide.",
   401: "Secret faux, ou compte non administrateur / non connecté.",
+  409: "Enregistrement en bloc refusé : le serveur porte des commandes hors manifeste qu’il supprimerait. Aucune écriture n’a été faite ; utilise « Enregistrer » (commande par commande).",
   404: "Fonction éteinte : interrupteur ou secret absent côté serveur, ou Preview.",
   429: "Plus de 5 appels par minute : attends une minute.",
   502: "Discord a refusé ou n'a pas répondu : voir le détail ci-dessous.",
@@ -37,13 +38,13 @@ const STATUS_ORDER = ["enregistrée", "déjà à jour", "présente", "absente", 
 export function DiscordCommandsConsole() {
   const [secret, setSecret] = useState("");
   const [pending, setPending] = useState<Mode | null>(null);
+  // Remplace la fenêtre de confirmation du navigateur (qui bloque les outils d’automatisation) : case à cocher dans la page.
+  const [confirmed, setConfirmed] = useState(false);
   const [outcome, setOutcome] = useState<Outcome | null>(null);
 
   async function run(mode: Mode) {
     if (!secret.trim() || pending) return;
-    if (mode === "execute" && !window.confirm("Enregistrer les commandes du manifeste dans The Tower ? Aucune commande n'est supprimée.")) {
-      return;
-    }
+    if (mode !== "check" && !confirmed) return;
     setPending(mode);
     setOutcome(null);
     try {
@@ -74,6 +75,7 @@ export function DiscordCommandsConsole() {
 
   const report = outcome?.report;
   const disabled = pending !== null || !secret.trim();
+  const writeDisabled = disabled || !confirmed;
 
   return (
     <div className="flex flex-col gap-6">
@@ -92,6 +94,19 @@ export function DiscordCommandsConsole() {
           className="rounded-lg border-2 border-border bg-background px-3 py-2 text-sm text-foreground"
         />
         <p className="text-xs text-muted">Il n’est ni enregistré ni journalisé. Il reste en mémoire de la page pour pouvoir reprendre, jusqu’à « Effacer le secret » ou la fermeture de la page.</p>
+        <label className="flex items-start gap-2 text-sm text-foreground">
+          <input
+            type="checkbox"
+            name="confirm-registration"
+            checked={confirmed}
+            onChange={(event) => setConfirmed(event.target.checked)}
+            className="mt-0.5 h-4 w-4"
+          />
+          <span>
+            Je confirme l’écriture dans The Tower. « Enregistrer » ajoute ou met à jour les commandes une par une ; « Tout enregistrer d’un coup »
+            envoie le manifeste complet en une seule requête, et est refusé si le serveur porte des commandes hors manifeste. Rien n’est jamais enregistré globalement.
+          </span>
+        </label>
         <div className="flex flex-wrap gap-3">
           <button
             type="submit"
@@ -102,11 +117,19 @@ export function DiscordCommandsConsole() {
           </button>
           <button
             type="button"
-            disabled={disabled}
+            disabled={writeDisabled}
             onClick={() => void run("execute")}
             className="rounded-lg bg-accent px-4 py-2 text-sm text-accent-foreground disabled:opacity-50"
           >
             {pending === "execute" ? "Enregistrement… (jusqu’à 45 s)" : "Enregistrer"}
+          </button>
+          <button
+            type="button"
+            disabled={writeDisabled}
+            onClick={() => void run("bulk")}
+            className="rounded-lg bg-accent px-4 py-2 text-sm text-accent-foreground disabled:opacity-50"
+          >
+            {pending === "bulk" ? "Envoi du manifeste… (une requête)" : "Tout enregistrer d’un coup"}
           </button>
           <button
             type="button"

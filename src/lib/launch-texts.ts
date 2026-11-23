@@ -25,7 +25,7 @@ export const LOGIN_MEMBERS_ONLY_NOTICE = "L’accès est réservé aux membres d
  * ne pas la reformuler sans nouvelle décision.
  */
 export const TOWER_FLOORS_RESET_NOTICE =
-  "Ton niveau, ton étage XP et ton rang XP sont conservés ; tes étages Tower repartent de zéro et se gagnent par les défis, et ton grade Tower (Régulars, Irregular, Ranker, High Ranker) repart avec eux.";
+  "Ton niveau, ton niveau d’XP et ton rang XP sont conservés ; tes étages Tower repartent de zéro et se gagnent par les défis, et ton grade Tower (Régulars, Irregular, Ranker, High Ranker) repart avec eux.";
 
 /**
  * V3-18 — `/sessions/[id]` : présence vocale. Avec `LAUNCH_TEXTS_ENABLED`, le bloc n'est rendu
