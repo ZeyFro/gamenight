@@ -96,7 +96,12 @@ export function ProposeGameForm({
     formData.set("gameId", selected.id);
 
     startTransition(async () => {
-      await proposeGame(formData);
+      const result = await proposeGame(formData);
+      if (!result.ok) {
+        // Plafond de propositions atteint : on garde la sélection, rien n'a été ajouté.
+        toast.error(result.error ?? "Impossible de proposer ce jeu.");
+        return;
+      }
       toast.success("Jeu proposé");
       setQuery("");
       setSelected(null);

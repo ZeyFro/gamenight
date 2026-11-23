@@ -9,6 +9,7 @@ import { canAccessSession } from "@/lib/session-access";
 import { awardXp } from "@/lib/xp-actions";
 import { XP_AMOUNTS } from "@/lib/xp";
 import { checkVotesCastBadges } from "@/lib/badges";
+import { isProposalLimitReached, PROPOSAL_LIMIT_MESSAGE } from "@/lib/session-proposal-limit";
 import { checkRateLimit, RATE_LIMIT_ERROR_KEY } from "@/lib/rate-limit";
 import {
   sessionGameRefSchema,
@@ -16,39 +17,58 @@ import {
   toggleVoteSchema,
 } from "@/lib/validations";
 
-export async function proposeGame(formData: FormData) {
+export interface ProposeGameResult {
+  ok: boolean;
+  error?: string;
+}
+
+/**
+ * Renvoie `{ ok: true }` pour tous les cas historiques (y compris les refus silencieux : limite de débit, accès refusé, jeu déjà
+ * proposé), pour que `ProposeGameForm` affiche le même message qu'avant. Seul le plafond de propositions par soirée
+ * (`MAX_PROPOSALS_PER_SESSION`, audit 1.10) renvoie `{ ok: false, error }` avec un message français.
+ */
+export async function proposeGame(formData: FormData): Promise<ProposeGameResult> {
   const user = await getCurrentUser();
   if (!user) redirect("/");
-  if (!checkRateLimit(user.id, "proposeGame")) return;
+  if (!checkRateLimit(user.id, "proposeGame")) return { ok: true };
 
   const input = sessionGameRefSchema.safeParse({
     sessionId: String(formData.get("sessionId") ?? ""),
     gameId: String(formData.get("gameId") ?? ""),
   });
-  if (!input.success) return;
+  if (!input.success) return { ok: true };
   const { sessionId, gameId } = input.data;
 
   const session = await prisma.session.findUnique({
     where: { id: sessionId },
     select: { status: true, date: true, votingDeadline: true },
   });
-  if (!session || !isVotingOpen(session)) return;
+  if (!session || !isVotingOpen(session)) return { ok: true };
   // Confidentialité des soirées — proposer un jeu est réservé au créateur
   // et aux invités actifs, jamais à un pote non invité (id de session
   // valide mais forgé). Vérifié APRÈS le chargement ci-dessus (même
   // `sessionId` déjà validé), jamais avant une lecture qui exposerait la
   // moindre donnée à un non-autorisé.
-  if (!(await canAccessSession(user.id, sessionId))) return;
+  if (!(await canAccessSession(user.id, sessionId))) return { ok: true };
 
   try {
-    await prisma.proposal.create({
-      data: { sessionId, gameId, proposedById: user.id },
+    // Plafond de propositions (audit 1.10) : la ligne de la soirée est verrouillée le temps du décompte et de l'insertion,
+    // sinon deux ajouts simultanés liraient « 9 » et en inscriraient chacun un (11 propositions).
+    const limitReached = await prisma.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT id FROM "Session" WHERE id = ${sessionId} FOR UPDATE`;
+      if (isProposalLimitReached(await tx.proposal.count({ where: { sessionId } }))) return true;
+      await tx.proposal.create({
+        data: { sessionId, gameId, proposedById: user.id },
+      });
+      return false;
     });
+    if (limitReached) return { ok: false, error: PROPOSAL_LIMIT_MESSAGE };
   } catch {
     // Contrainte unique (sessionId, gameId) : déjà proposé, on ignore.
   }
 
   revalidatePath(`/sessions/${sessionId}`);
+  return { ok: true };
 }
 
 export interface ToggleVoteResult {
@@ -86,7 +106,7 @@ export async function toggleVote(formData: FormData): Promise<ToggleVoteResult> 
     where: { id: proposalId },
     select: {
       sessionId: true,
-      session: { select: { communityId: true, status: true, date: true, votingDeadline: true } },
+      session: { select: { communityId: true, createdAt: true, status: true, date: true, votingDeadline: true } },
     },
   });
   if (!proposal || !isVotingOpen(proposal.session)) return { ok: true };
@@ -108,7 +128,11 @@ export async function toggleVote(formData: FormData): Promise<ToggleVoteResult> 
     // l'XP à chaque fois (la contrainte unique sur XpEvent l'empêche déjà
     // via awardXp) ; voter sur une AUTRE proposition, en revanche, reste
     // une nouvelle action légitime.
-    await awardXp(user.id, proposal.session.communityId, "VOTE", proposalId, XP_AMOUNTS.VOTE);
+    // `voteSession` : plafond de gains VOTE par membre et par soirée (audit 1.10, `VOTE_XP_CAP_PER_SESSION`) ; le vote reste
+    // enregistré même quand le plafond est atteint, seule l'XP n'est plus versée.
+    await awardXp(user.id, proposal.session.communityId, "VOTE", proposalId, XP_AMOUNTS.VOTE, {
+      voteSession: { id: sessionId, createdAt: proposal.session.createdAt },
+    });
     await checkVotesCastBadges(user.id, proposal.session.communityId);
   }
 

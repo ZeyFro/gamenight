@@ -6,6 +6,8 @@ const {
   sessionFindUnique,
   proposalFindUnique,
   proposalCreate,
+  proposalCount,
+  queryRaw,
   voteFindUnique,
   voteCreate,
   isVotingOpen,
@@ -20,6 +22,8 @@ const {
   sessionFindUnique: vi.fn(),
   proposalFindUnique: vi.fn(),
   proposalCreate: vi.fn(),
+  proposalCount: vi.fn(),
+  queryRaw: vi.fn(),
   voteFindUnique: vi.fn(),
   voteCreate: vi.fn(),
   isVotingOpen: vi.fn(),
@@ -46,9 +50,13 @@ vi.mock("@/lib/prisma", () => ({
     session: { findUnique: sessionFindUnique },
     proposal: { findUnique: proposalFindUnique, create: proposalCreate },
     vote: { findUnique: voteFindUnique, create: voteCreate, delete: vi.fn() },
+    // `proposeGame` verrouille la soirée, compte ses propositions puis insère, dans une transaction.
+    $transaction: async (fn: (tx: unknown) => Promise<unknown>) =>
+      fn({ $queryRaw: queryRaw, proposal: { count: proposalCount, create: proposalCreate } }),
   },
 }));
 
+import { MAX_PROPOSALS_PER_SESSION, PROPOSAL_LIMIT_MESSAGE } from "@/lib/session-proposal-limit";
 import { proposeGame, toggleVote } from "./proposals-votes";
 
 /**
@@ -84,15 +92,40 @@ describe("proposeGame / toggleVote — réservés au créateur et aux invités a
     sessionFindUnique.mockResolvedValue({ status: "VOTING", date: new Date(), votingDeadline: null });
     canAccessSession.mockResolvedValue(true);
     proposalCreate.mockResolvedValue({});
+    proposalCount.mockResolvedValue(0);
 
     const fd = new FormData();
     fd.set("sessionId", "session-reelle");
     fd.set("gameId", "game-1");
-    await proposeGame(fd);
+    const result = await proposeGame(fd);
 
     expect(proposalCreate).toHaveBeenCalledWith({
       data: { sessionId: "session-reelle", gameId: "game-1", proposedById: "invite-actif" },
     });
+    expect(result).toEqual({ ok: true });
+  });
+
+  it("proposeGame : la 10ᵉ proposition passe (9 existantes), la 11ᵉ (10 existantes) est refusée avec un message français", async () => {
+    getCurrentUser.mockResolvedValue({ id: "invite-actif" });
+    sessionFindUnique.mockResolvedValue({ status: "VOTING", date: new Date(), votingDeadline: null });
+    canAccessSession.mockResolvedValue(true);
+    proposalCreate.mockResolvedValue({});
+    const fd = new FormData();
+    fd.set("sessionId", "session-reelle");
+    fd.set("gameId", "game-1");
+
+    proposalCount.mockResolvedValue(MAX_PROPOSALS_PER_SESSION - 1);
+    expect(await proposeGame(fd)).toEqual({ ok: true });
+    expect(proposalCreate).toHaveBeenCalledTimes(1);
+
+    proposalCreate.mockClear();
+    proposalCount.mockResolvedValue(MAX_PROPOSALS_PER_SESSION);
+    const refused = await proposeGame(fd);
+    expect(refused).toEqual({ ok: false, error: PROPOSAL_LIMIT_MESSAGE });
+    expect(refused.error).toMatch(/jeux proposés/);
+    expect(proposalCreate).not.toHaveBeenCalled();
+    // La ligne de la soirée est verrouillée avant le décompte (pas de 11ᵉ par deux ajouts simultanés).
+    expect(queryRaw).toHaveBeenCalled();
   });
 
   it("toggleVote : un utilisateur non invité ne peut voter sur une proposition d'une soirée à laquelle il n'a pas accès", async () => {
@@ -130,5 +163,25 @@ describe("proposeGame / toggleVote — réservés au créateur et aux invités a
     await toggleVote(fd);
 
     expect(voteCreate).toHaveBeenCalledWith({ data: { proposalId: "proposal-1", userId: "invite-actif" } });
+  });
+
+  it("toggleVote : transmet la soirée à awardXp pour le plafond de gains VOTE par soirée", async () => {
+    const createdAt = new Date("2026-11-01T10:00:00Z");
+    getCurrentUser.mockResolvedValue({ id: "invite-actif" });
+    proposalFindUnique.mockResolvedValue({
+      sessionId: "session-reelle",
+      session: { communityId: "c1", createdAt, status: "VOTING", date: new Date(), votingDeadline: null },
+    });
+    canAccessSession.mockResolvedValue(true);
+    voteFindUnique.mockResolvedValue(null);
+    voteCreate.mockResolvedValue({});
+
+    const fd = new FormData();
+    fd.set("proposalId", "proposal-1");
+    await toggleVote(fd);
+
+    expect(awardXp).toHaveBeenCalledWith("invite-actif", "c1", "VOTE", "proposal-1", 1, {
+      voteSession: { id: "session-reelle", createdAt },
+    });
   });
 });
