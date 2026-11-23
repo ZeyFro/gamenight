@@ -140,7 +140,7 @@ function CommunityCard({ community: c }: { community: AdminCommunityRow }) {
         <form action={setCommunitySteamPriceAlertsAction} className="flex flex-col gap-3 border-t border-border pt-4">
           <input type="hidden" name="communityId" value={c.id} />
           <p className="text-sm font-medium text-foreground">Alertes de baisse de prix Steam</p>
-          <p className="text-xs text-muted">Notifications uniquement dans GameNight. Vérification périodique des wishlists (France); une même entrée ne renotifie pas avant 7 jours.</p>
+          <p className="text-xs text-muted">Notifications uniquement dans GameNight. Vérification périodique des listes « À acheter » (France); une même entrée ne renotifie pas avant 7 jours.</p>
           <label className="flex items-center gap-2 text-sm">
             <input type="checkbox" name="enabled" value="true" defaultChecked={c.steamPriceAlertsEnabled} className="h-5 w-5 accent-accent" />
             Activer les alertes pour cette communauté
@@ -222,7 +222,7 @@ function CommunityCard({ community: c }: { community: AdminCommunityRow }) {
           <input type="hidden" name="communityId" value={c.id} />
           <div className="min-w-0 flex-1">
             <p className="text-sm font-medium text-foreground">Plans d&apos;achat collectif</p>
-            <p className="text-xs text-muted">Organisation indicative depuis la wishlist; aucun paiement ni achat automatique.</p>
+            <p className="text-xs text-muted">Organisation indicative depuis la liste « À acheter » ; aucun paiement ni achat automatique.</p>
           </div>
           <select name="enabled" defaultValue={String(c.groupPurchasePlansEnabled)} aria-label={`Plans d'achat collectif pour ${c.name}`} className={SELECT_CLASS}>
             <option value="false">Désactivés</option>

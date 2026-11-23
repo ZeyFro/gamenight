@@ -24,7 +24,7 @@ export default async function FreeGamesPage() {
           <h1 className="text-xl font-semibold text-foreground sm:text-2xl">🎁 Jeux gratuits</h1>
           <p className="mt-1 text-sm text-muted">Vérifie la gratuité, les conditions et la disponibilité dans ta région sur la boutique.</p>
         </div>
-        <Link href="/wishlist" className="text-sm font-medium text-accent">Wishlist →</Link>
+        <Link href="/wishlist" className="text-sm font-medium text-accent">À acheter →</Link>
       </div>
 
       {!communityId ? (

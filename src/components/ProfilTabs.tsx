@@ -19,7 +19,7 @@ const TABS = [
   // dédiée maintenant, qui réutilise TierlistBoard tel quel (pas de
   // logique dupliquée) — /tierlist reste utilisable en parallèle depuis
   // LibraryTabs.
-  { href: "/profil/tierlist", label: "Tierlist" },
+  { href: "/profil/tierlist", label: "Jeux classés" },
   // Sprint 4 (Saisons mensuelles) — résultats passés, saison par saison.
   { href: "/profil/saisons", label: "Saisons" },
   { href: "/profil/parametres", label: "Rappels perso" },

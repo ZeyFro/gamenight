@@ -22,7 +22,7 @@ export const SIDEBAR_GROUPS = [
   { label: "Les jeux", links: [
     { href: "/bibliotheque", label: "Ma bibliothèque", icon: LibraryIcon },
     { href: "/bibliotheque/groupe", label: "Bibliothèque du groupe", icon: UsersIcon },
-    { href: "/tierlist", label: "Tierlist", icon: TrophyIcon },
+    { href: "/tierlist", label: "Classement des jeux", icon: TrophyIcon },
     { href: "/wishlist", label: "À acheter", icon: LibraryIcon },
     { href: "/bibliotheque/a-verifier", label: "À vérifier", icon: LibraryIcon },
   ] },

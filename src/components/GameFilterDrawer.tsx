@@ -355,7 +355,7 @@ export function GameFilterDrawer({
                   </select>
                 </div>
                 <p className="text-xs text-faint">
-                  Même limite que pour le Genre : nécessite la fiche IGDB du jeu déjà en cache.
+                  Même limite que pour le Genre : nécessite la fiche du jeu dans la base de jeux déjà en cache.
                 </p>
               </fieldset>
             </div>

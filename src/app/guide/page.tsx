@@ -50,7 +50,7 @@ const SECTIONS: GuideSection[] = [
     lines: [
       "Chaque participation, vote ou soirée créée rapporte de l'XP.",
       "Progresse à travers les rangs, de Bronze à Légende.",
-      "Débloque des badges pour tes exploits (streak, ancienneté...).",
+      "Débloque des badges pour tes exploits (séries de jours, ancienneté...).",
     ],
   },
   {

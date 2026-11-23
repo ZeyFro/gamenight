@@ -225,7 +225,7 @@ export default async function ProfilApercuPage() {
           </Card>
           <Card className="flex flex-col items-center gap-1 p-3 text-center">
             <span className="text-lg font-bold text-foreground">{user.bestStreakCount}</span>
-            <span className="text-[11px] text-muted">Meilleur streak</span>
+            <span className="text-[11px] text-muted">Meilleure série</span>
           </Card>
           <Card className="flex flex-col items-center gap-1 p-3 text-center">
             <span className="text-lg font-bold text-foreground">

@@ -81,7 +81,7 @@ export function WishlistProposeForm() {
           type="text"
           value={query}
           onChange={(e) => handleChange(e.target.value)}
-          placeholder="Rechercher un jeu sur IGDB…"
+          placeholder="Rechercher un jeu dans la base de jeux…"
           autoComplete="off"
           className="w-full rounded-lg border border-border bg-background px-3 py-3 text-base text-foreground placeholder:text-faint focus:border-accent focus:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-background"
         />

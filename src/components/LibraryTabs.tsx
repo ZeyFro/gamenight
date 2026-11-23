@@ -1,10 +1,14 @@
 import { TabLink } from "@/components/ui/TabLink";
+import { plural } from "@/lib/plural";
+
+/** Sens du badge de l'onglet « À vérifier » (infobulle et lecteur d'écran) : un nouveau ne sait pas ce qu'il doit vérifier. */
+export const TO_VERIFY_HELP = "Jeux dont le mode de jeu (solo, coop, en ligne) n'est pas encore confirmé : ouvre l'onglet pour les valider en quelques clics.";
 
 const TABS = [
   { href: "/bibliotheque", label: "Ma bibliothèque", key: "perso" },
   { href: "/bibliotheque/groupe", label: "Groupe", key: "groupe" },
   { href: "/bibliotheque/suggestions", label: "Suggestions", key: "suggestions" },
-  { href: "/tierlist", label: "Tierlist", key: "tierlist" },
+  { href: "/tierlist", label: "Classement des jeux", key: "tierlist" },
   { href: "/bibliotheque/a-verifier", label: "À vérifier", key: "a-verifier" },
   // Sprint 5 (FEATURE 3, Wishlist) — `/wishlist` en route dédiée plutôt
   // qu'imbriquée sous `/bibliotheque` (même niveau que `/tierlist`, déjà
@@ -36,8 +40,12 @@ export function LibraryTabs({
         <TabLink key={tab.key} href={tab.href} active={active === tab.key} layoutId="library-tabs-underline" className="snap-start">
           {tab.label}
           {tab.key === "a-verifier" && !!toVerifyCount && toVerifyCount > 0 && (
-            <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-accent px-1.5 text-[11px] font-semibold text-accent-foreground">
-              {toVerifyCount}
+            <span
+              title={TO_VERIFY_HELP}
+              className="flex h-5 min-w-5 items-center justify-center rounded-full bg-accent px-1.5 text-[11px] font-semibold text-accent-foreground"
+            >
+              <span aria-hidden="true">{toVerifyCount}</span>
+              <span className="sr-only">{`${toVerifyCount} ${plural(toVerifyCount, "jeu", "jeux")} à vérifier. ${TO_VERIFY_HELP}`}</span>
             </span>
           )}
         </TabLink>

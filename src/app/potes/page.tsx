@@ -299,7 +299,7 @@ export default async function PotesPage({ searchParams }: { searchParams?: Promi
                               pote.streakCount
                             )
                           }
-                          label="streak"
+                          label="série"
                         />
                         <QuickStat value={`🎮 ${gamesOwned}`} label="jeux" />
                       </div>
