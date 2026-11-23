@@ -12,32 +12,58 @@
 6. **Vérifier** pendant 30 minutes : les contrôles du lot, et Vercel → Logs (aucune erreur 500).
 7. **Retour arrière** (identique pour tous les lots) : supprimer les variables du lot (ou mettre `false`), puis Redeploy. Aucune donnée n'est perdue : une fonction éteinte garde ses données en base.
 
-## Avant le lot A (prérequis communs)
+## Avant le lot A1 (prérequis communs)
 
 | # | Geste | Qui | Fait ? |
 | --- | --- | --- | --- |
 | P1 | Lire en clair les variables « Sensitive » `NOTIFICATION_EXECUTOR_ENABLED`, `DISCORD_BOT_SESSION_ANNOUNCE_ENABLED`, `DISCORD_BOT_TOURNAMENT_ANNOUNCE_ENABLED`, `DISCORD_DM_*`, `COMMUNITY_*`. Si l'une n'est pas `true`, décider avec Maxime avant de continuer. | Maxime | ☐ |
 | P2 | Enregistrer les 13 commandes Discord (`/admin/discord-commands`, reprise automatique depuis #518), puis retirer `DISCORD_COMMAND_REGISTRATION_ENABLED` et son secret | ChatGPT | ☐ |
-| P3 | Importer le catalogue : `/tower-admin importer` (89 défis solo une fois #525 fusionnée, 86 avant), puis `/tower-admin importer-equipe` après le lot A (30 défis d'équipe, exige les équipes activées sur le serveur) | ChatGPT | ☐ |
+| P3 | Importer le catalogue : `/tower-admin importer` (89 défis solo une fois #525 fusionnée, 86 avant), puis `/tower-admin importer-equipe` après le lot A2 (30 défis d'équipe, exige les équipes activées sur le serveur) | ChatGPT | ☐ |
 | P4 | Plan [PERMISSIONS_BOTS.md](PERMISSIONS_BOTS.md) appliqué (plus aucun bot Administrateur) | ChatGPT | ☐ |
 | P5 | Décision de capacité prise ([CAPACITE.md](CAPACITE.md)) | Maxime | ☐ |
-| P6 | Migrations des PR #525, #526 et #527 appliquées (run « Migrations Production » vert et approuvé juste après chaque fusion) | Maxime | ☐ |
+| P6 | Migrations des PR #525, #526 et #527 appliquées (le run « Migrations Production » s’exécute automatiquement à la fusion, sans approbation ; vérifier qu’il est vert) | Maxime | ☐ |
 
 ---
 
-## Lot A — Affichage et administration (aucune écriture Discord)
+## Lot A1 — PREMIER LOT, prêt à allumer (7 variables, affichage seulement)
 
-**Variables (9)** : `LAUNCH_TEXTS_ENABLED`, `NAV_TOWER_ENABLED`, `PAGE_TITLES_ENABLED`, `PAGE_TITLES_DYNAMIC_ENABLED`, `GUIDE_V2_ENABLED`, `MEDIA_PRIVACY_ENABLED`, `HOME_V2_ENABLED`, `ADMIN_DASHBOARD_V2_ENABLED`, `COMMUNITY_ADMIN_ENABLED`.
+> **Pourquoi celui-là d’abord** : chaque variable est déjà codée et testée (tests Vitest indiqués), **aucune n’écrit dans la base ni dans Discord**, aucune migration n’est nécessaire, et éteinte, chacune rend exactement l’ancien affichage. Les 7 se posent ensemble puis **un seul Redeploy**.
+
+| # | Variable (nom exact) | Valeur | Ce qui change | Testée par |
+| --- | --- | --- | --- | --- |
+| 1 | `LAUNCH_TEXTS_ENABLED` | `true` | Page de connexion : « L’accès est réservé aux membres du serveur Discord The Tower » (+ lien « Rejoindre le serveur » si `DISCORD_INVITE_URL` est une adresse valide) ; phrase sur les étages sur `/tower` et `/ascension` ; `/sessions/[id]` ne montre plus la présence vocale ni la galerie quand elles ne sont pas configurées | `LoginLanding.launch.test.tsx`, `tower/page.launch.test.tsx`, `ascension/page.test.tsx` |
+| 2 | `NAV_TOWER_ENABLED` | `true` | Lien « The Tower » dans le menu (ordinateur et tiroir mobile) | `Sidebar.test.tsx`, `launch-texts.test.ts` |
+| 3 | `PAGE_TITLES_ENABLED` | `true` | Titre d’onglet « Nom de la page · GameNight » | `page-title.test.ts`, `page-metadata-coverage.test.ts` |
+| 4 | `PAGE_TITLES_DYNAMIC_ENABLED` | `true` | Titre dynamique avec le nom du jeu (`/jeux/[id]`) ou du pote (`/potes/[id]`) ; **exige le n° 3** ; le nom n’est lu que pour une session valide (un visiteur déconnecté voit le titre générique) | `dynamic-page-title.test.ts`, `s0-access-controls.integration.test.ts` |
+| 5 | `GUIDE_V2_ENABLED` | `true` | `/guide` : sections « Jouer maintenant » et « Tournois » | `guide-sections.test.ts` |
+| 6 | `MEDIA_PRIVACY_ENABLED` | `true` | Bande-annonce YouTube chargée seulement après « Afficher la vidéo » (aucune requête vers YouTube avant) ; case « accord des personnes reconnaissables » dans la galerie | `GameTrailer.test.tsx`, `SessionGallery.test.tsx`, `sessions/actions/gallery.test.ts` |
+| 7 | `ADMIN_DASHBOARD_V2_ENABLED` | `true` | `/admin/tableau-de-bord` (lecture seule, admins) : candidatures, envois Discord échoués, contestations, rôles et salons contre les limites 250 / 500 (lit Discord, n’y écrit jamais) | `admin-dashboard-v2.test.ts`, `tableau-de-bord/page.test.tsx` |
+
+**Comment** : règles ci-dessus (Production seulement, type « Plain », valeur exacte `true`, **un seul Redeploy**, attendre « Ready »). Pas de branche de sauvegarde Neon nécessaire (aucune écriture).
+
+**À vérifier après le redéploiement (30 minutes)**
+1. Déconnecté, sur la page de connexion : la phrase « L’accès est réservé aux membres du serveur Discord The Tower » est présente ; le lien « Rejoindre le serveur » apparaît seulement si `DISCORD_INVITE_URL` est valide.
+2. Connecté, ordinateur et téléphone (tiroir) : « The Tower » est dans le menu.
+3. L’onglet du navigateur affiche « Soirées · GameNight » (nom de la page + « · GameNight ») sur `/sessions`, et le nom du jeu sur une fiche `/jeux/[id]`.
+4. `/guide` : les sections « Jouer maintenant » et « Tournois » sont là.
+5. Fiche d’un jeu avec bande-annonce : le texte « Cette vidéo vient de YouTube (Google) ; ton adresse IP lui sera transmise » et le bouton « Afficher la vidéo » remplacent la vidéo ; elle ne se charge qu’après le clic.
+6. `/tower` et `/ascension` : la phrase « Ton niveau, ton étage XP et ton rang XP sont conservés ; tes étages Tower repartent de zéro » est affichée.
+7. `/admin/tableau-de-bord` s’ouvre avec un compte administrateur et affiche les rôles et salons du serveur ; avec un compte non administrateur : redirection vers l’accueil.
+8. Vercel → Logs : aucune erreur 500 pendant 30 minutes.
+
+**Retour arrière** : supprimer les 7 variables (ou mettre `false`), puis **Redeploy**. Aucune donnée n’est touchée : l’ancien affichage revient. Pour un seul défaut : ne retirer que la variable concernée (en retirant le n° 3, retirer aussi le n° 4).
+
+---
+
+## Lot A2 — Administration des communautés (écrit en base, via l’interface)
+
+**Variables (2)** : `COMMUNITY_ADMIN_ENABLED`, `HOME_V2_ENABLED` (page de comparaison `/accueil-v2`, non liée : facultative).
 
 **Vérifier après le redéploiement**
-- Page de connexion, sans être connecté : la phrase « L'accès est réservé aux membres du serveur Discord The Tower » et le lien « Rejoindre le serveur » sont présents.
-- Connecté : « The Tower » apparaît dans le menu (ordinateur et tiroir mobile). L’onglet du navigateur affiche le nom de la page suivi de « · GameNight » (par exemple sur `/sessions`).
-- `/guide` montre les sections « Jouer maintenant » et « Tournois ».
-- Une fiche de jeu avec bande-annonce affiche « Afficher la vidéo » au lieu de la vidéo.
-- `/admin/tableau-de-bord` s'ouvre (admin). `/admin` montre l'onglet « Communautés ».
-- Dans `/admin` → Communautés : activer pour The Tower les **équipes**, les **petites annonces de joueurs** et les **jeux gratuits** (prérequis des lots C, E et F). Ne **pas** activer la galerie (pas de stockage configuré, voir lot H).
+- `/admin` montre l’onglet « Communautés ». `/accueil-v2` s’ouvre si `HOME_V2_ENABLED` est posée (404 sinon).
+- Dans `/admin` → Communautés : activer pour The Tower les **équipes**, les **petites annonces de joueurs** et les **jeux gratuits** (prérequis des lots C, E et F). Ne **pas** activer la galerie (Q6 : pas de galerie dans l’application, voir lot H).
 
-**Retour arrière** : supprimer les 9 variables, Redeploy.
+**Retour arrière** : supprimer les 2 variables, Redeploy (les réglages activés restent en base et sans effet).
 
 ---
 
@@ -99,7 +125,7 @@
 
 ## Lot E — Équipes et tournois
 
-**Prérequis** : équipes activées pour le serveur (lot A).
+**Prérequis** : équipes activées pour le serveur (lot A2).
 
 **Variables (8)** : `TEAM_APPLICATIONS_ENABLED`, `TEAM_RECRUITMENT_CRITERIA_ENABLED`, `TEAM_RECRUITERS_ENABLED`, `TEAM_RIVALRIES_ENABLED`, `TOURNAMENT_SCORES_ENABLED`, `TOURNAMENT_PREDICTIONS_ENABLED`, `TOURNAMENT_TEAMS_ENABLED`, `TEAM_CAPTAIN_HANDOVER_ENABLED`. Plus `TEAM_CAPTAIN_HANDOVER_MODE` **laissé vide** (simulation) la première semaine.
 
@@ -118,7 +144,7 @@
 
 ## Lot F — Mémoire du serveur, jeux gratuits, projets
 
-**Prérequis** : petites annonces et jeux gratuits activés pour le serveur (lot A) ; un salon d'annonces des jeux gratuits choisi dans `/admin` → Communautés.
+**Prérequis** : petites annonces et jeux gratuits activés pour le serveur (lot A2) ; un salon d'annonces des jeux gratuits choisi dans `/admin` → Communautés.
 
 **Variables (7)** : `COMMUNITY_QUICK_POLLS_ENABLED`, `COMMUNITY_GAME_GRAVEYARD_ENABLED`, `COMMUNITY_EXPRESSIONS_ENABLED`, `COMMUNITY_HIGHLIGHTS_ENABLED`, `FREE_GAME_FEED_ENABLED`, `DISCORD_BOT_FREE_GAME_ANNOUNCE_ENABLED`, `PROJECT_ORGANIZER_ENABLED`.
 
@@ -175,7 +201,8 @@
 
 | Lot | Date et heure | Branche de sauvegarde | Vérifications OK | Retour arrière fait ? |
 | --- | --- | --- | --- | --- |
-| A | | — | ☐ | |
+| A1 | | — | ☐ | |
+| A2 | | — | ☐ | |
 | B | | | ☐ | |
 | C | | — | ☐ | |
 | D | | — | ☐ | |
