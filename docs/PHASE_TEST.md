@@ -91,7 +91,7 @@ Option : `TOWER_TEAM_DAILY_ENABLED` (défi d'équipe quotidien à 18:00 Europe/P
 ### Tests que Maxime fait dans l'application
 
 1. `/tower` répond et affiche le catalogue importé et le défi en cours (le web est en **lecture seule** pour le solo : démarrer un défi et envoyer la preuve passent par Discord).
-2. `/ascension` affiche l'étage XP ; avec `LAUNCH_TEXTS_ENABLED=true` (groupe 6) la phrase décidée le 18/11 sur les étages s'affiche.
+2. `/ascension` affiche le niveau d’XP ; avec `LAUNCH_TEXTS_ENABLED=true` (groupe 6) la phrase décidée le 18/11 sur les étages s'affiche.
 3. Un compte d'**un autre serveur** (ou sans appartenance) ne voit **aucune** donnée de The Tower.
 4. Logs Vercel : aucune erreur 5xx ; `/admin` : opérations Discord en échec = 0 (avec `ADMIN_DASHBOARD_V2_ENABLED=true`, page `/admin/tableau-de-bord`).
 

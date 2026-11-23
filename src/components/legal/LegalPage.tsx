@@ -31,7 +31,12 @@ export function LegalValue({ value }: { value: string | null }) {
   return <span className="rounded bg-warning/20 px-1 font-semibold text-foreground" data-legal-missing="true">{LEGAL_TO_COMPLETE}</span>;
 }
 
-export function LegalEmail({ email }: { email: string | null }) {
+/**
+ * Lien de contact (décision de Maxime du 23/11, Q13) : le texte visible est le nom de l'éditeur (« ZeyFro »), pas
+ * l'adresse, pour limiter la collecte par les robots ; l'adresse reste dans le lien `mailto:`.
+ */
+export function LegalEmail({ email, label }: { email: string | null; label?: string | null }) {
   if (!email) return <LegalValue value={null} />;
-  return <a href={`mailto:${email}`} className="text-accent underline underline-offset-2">{email}</a>;
+  const text = label?.trim() || email;
+  return <a href={`mailto:${email}`} aria-label={`Écrire à ${text} par e-mail`} className="text-accent underline underline-offset-2">{text}</a>;
 }

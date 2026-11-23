@@ -93,7 +93,7 @@ Le triage de l'audit marque 15 constats « corrigé ». **Mais 5 d'entre eux ne 
 | V1-22 | Conditions des API tierces | corrigé | ✅ |
 | V1-23 | Lien « Aller au contenu » | action humaine | ✅ `SKIP_LINK_ENABLED` allumé |
 | V3-02 | Connexion : « réservé aux membres » | corrigé | 🔴 **non visible** : `LAUNCH_TEXTS_ENABLED` éteint |
-| V3-11 | Deux « étages » côte à côte | reste | 🟠 décision de Maxime (nom de l'étage XP) |
+| V3-11 | Deux « étages » côte à côte | codé | ✅ décision du 23/11 : « Niveau d’XP » pour l’XP, « Étage » pour la Tour (PR Code 8) |
 | V3-12 | Phrase sur la conservation des étages | corrigé | 🔴 **non visible** sur le site : `LAUNCH_TEXTS_ENABLED` éteint. À dire au moins dans Discord (C4). |
 | V3-15 | The Tower dans le menu | corrigé | 🔴 **non visible** : `NAV_TOWER_ENABLED` éteint. La Tour n'est atteignable que par l'adresse `/tower`. |
 | V3-18 | Blocs techniques sur la page de soirée | corrigé | 🔴 **non visible** : `LAUNCH_TEXTS_ENABLED` éteint |
@@ -101,7 +101,7 @@ Le triage de l'audit marque 15 constats « corrigé ». **Mais 5 d'entre eux ne 
 | V4-01 | Dependabot | corrigé | ✅ actif (5 PR en attente) |
 | V4-15 | Isolation Preview / Production | action humaine | 🔴 écart trouvé (E4) |
 
-> **Total des 21 constats : 13 ✅, 3 🟠 (V1-14, V1-17, V3-11), 5 🔴 (V3-02, V3-12, V3-15, V3-18, V4-15).** Les constats V1-12 (EXIF), V3-07 et V3-08 (signalements) sont classés « après ouverture » ; ils restent sans objet tant que la galerie et la commande « Signaler » sont éteintes.
+> **Total des 21 constats : 14 ✅, 2 🟠 (V1-14, V1-17), 5 🔴 (V3-02, V3-12, V3-15, V3-18, V4-15).** Les constats V1-12 (EXIF), V3-07 et V3-08 (signalements) sont classés « après ouverture » ; ils restent sans objet tant que la galerie et la commande « Signaler » sont éteintes.
 
 **Décision demandée à Maxime pour V3-02, V3-12, V3-15 et V3-18.** Ces quatre corrections sont **déjà dans le code** et ne demandent qu'un interrupteur d'affichage : `LAUNCH_TEXTS_ENABLED` et `NAV_TOWER_ENABLED`, sans migration et sans risque pour les données. Les laisser éteints contredit le produit : la Tour hors du menu, et un visiteur extérieur qui ne sait pas que l'accès est réservé. Je recommande une **exception à la règle** pour ces deux interrupteurs d'affichage. Sinon, ces quatre constats restent rouges.
 
