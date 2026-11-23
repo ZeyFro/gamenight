@@ -1,8 +1,8 @@
 import { NextResponse } from "next/server";
 import { requireAdmin } from "@/lib/admin";
 import { logger } from "@/lib/logger";
+import { checkSharedRateLimit } from "@/lib/shared-rate-limit";
 import { recordSensitiveOperation } from "@/lib/sensitive-operation-log";
-import { checkRateLimit } from "@/lib/rate-limit";
 import { isVercelPreview } from "@/lib/preview-safety";
 import {
   REGISTRATION_SECRET_HEADER,
@@ -38,7 +38,7 @@ export async function POST(request: Request) {
   }
   const admin = await requireAdmin();
   if (!admin) return respond({ error: "unauthorized" }, 401);
-  if (!checkRateLimit(admin.id, "discordCommandRegistration", { limit: 5, windowMs: 60_000 })) {
+  if (!(await checkSharedRateLimit(admin.id, "discordCommandRegistration", { limit: 5, windowMs: 60_000 }))) {
     return respond({ error: "rate_limited" }, 429);
   }
 
