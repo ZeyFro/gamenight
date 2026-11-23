@@ -1,5 +1,6 @@
 "use client";
 
+import { xpLevelLabel } from "@/lib/xp";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import * as Dialog from "@radix-ui/react-dialog";
@@ -80,7 +81,7 @@ export function Sidebar({ user, towerLink = false }: { user: SidebarUser; towerL
           <MotionToggle />
         </div>
       </div>
-      {link("/profil", <><span aria-hidden="true"><Avatar src={user.avatar} alt={user.name} size={38} /></span><span className="min-w-0"><b className="block truncate">{user.name}</b><small className="text-muted">Niveau {user.level} · {user.xp.toLocaleString("fr-FR")} XP</small></span></>, "gn-sidebar-profile")}
+      {link("/profil", <><span aria-hidden="true"><Avatar src={user.avatar} alt={user.name} size={38} /></span><span className="min-w-0"><b className="block truncate">{user.name}</b><small className="text-muted">{xpLevelLabel(user.level)} · {user.xp.toLocaleString("fr-FR")} XP</small></span></>, "gn-sidebar-profile")}
     </>;
   }
   return <>

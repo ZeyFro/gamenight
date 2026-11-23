@@ -2,7 +2,7 @@
 
 import { AnimatedCircularProgressBar } from "@/components/magicui/animated-circular-progress-bar";
 import { MagicCard } from "@/components/magicui/magic-card";
-import { levelForXp, rankForLevel, xpForLevel } from "@/lib/xp";
+import { levelForXp, rankForLevel, xpForLevel, xpLevelLabel } from "@/lib/xp";
 
 export function XpProgress({ xp }: { xp: number }) {
   const level = levelForXp(xp);
@@ -14,7 +14,7 @@ export function XpProgress({ xp }: { xp: number }) {
       <div role="progressbar" aria-label={`Progression vers le niveau ${level + 1}`} aria-valuemin={0} aria-valuemax={next} aria-valuenow={earned} aria-valuetext={`${earned} XP sur ${next}`}>
         <div aria-hidden="true"><AnimatedCircularProgressBar value={percent} gaugePrimaryColor="#b99aff" gaugeSecondaryColor="#3d354a" className="size-28 sm:size-32" /></div>
       </div>
-      <div className="min-w-0"><span className="gn-eyebrow" style={{ color: "var(--gn-lime)" }}>{rankForLevel(level).name}</span><h2>Niveau {level}</h2><b className="text-lg tabular-nums">{xp.toLocaleString("fr-FR")} XP</b><p className="mt-2">{earned} / {next} XP vers le niveau {level + 1}</p></div>
+      <div className="min-w-0"><span className="gn-eyebrow" style={{ color: "var(--gn-lime)" }}>{rankForLevel(level).name}</span><h2>{xpLevelLabel(level)}</h2><b className="text-lg tabular-nums">{xp.toLocaleString("fr-FR")} XP</b><p className="mt-2">{earned} / {next} XP vers le niveau d’XP {level + 1}</p></div>
     </div>
   </MagicCard>;
 }

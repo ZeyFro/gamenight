@@ -6,7 +6,7 @@ import { getMemberStats } from "@/lib/member-stats";
 import { resolveActiveCommunityId } from "@/lib/community-isolation";
 import { getTowerChallengeAppealableAttempts, getTowerChallengeState, getTowerSeasonLeaderboard, getTowerTeamDailyStates } from "@/lib/tower-challenges";
 import { getTowerSchoolSeason } from "@/lib/tower-challenge-seasons";
-import { getTowerProgress } from "@/lib/tower-progression";
+import { levelProgress, rankForLevel, xpLevelLabel } from "@/lib/xp";
 import { prisma } from "@/lib/prisma";
 import { pageMetadata } from "@/lib/page-title";
 import { getTowerReplacementOffer } from "@/lib/tower-challenge-replacement";
@@ -54,7 +54,7 @@ export default async function TowerPage({ searchParams }: { searchParams: Promis
     getTowerChallengeAppealableAttempts({ communityId, userId: user.id }),
     getTowerReplacementOffer({ communityId, userId: user.id }),
   ]);
-  const ascension = getTowerProgress(stats?.xpTotal ?? 0, community?.towerLevelsPerFloor ?? 10);
+  const ascension = levelProgress(stats?.xpTotal ?? 0);
   const season = leaderboard.status === "LEADERBOARD" ? leaderboard.season : getTowerSchoolSeason();
   const currentChallenge = challenges.status === "STATE"
     ? challenges.attempts.find(attempt => attempt.status === "ASSIGNED" || attempt.status === "SUBMITTED")
@@ -89,8 +89,8 @@ export default async function TowerPage({ searchParams }: { searchParams: Promis
     <section className="grid gap-4 md:grid-cols-2" aria-label="Progression personnelle">
       <Card className="flex flex-col gap-3">
         <p className="text-sm font-medium text-accent">Ascension · XP GameNight</p>
-        <h2 className="text-2xl font-semibold text-foreground">Niveau d’XP {ascension.floor}</h2>
-        <p className="text-sm text-muted">Niveau {ascension.level} · {Math.floor(ascension.progress * 100)} % vers le prochain niveau d’XP</p>
+        <h2 className="text-2xl font-semibold text-foreground">{xpLevelLabel(ascension.level)}</h2>
+        <p className="text-sm text-muted">Rang {rankForLevel(ascension.level).name} · {Math.floor(ascension.fraction * 100)} % vers le niveau d’XP {ascension.level + 1} ({ascension.earned.toLocaleString("fr-FR")} / {ascension.needed.toLocaleString("fr-FR")} XP)</p>
         <Link href="/ascension" className="text-sm font-medium text-accent underline-offset-4 hover:underline">Voir le détail de l’ascension →</Link>
       </Card>
       <Card className="flex flex-col gap-3">

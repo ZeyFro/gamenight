@@ -1,12 +1,10 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/current-user";
-import { rankForLevel, titleForLevel } from "@/lib/xp";
-import { getTowerProgress } from "@/lib/tower-progression";
+import { levelProgress, rankForLevel, rankProgress, titleForLevel, xpLevelLabel } from "@/lib/xp";
 import { Card } from "@/components/ui/Card";
 import { pageMetadata } from "@/lib/page-title";
 import { resolveActiveCommunityId } from "@/lib/community-isolation";
-import { prisma } from "@/lib/prisma";
 import { getMemberStats } from "@/lib/member-stats";
 import { TOWER_FLOORS_RESET_NOTICE, isLaunchTextsEnabled } from "@/lib/launch-texts";
 
@@ -24,19 +22,18 @@ export default async function AscensionPage() {
   if (!user) redirect("/");
 
   const communityId = await resolveActiveCommunityId(user.id);
-  const community = communityId
-    ? await prisma.community.findUnique({ where: { id: communityId }, select: { towerLevelsPerFloor: true } })
-    : null;
   const stats = communityId ? await getMemberStats(user.id, communityId) : null;
-  const progress = getTowerProgress(stats?.xpTotal ?? 0, community?.towerLevelsPerFloor ?? 10);
+  const xp = stats?.xpTotal ?? 0;
+  const progress = levelProgress(xp);
   const rank = rankForLevel(progress.level);
+  const rankStep = rankProgress(xp);
 
   return (
     <main className="mx-auto flex w-full max-w-2xl flex-col gap-6 px-4 py-8 sm:px-6 sm:py-12">
       <header>
         <p className="text-sm font-medium text-accent">Ta progression XP</p>
-        <h1 className="mt-1 text-2xl font-semibold text-foreground sm:text-3xl">Niveau d’XP {progress.floor}</h1>
-        <p className="mt-2 text-sm text-muted">Niveau {progress.level} · {titleForLevel(progress.level)} · Rang {rank.name}</p>
+        <h1 className="mt-1 text-2xl font-semibold text-foreground sm:text-3xl">{xpLevelLabel(progress.level)}</h1>
+        <p className="mt-2 text-sm text-muted">{titleForLevel(progress.level)} · Rang {rank.name}</p>
         {isLaunchTextsEnabled() && <p className="mt-2 text-xs text-muted">{TOWER_FLOORS_RESET_NOTICE}</p>}
       </header>
 
@@ -44,21 +41,38 @@ export default async function AscensionPage() {
         <div className="flex items-end justify-between gap-4">
           <div>
             <h2 className="font-semibold text-foreground">Prochain niveau d’XP</h2>
-            <p className="text-sm text-muted">{progress.xpToNextFloor.toLocaleString("fr-FR")} XP restantes</p>
+            <p className="text-sm text-muted">{progress.earned.toLocaleString("fr-FR")} / {progress.needed.toLocaleString("fr-FR")} XP · encore {progress.remaining.toLocaleString("fr-FR")} avant le niveau d’XP {progress.level + 1}</p>
           </div>
-          <p className="text-sm tabular-nums text-muted">{Math.floor(progress.progress * 100)} %</p>
+          <p className="text-sm tabular-nums text-muted">{Math.floor(progress.fraction * 100)} %</p>
         </div>
         <div
           role="progressbar"
-          aria-label={`Progression vers le niveau d’XP ${progress.floor + 1}`}
+          aria-label={`Progression vers le niveau d’XP ${progress.level + 1}`}
           aria-valuemin={0}
           aria-valuemax={100}
-          aria-valuenow={Math.floor(progress.progress * 100)}
+          aria-valuenow={Math.floor(progress.fraction * 100)}
           className="h-3 overflow-hidden rounded-full bg-surface-hover"
         >
-          <div className="h-full rounded-full bg-accent transition-[width]" style={{ width: `${progress.progress * 100}%` }} />
+          <div className="h-full rounded-full bg-accent transition-[width]" style={{ width: `${progress.fraction * 100}%` }} />
         </div>
-        <p className="text-xs text-muted">Chaque niveau d’XP regroupe {community?.towerLevelsPerFloor ?? 10} niveaux. Ton XP existante reste inchangée. Les étages de la Tour, eux, se gagnent par les défis.</p>
+        <p className="text-xs text-muted">Ton XP existante reste inchangée. Les étages de la Tour, eux, se gagnent par les défis.</p>
+      </Card>
+
+      <Card className="flex flex-col gap-3">
+        <div className="flex items-end justify-between gap-4">
+          <div>
+            <h2 className="font-semibold text-foreground">Rang {rank.name}</h2>
+            <p className="text-sm text-muted">
+              {rankStep.next && rankStep.remaining !== null
+                ? `Encore ${rankStep.remaining.toLocaleString("fr-FR")} XP avant le rang ${rankStep.next.name} (${xpLevelLabel(rankStep.next.minLevel)}).`
+                : "Rang maximal atteint."}
+            </p>
+          </div>
+          <p className="text-sm tabular-nums text-muted">{Math.floor(rankStep.fraction * 100)} %</p>
+        </div>
+        <div role="progressbar" aria-label={rankStep.next ? `Progression vers le rang ${rankStep.next.name}` : "Rang maximal"} aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.floor(rankStep.fraction * 100)} className="h-3 overflow-hidden rounded-full bg-surface-hover">
+          <div className="h-full rounded-full bg-accent transition-[width]" style={{ width: `${rankStep.fraction * 100}%` }} />
+        </div>
       </Card>
 
       <section className="flex flex-col gap-3" aria-labelledby="tower-links-title">

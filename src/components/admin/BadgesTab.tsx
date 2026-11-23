@@ -19,8 +19,9 @@ export async function BadgesTab() {
   return (
     <div className="flex flex-col gap-6">
       <p className="text-sm text-muted">
-        Achievements automatiques, débloqués sans action volontaire. Pas de
-        rôle admin dédié : tout le monde peut gérer cette liste.
+        Achievements automatiques, débloqués sans action volontaire. Réservé
+        aux administrateurs du groupe : les autres membres ne peuvent ni voir
+        ni modifier cette liste.
       </p>
 
       <Card>
