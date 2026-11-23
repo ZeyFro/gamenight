@@ -2,6 +2,7 @@ import { listLegacyPublicSessionAnnounces } from "@/lib/legacy-discord-announces
 import { formatDateTimeFr } from "@/lib/wallclock";
 import { Card } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
+import { plural } from "@/lib/plural";
 
 const ROLE_LABELS: Record<string, string> = {
   announce: "Annonce",
@@ -47,8 +48,7 @@ export async function ConfidentialiteTab({ userId }: { userId: string }) {
       </Card>
 
       <p className="text-sm text-muted">
-        {entries.length} entrée{entries.length === 1 ? "" : "s"} sur {sessionCount} soirée
-        {sessionCount === 1 ? "" : "s"}.
+        {entries.length} {plural(entries.length, "entrée")} sur {sessionCount} {plural(sessionCount, "soirée")}.
       </p>
 
       {entries.length === 0 ? (

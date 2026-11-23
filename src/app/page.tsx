@@ -41,6 +41,7 @@ import { ColorDot } from "@/components/ColorDot";
 import { PodiumSpot } from "@/components/PodiumSpot";
 import { PullToRefresh } from "@/components/PullToRefresh";
 import { Stagger, StaggerItem } from "@/components/motion";
+import { plural } from "@/lib/plural";
 
 // Fix bug remonté (certains utilisateurs ne peuvent pas se connecter,
 // erreur "pkceCodeVerifier value could not be parsed" côté serveur) —
@@ -346,12 +347,11 @@ async function HomeContent({
                     <p className="mt-1 truncate text-sm text-muted">
                       {nextSession.decidedGame
                         ? nextSession.decidedGame.name
-                        : `${nextSession.proposals.length} proposition${nextSession.proposals.length === 1 ? "" : "s"}`}
+                        : `${nextSession.proposals.length} ${plural(nextSession.proposals.length, "proposition")}`}
                     </p>
                     {registeredPlayerIds.size > 0 && (
                       <p className="mt-1 text-xs text-muted">
-                        {registeredPlayerIds.size} joueur{registeredPlayerIds.size === 1 ? "" : "s"} inscrit
-                        {registeredPlayerIds.size === 1 ? "" : "s"}
+                        {registeredPlayerIds.size} {plural(registeredPlayerIds.size, "joueur")} {plural(registeredPlayerIds.size, "inscrit")}
                       </p>
                     )}
                   </div>
@@ -387,8 +387,7 @@ async function HomeContent({
                   className="text-lg font-semibold tabular-nums text-foreground"
                 />
                 <p className="text-xs text-muted">
-                  soirée{groupStats.totalSessionsPlayed === 1 ? "" : "s"} jouée
-                  {groupStats.totalSessionsPlayed === 1 ? "" : "s"}
+                  {plural(groupStats.totalSessionsPlayed, "soirée")} {plural(groupStats.totalSessionsPlayed, "jouée")}
                 </p>
               </div>
               <div>
@@ -397,8 +396,7 @@ async function HomeContent({
                   className="text-lg font-semibold tabular-nums text-foreground"
                 />
                 <p className="text-xs text-muted">
-                  joueur{groupStats.activePlayers === 1 ? "" : "s"} actif
-                  {groupStats.activePlayers === 1 ? "" : "s"}
+                  {plural(groupStats.activePlayers, "joueur")} {plural(groupStats.activePlayers, "actif")}
                 </p>
               </div>
               {groupStats.mostPlayedGame && (
@@ -446,8 +444,7 @@ async function HomeContent({
                     🔥 {groupStats.bestActiveStreak.discordName}
                   </p>
                   <p className="text-xs text-muted">
-                    Meilleur streak actif · {groupStats.bestActiveStreak.streakCount} jour
-                    {groupStats.bestActiveStreak.streakCount === 1 ? "" : "s"}
+                    Meilleur streak actif · {groupStats.bestActiveStreak.streakCount} {plural(groupStats.bestActiveStreak.streakCount, "jour")}
                   </p>
                 </div>
               )}

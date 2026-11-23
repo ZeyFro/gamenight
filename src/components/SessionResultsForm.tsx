@@ -4,6 +4,7 @@ import { useState } from "react";
 import { Button } from "@/components/ui/Button";
 import { Avatar } from "@/components/ui/Avatar";
 import { submitSessionResultsAction } from "@/app/sessions/actions/results";
+import { plural } from "@/lib/plural";
 
 export interface ResultParticipant {
   id: string;
@@ -102,7 +103,7 @@ export function SessionResultsForm({
         </ul>
         {absentCount > 0 && (
           <p className="text-xs text-warning">
-            {absentCount} absent{absentCount === 1 ? "" : "s"} — 💀 dette de gage créée.
+            {absentCount} {plural(absentCount, "absent")} — 💀 dette de gage créée.
           </p>
         )}
         <Button type="submit" variant="primary" fullWidthOnMobile>
@@ -169,7 +170,7 @@ export function SessionResultsForm({
 
       {absentCount > 0 && (
         <p className="text-xs text-warning">
-          {absentCount} absent{absentCount === 1 ? "" : "s"} — 💀 dette de gage créée.
+          {absentCount} {plural(absentCount, "absent")} — 💀 dette de gage créée.
         </p>
       )}
 

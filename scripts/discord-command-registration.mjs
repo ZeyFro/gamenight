@@ -138,7 +138,7 @@ export function classify(command, installed) {
  * @typedef {"présente" | "absente" | "différente" | "enregistrée" | "déjà à jour" | "échec" | "en attente"} CommandState
  * @typedef {{ name: string, type: number, status: CommandState }} CommandStatus
  * @typedef {{
- *   stage: "config" | "read" | "write" | "network" | "rate_limit",
+ *   stage: "config" | "read" | "write" | "network" | "rate_limit" | "outside_manifest",
  *   command?: string,
  *   http?: number,
  *   code?: string,
@@ -179,10 +179,14 @@ function bucketWaitMs(response) {
  * en-têtes X-RateLimit-* et de Retry-After (429), au plus `maxAttemptsPerCommand` essais par commande et un budget de
  * temps total : au-delà, arrêt propre avec les commandes restantes « en attente » (jamais de boucle sans fin).
  * En mode execute, le résultat donne TOUJOURS une ligne par commande du manifeste.
+ * Mode `bulk` (« tout enregistrer d’un coup ») : le même GET, puis UN SEUL PUT sur le serveur The Tower
+ * (`PUT /applications/{id}/guilds/{guild}/commands`, jamais l’URL globale) avec le manifeste complet. Un PUT remplace
+ * l’ensemble des commandes de l’application sur ce serveur : il est donc REFUSÉ (aucune écriture, étape
+ * `outside_manifest`) si le serveur porte une commande hors manifeste, qui serait supprimée. Tout est déjà à jour : aucune écriture.
  * Le résultat ne contient JAMAIS le jeton ni aucune valeur de l'environnement : seulement des noms de commandes,
  * des statuts, le statut HTTP, le code Discord numérique et le délai d'attente conseillé.
  * @param {{
- *   mode: "check" | "execute", commands: object[], env: Record<string, string | undefined>, fetchImpl?: typeof fetch,
+ *   mode: "check" | "execute" | "bulk", commands: object[], env: Record<string, string | undefined>, fetchImpl?: typeof fetch,
  *   sleep?: (ms: number) => Promise<void>, now?: () => number, budgetMs?: number, pauseMs?: number,
  *   maxRetryAfterMs?: number, maxAttemptsPerCommand?: number
  * }} input
@@ -227,6 +231,37 @@ export async function registerCommands({
     if (mode === "check") {
       for (const command of commands) statuses.push({ name: command.name, type: command.type ?? 1, status: classify(command, installed) });
       return { ok: true, statuses, outsideManifest, failure: null };
+    }
+
+    if (mode === "bulk") {
+      for (const command of commands) {
+        const upToDate = classify(command, installed) === "présente";
+        statuses.push({ name: command.name, type: command.type ?? 1, status: upToDate ? "déjà à jour" : "en attente" });
+      }
+      // Garde-fou : un PUT supprimerait toute commande du serveur absente du manifeste.
+      if (outsideManifest > 0) {
+        return { ok: false, statuses, outsideManifest, failure: { stage: "outside_manifest", hint: `Le serveur porte ${outsideManifest} commande(s) hors manifeste : un enregistrement en bloc les supprimerait. Aucune écriture faite ; utilise « Enregistrer » (commande par commande), qui ne supprime rien.` } };
+      }
+      if (statuses.every((entry) => entry.status === "déjà à jour")) return { ok: true, statuses, outsideManifest, failure: null };
+      let attempts = 0;
+      for (;;) {
+        attempts += 1;
+        const result = await fetchImpl(endpoint, { method: "PUT", headers, body: JSON.stringify(commands), signal: AbortSignal.timeout(20000) });
+        if (result.status === 429) {
+          const retry = (await retryAfterMs(result)) ?? 5_000;
+          if (attempts >= maxAttemptsPerCommand || retry > maxRetryAfterMs || now() + retry > deadline) {
+            return { ok: false, statuses, outsideManifest, failure: { stage: "rate_limit", http: 429, retryAfterSeconds: Math.max(1, Math.ceil(retry / 1000)), hint: explainFailure(429, "0") } };
+          }
+          await sleep(retry);
+          continue;
+        }
+        if (!result.ok) {
+          for (const entry of statuses) if (entry.status === "en attente") entry.status = "échec";
+          return { ok: false, statuses, outsideManifest, failure: await failureOf("write", result) };
+        }
+        for (const entry of statuses) if (entry.status === "en attente") entry.status = "enregistrée";
+        return { ok: true, statuses, outsideManifest, failure: null };
+      }
     }
 
     // Une ligne par commande dès le départ : « déjà à jour » (sautée) ou « en attente » (à écrire).

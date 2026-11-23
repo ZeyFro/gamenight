@@ -315,6 +315,18 @@ describe.skipIf(!url)("défis solo et votes persistants", () => {
     expect((await api.submitTowerChallengeProof({ ...base, proofText: "Capture jointe" })).status).toBe("PROOF_CODE_REQUIRED");
     expect((await api.submitTowerChallengeProof({ ...base, proofText: "Photo TV : le code est sur l’écran" })).status).toBe("SUBMITTED");
   });
+  it("§9.1 : un défi qui accepte une preuve ancienne l'indique et n'exige pas le code de preuve", async () => {
+    await db.towerChallengeDefinition.update({ where: { id: "tower-a-easy" }, data: { allowsPastProof: true, category: "DECOUVERTE" } });
+    try {
+      const id = await claim();
+      const state = await api.getTowerChallengeState({ ...author, attemptId: id });
+      if (state.status !== "STATE") throw new Error("Fiche de défi attendue");
+      expect(state.attempts[0]).toMatchObject({ allowsPastProof: true, category: "DECOUVERTE" });
+      expect((await api.submitTowerChallengeProof({ ...(await proof(id)), proofText: "Capture de mon meilleur souvenir, prise l'an dernier." })).status).toBe("SUBMITTED");
+    } finally {
+      await db.towerChallengeDefinition.update({ where: { id: "tower-a-easy" }, data: { allowsPastProof: false, category: null } });
+    }
+  });
   it("génère et affiche le code dès l’attribution, puis l’exige dans la description de la preuve", async () => {
     const id = await claim();
     const state = await api.getTowerChallengeState({ ...author, attemptId: id });

@@ -11,6 +11,8 @@ import { RankAvatar } from "@/components/RankAvatar";
 import { ColorDot } from "@/components/ColorDot";
 import { levelForXp, rankForLevel } from "@/lib/xp";
 import { PlayerEquipment } from "@/components/PlayerEquipment";
+import { PlayerMatchingProfile } from "@/components/PlayerMatchingProfile";
+import { isPlayerMatchingEnabled } from "@/lib/player-matching-rules";
 import { GamingIdentifiers } from "@/components/GamingIdentifiers";
 import { getEquippedShopItems } from "@/lib/xp-shop";
 import { writeCommunityIdForUser } from "@/lib/community-stats";
@@ -108,6 +110,7 @@ export default async function PoteLayout({
       </ProfileCosmeticsRoot>
 
       <PlayerEquipment user={pote} />
+      {isPlayerMatchingEnabled() && <PlayerMatchingProfile user={pote} />}
       <GamingIdentifiers user={pote} />
 
       <PoteTabs poteId={id} />

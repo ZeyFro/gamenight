@@ -6,6 +6,7 @@ import { NotifyRecipientsField, type NotifyRecipientCandidate, type NotifyTagOpt
 import { suggestSessionSlotsAction } from "@/app/sessions/actions/suggest-slots";
 import type { SlotSuggestionsResult } from "@/lib/session-slot-data";
 import { formatDateTimeFr, parseDateAndTime } from "@/lib/wallclock";
+import { plural } from "@/lib/plural";
 
 const errors = {
   authentication: "Reconnecte-toi pour chercher un créneau.",
@@ -84,7 +85,7 @@ export function SessionPlanningFields({ potes, tags, minDate, initialDate = "", 
         {result.suggestions.length === 0 ? <p className="text-xs text-muted">Aucun créneau trouvé pour cette durée. Essaie une durée plus courte ou complète les disponibilités.</p> : result.suggestions.map((slot) => <button key={`${slot.date}-${slot.time}`} type="button" aria-pressed={date === slot.date && time === slot.time} onClick={() => { setDate(slot.date); setTime(slot.time); }} className="flex flex-col gap-1 rounded-lg border border-border bg-background p-3 text-left text-xs transition-colors hover:border-accent aria-pressed:border-accent aria-pressed:bg-accent/10">
           <span className="font-semibold capitalize">{formatDateTimeFr(parseDateAndTime(slot.date, slot.time))}</span>
           <span className="text-accent">{slot.availableCount}/{slot.totalParticipants} disponibles jusqu’à {slot.endTime}{slot.endDate !== slot.date ? " le lendemain" : ""}</span>
-          {slot.unknownCount > 0 && <span className="text-muted">{slot.unknownCount} personne{slot.unknownCount > 1 ? "s" : ""} sans disponibilité renseignée{!slot.creatorAvailable ? " · toi aussi, à confirmer" : ""}</span>}
+          {slot.unknownCount > 0 && <span className="text-muted">{slot.unknownCount} {plural(slot.unknownCount, "personne")} sans disponibilité renseignée{!slot.creatorAvailable ? " · toi aussi, à confirmer" : ""}</span>}
         </button>)}
         <p className="text-xs text-muted">Choisir remplit la date et l’heure. La présence reste à confirmer ; la soirée n’est pas créée.</p>
       </div>}
