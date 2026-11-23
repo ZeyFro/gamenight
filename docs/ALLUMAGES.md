@@ -163,10 +163,10 @@
 
 | Variable | Prérequis | Vérifier | Retour arrière |
 | --- | --- | --- | --- |
-| `RETENTION_CLEANUP_ENABLED` + `RETENTION_CLEANUP_MODE` | Q5. **D'abord une semaine sans `MODE`** (simulation), puis `MODE=execute` | `/api/cron/retention-cleanup` rapporte ce qu'il **aurait** supprimé ; relire avant de passer en `execute` | Retirer `MODE` (retour à la simulation) |
-| `WEB_PUSH_ENABLED` + `WEB_PUSH_VAPID_SUBJECT`, `WEB_PUSH_VAPID_PUBLIC_KEY`, `WEB_PUSH_VAPID_PRIVATE_KEY` | Q7. Les clés sont des **secrets** : Maxime les génère et les colle lui-même (Sensitive) | S'abonner sur un appareil, recevoir une notification de test | Supprimer les 4 variables |
-| `SESSION_VIDEO_ENABLED` + `SESSION_MEDIA_BLOB_TOKEN` + galerie du serveur | Q6. Créer un magasin Blob **privé** ; jeton en Sensitive | Ajouter une photo, puis une vidéo de 4 Mo au plus, à une soirée | Supprimer les variables ; désactiver la galerie dans `/admin` |
-| `VOICE_PRESENCE_ENABLED` | Q8. Décision de consentement et de durée (30 jours) | Soirée de test configurée : durées visibles par le créateur seulement | Supprimer la variable (la purge des données continue) |
+| `RETENTION_CLEANUP_ENABLED` + `RETENTION_CLEANUP_MODE` | Q5 : **oui** (23/11). **D'abord une semaine sans `MODE`** (simulation), puis `MODE=execute` | `/api/cron/retention-cleanup` rapporte ce qu'il **aurait** supprimé ; relire avant de passer en `execute` | Retirer `MODE` (retour à la simulation) |
+| `WEB_PUSH_ENABLED` + `WEB_PUSH_VAPID_SUBJECT`, `WEB_PUSH_VAPID_PUBLIC_KEY`, `WEB_PUSH_VAPID_PRIVATE_KEY` | Q7 : **oui** (23/11). Suivre [WEB_PUSH_VAPID.md](WEB_PUSH_VAPID.md) ; la clé privée en **Sensitive** | S'abonner sur un appareil, recevoir une notification de test | Supprimer les 4 variables |
+| ~~`SESSION_VIDEO_ENABLED`~~ | Q6 : **NE PAS ALLUMER** (23/11). Les photos vont sur Discord : poser `DISCORD_PHOTOS_CHANNEL_ID` (salon 📸・photos-soirées) pour afficher le lien sur la page d'une soirée | La page d'une soirée montre « Photos de la soirée sur Discord » | Supprimer `DISCORD_PHOTOS_CHANNEL_ID` |
+| `VOICE_PRESENCE_ENABLED` | Q8 : **oui** (23/11), avec les 4 migrations du vocal (déjà appliquées en Production : 151/151 au relevé du 22/11, à revérifier). Consentement de chacun, durée 30 jours | Soirée de test configurée : durées visibles par le créateur seulement | Supprimer la variable (la purge des données continue) |
 | `RETENTION`… et `CSP_REPORT_ENABLED` | Après la PR sécurité (CSP bloquante) | `/api/csp-report` reçoit des rapports | Supprimer la variable |
 
 ---
