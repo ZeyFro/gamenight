@@ -1,5 +1,5 @@
 /**
- * Politique CSP de GameNight (en-tête `Content-Security-Policy-Report-Only`,
+ * Politique CSP de GameNight (en-tête bloquant `Content-Security-Policy` depuis le 23/11/2026,
  * voir `next.config.ts`). Isolée ici pour être testable.
  *
  * `reportEnabled` (drapeau `CSP_REPORT_ENABLED`, éteint par défaut) ajoute
@@ -34,6 +34,8 @@ export function buildCsp({
     "form-action 'self' https://discord.com https://steamcommunity.com",
     "frame-ancestors 'none'",
   ];
+  // Hors développement : toute ressource http:// est chargée en https://.
+  if (!isDev) directives.push("upgrade-insecure-requests");
   if (reportEnabled) directives.push(`report-uri ${CSP_REPORT_PATH}`);
   return directives.join("; ");
 }
