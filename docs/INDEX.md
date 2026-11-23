@@ -22,6 +22,7 @@
 - [Réponses Discord aux soirées](DISCORD_REPONSES_SOIREES.md).
 - [Commandes Discord The Tower (403, invitation, enregistrement)](DISCORD_COMMANDES.md).
 - [Défis Discord The Tower](tower-challenges.md) — lot préparé en brouillon, activation et enregistrement des commandes séparés.
+- [Audit final du 23/11/2026](AUDIT_FINAL.md) — constats, corrections, restants et ce qui n'a pas pu être vérifié ; détails dans [`audit/`](audit/01-securite-owasp.md).
 - [Audit local du serveur Discord](AUDIT_DISCORD.md) — inventaire REST en lecture seule, sans membres ni messages.
 - [Checklist de préparation](L3-06-preparation-checklist.md) et [galerie vidéo](CLIPS_VIDEO.md).
 - [Architecture The Tower 2.0](TOWER_2_ARCHITECTURE.md) — état vérifié, cible prudente, migration et retour arrière; l’inventaire détaillé reste privé.
