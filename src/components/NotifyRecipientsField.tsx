@@ -40,6 +40,7 @@ export function NotifyRecipientsField({
   fieldName = "notifyUserId",
   label = "Qui prévenir ?",
   onSelectionChange,
+  defaultSelection = "all",
 }: {
   potes: NotifyRecipientCandidate[];
   tags?: NotifyTagOption[];
@@ -48,8 +49,14 @@ export function NotifyRecipientsField({
   label?: string;
   /** Création de soirée : synchronise les destinataires avec les suggestions. */
   onSelectionChange?: (ids: string[]) => void;
+  /**
+   * Cases cochées au départ : `all` (historique : tous les potes, décocher est le geste volontaire) ou `none` (personne : prévenir
+   * est le geste volontaire). « Jouer maintenant » passe `none` quand le centre de notifications est allumé : un seul clic
+   * envoyait 31 MP (audit du nouveau joueur, 21/11/2026), contre la règle « MP seulement pour ce qui vise personnellement le joueur ».
+   */
+  defaultSelection?: "all" | "none";
 }) {
-  const [checked, setChecked] = useState<string[]>(() => potes.map((p) => p.id));
+  const [checked, setChecked] = useState<string[]>(() => (defaultSelection === "none" ? [] : potes.map((p) => p.id)));
 
   function select(ids: string[]) {
     setChecked(ids);
