@@ -11,9 +11,29 @@ import { decide, isIgnorablePath } from "../../scripts/vercel-ignore-build.mjs";
  * modifiés sont prouvés hors application ; au moindre doute on construit.
  */
 
-const PREVIEW = { VERCEL_ENV: "preview", VERCEL_GIT_COMMIT_REF: "feature/x", VERCEL_GIT_COMMIT_SHA: "bbb", VERCEL_GIT_PREVIOUS_SHA: "aaa" };
+const PREVIEW = { VERCEL_ENV: "preview", VERCEL_GIT_COMMIT_REF: "preview/x", VERCEL_GIT_COMMIT_SHA: "bbb", VERCEL_GIT_PREVIOUS_SHA: "aaa" };
 
-describe("decide — logique pure", () => {
+describe("decide — seul main est construit", () => {
+  const PR = { VERCEL_ENV: "preview", VERCEL_GIT_COMMIT_REF: "claude/feature-x", VERCEL_GIT_COMMIT_SHA: "bbb", VERCEL_GIT_PREVIOUS_SHA: "aaa" };
+
+  it("ignore tout aperçu de PR ou de branche, même avec des fichiers applicatifs", () => {
+    expect(decide({ env: PR, changedFiles: ["src/app/page.tsx"] }).skip).toBe(true);
+    expect(decide({ env: { ...PR, VERCEL_GIT_PREVIOUS_SHA: "" }, changedFiles: null }).skip).toBe(true);
+    expect(decide({ env: { ...PR, VERCEL_GIT_COMMIT_MESSAGE: "feat(x): changement" }, changedFiles: ["package.json"] }).skip).toBe(true);
+  });
+
+  it("construit sur demande explicite : branche preview/ ou [preview] dans le message", () => {
+    expect(decide({ env: { ...PR, VERCEL_GIT_COMMIT_REF: "preview/essai" }, changedFiles: ["src/app/page.tsx"] }).skip).toBe(false);
+    expect(decide({ env: { ...PR, VERCEL_GIT_COMMIT_MESSAGE: "feat(x): essai [preview]" }, changedFiles: ["src/app/page.tsx"] }).skip).toBe(false);
+  });
+
+  it("construit toujours main et la production, même sans demande", () => {
+    expect(decide({ env: { ...PR, VERCEL_ENV: "production" }, changedFiles: ["docs/a.md"] }).skip).toBe(false);
+    expect(decide({ env: { ...PR, VERCEL_GIT_COMMIT_REF: "main" }, changedFiles: ["docs/a.md"] }).skip).toBe(false);
+  });
+});
+
+describe("decide — aperçu explicitement demandé (règle de sûreté)", () => {
   it("ignore une Preview dont tous les fichiers sont hors application", () => {
     const result = decide({ env: PREVIEW, changedFiles: ["docs/ETAT.md", ".github/workflows/x.yml", "scripts/neon-test/run.mjs", "README.md", ".claude/hooks/guard.mjs"] });
     expect(result.skip).toBe(true);
@@ -85,7 +105,7 @@ describe("script réel sur un dépôt git jetable", () => {
     put("docs/b.md", "b\n");
     put(".github/workflows/w.yml", "on: push\n");
     const second = commit("docs");
-    const run = exit({ VERCEL_ENV: "preview", VERCEL_GIT_COMMIT_REF: "docs/x", VERCEL_GIT_PREVIOUS_SHA: first, VERCEL_GIT_COMMIT_SHA: second });
+    const run = exit({ VERCEL_ENV: "preview", VERCEL_GIT_COMMIT_REF: "preview/docs/x", VERCEL_GIT_PREVIOUS_SHA: first, VERCEL_GIT_COMMIT_SHA: second });
     expect(run.status).toBe(0);
     expect(run.stdout).toContain("build IGNORÉ");
   });
@@ -93,7 +113,7 @@ describe("script réel sur un dépôt git jetable", () => {
   it("code 1 (construit) quand un fichier applicatif change", () => {
     put("src/app/page.tsx", "changed\n");
     const third = commit("code");
-    const run = exit({ VERCEL_ENV: "preview", VERCEL_GIT_COMMIT_REF: "feat/x", VERCEL_GIT_PREVIOUS_SHA: first, VERCEL_GIT_COMMIT_SHA: third });
+    const run = exit({ VERCEL_ENV: "preview", VERCEL_GIT_COMMIT_REF: "preview/feat/x", VERCEL_GIT_PREVIOUS_SHA: first, VERCEL_GIT_COMMIT_SHA: third });
     expect(run.status).toBe(1);
     expect(run.stdout).toContain("build EXÉCUTÉ");
   });
@@ -103,7 +123,7 @@ describe("script réel sur un dépôt git jetable", () => {
     const before = commit("ajoute moved");
     git("mv", "src/lib/moved.ts", "docs/moved.ts");
     const after = commit("déplace moved vers docs");
-    const run = exit({ VERCEL_ENV: "preview", VERCEL_GIT_COMMIT_REF: "feat/x", VERCEL_GIT_PREVIOUS_SHA: before, VERCEL_GIT_COMMIT_SHA: after });
+    const run = exit({ VERCEL_ENV: "preview", VERCEL_GIT_COMMIT_REF: "preview/feat/x", VERCEL_GIT_PREVIOUS_SHA: before, VERCEL_GIT_COMMIT_SHA: after });
     expect(run.status).toBe(1);
     expect(run.stdout).toContain("src/lib/moved.ts");
   });
@@ -113,13 +133,13 @@ describe("script réel sur un dépôt git jetable", () => {
     const before = commit("ajoute docs/old-name.md");
     git("mv", "docs/old-name.md", "docs/new-name.md");
     const after = commit("renomme dans docs");
-    const run = exit({ VERCEL_ENV: "preview", VERCEL_GIT_COMMIT_REF: "docs/x", VERCEL_GIT_PREVIOUS_SHA: before, VERCEL_GIT_COMMIT_SHA: after });
+    const run = exit({ VERCEL_ENV: "preview", VERCEL_GIT_COMMIT_REF: "preview/docs/x", VERCEL_GIT_PREVIOUS_SHA: before, VERCEL_GIT_COMMIT_SHA: after });
     expect(run.status).toBe(0);
   });
 
   it("code 1 si le SHA précédent n'existe pas dans le clone (clone superficiel) : fail-safe", () => {
     const head = git("rev-parse", "HEAD");
-    const run = exit({ VERCEL_ENV: "preview", VERCEL_GIT_COMMIT_REF: "docs/x", VERCEL_GIT_PREVIOUS_SHA: "0".repeat(40), VERCEL_GIT_COMMIT_SHA: head });
+    const run = exit({ VERCEL_ENV: "preview", VERCEL_GIT_COMMIT_REF: "preview/docs/x", VERCEL_GIT_PREVIOUS_SHA: "0".repeat(40), VERCEL_GIT_COMMIT_SHA: head });
     expect(run.status).toBe(1);
   });
 
@@ -128,6 +148,12 @@ describe("script réel sur un dépôt git jetable", () => {
     const head = commit("docs prod");
     const run = exit({ VERCEL_ENV: "production", VERCEL_GIT_COMMIT_REF: "main", VERCEL_GIT_PREVIOUS_SHA: first, VERCEL_GIT_COMMIT_SHA: head });
     expect(run.status).toBe(1);
+  });
+
+  it("code 0 sur une branche ordinaire, même avec du code applicatif", () => {
+    const run = exit({ VERCEL_ENV: "preview", VERCEL_GIT_COMMIT_REF: "claude/x", VERCEL_GIT_PREVIOUS_SHA: first, VERCEL_GIT_COMMIT_SHA: git("rev-parse", "HEAD") });
+    expect(run.status).toBe(0);
+    expect(run.stdout).toContain("seul main est construit");
   });
 
   it("code 1 hors d'un dépôt git ou sans variables Vercel", () => {

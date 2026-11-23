@@ -23,8 +23,8 @@ export async function MessagesTab() {
         Tirés au hasard pour les rappels avant soirée, et les notifications
         de création/modification de session. Coche les catégories où un
         message peut être utilisé — chaque envoi tire au hasard parmi les
-        messages actifs de sa catégorie. Pas de rôle admin dédié : tout le
-        monde peut gérer cette liste.
+        messages actifs de sa catégorie. Réservé aux administrateurs du groupe :
+        les autres membres ne peuvent ni voir ni modifier cette liste.
       </p>
 
       <Card>

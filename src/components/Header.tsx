@@ -5,7 +5,7 @@ import { getChatMessages } from "@/lib/chat";
 import { Logo } from "@/components/Logo";
 import { Sidebar } from "@/components/app/Sidebar";
 import { Avatar } from "@/components/ui/Avatar";
-import { levelForXp } from "@/lib/xp";
+import { levelForXp, xpLevelLabel } from "@/lib/xp";
 import { isNavTowerEnabled } from "@/lib/launch-texts";
 import { isNotificationCenterEnabled } from "@/lib/game-ping-optin";
 import { NotificationBell, type NotificationItem } from "@/components/NotificationBell";
@@ -70,7 +70,7 @@ async function renderHeader() {
         </div>
         {user && (
           <div className="flex shrink-0 items-center gap-1 max-sm:pointer-coarse:gap-2 sm:gap-3">
-            <Link href="/profil" className="gn-header-xp hidden xl:flex">✦ Niveau {levelForXp(user.xpTotal)} <span className="text-muted">· {user.xpTotal.toLocaleString("fr-FR")} XP</span></Link>
+            <Link href="/profil" className="gn-header-xp hidden xl:flex">✦ {xpLevelLabel(levelForXp(user.xpTotal))} <span className="text-muted">· {user.xpTotal.toLocaleString("fr-FR")} XP</span></Link>
             {currentUser && (
               <ChatPanel
                 key={`chat:${communityId ?? "none"}`}
