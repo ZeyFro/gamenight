@@ -15,7 +15,7 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { pageMetadata } from "@/lib/page-title";
 import { saveWishlistPurchasePlanAction } from "@/app/wishlist/actions";
 
-export const metadata = pageMetadata("Wishlist");
+export const metadata = pageMetadata("À acheter");
 
 const WISHLIST_ERROR_MESSAGES: Record<string, string> = {
   rate_limited: RATE_LIMIT_MESSAGE,

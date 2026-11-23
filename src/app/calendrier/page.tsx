@@ -108,7 +108,7 @@ async function CalendrierContent({
         <p className="gn-eyebrow mb-3">Les bons moments se préparent ici</p>
         <h1 className="text-3xl font-semibold tracking-tight"><AuroraText colors={["#b99aff", "#e3cffc", "#d4ef80"]}>Le calendrier</AuroraText></h1>
         <p className="mt-1 text-sm text-muted">
-          Soirées, roulettes, disponibilités et sorties IGDB connues des jeux attendus de la wishlist.
+          Soirées, roulettes, disponibilités et sorties connues des jeux attendus de la liste « À acheter ».
         </p>
         <a href="/api/calendrier/export" download className="mt-3 inline-block text-sm text-accent underline">
           Télécharger les soirées à venir (.ics)

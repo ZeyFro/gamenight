@@ -2,7 +2,6 @@ import { xpLevelLabel } from "@/lib/xp";
 import Image from "next/image";
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
-import { signOut } from "@/auth";
 import { getCurrentUser } from "@/lib/current-user";
 import { isHomeV2Enabled } from "@/lib/home-v2";
 import { loadHomeData } from "@/lib/home-data";
@@ -75,9 +74,6 @@ export default async function AccueilV2Page() {
               {xpLevelLabel(d.level)} · {d.title} · {d.rank.name}
             </p>
           </div>
-          <ButtonLink href="/guide" variant="ghost" size="sm" className="shrink-0 !px-2">
-            📖 Guide
-          </ButtonLink>
         </ParallaxHeader>
 
         <Stagger className="flex flex-col gap-8" staggerDelay={0.1}>
@@ -490,16 +486,6 @@ export default async function AccueilV2Page() {
           </section>
         </Stagger>
 
-        <form
-          action={async () => {
-            "use server";
-            await signOut();
-          }}
-        >
-          <Button type="submit" variant="ghost" size="sm">
-            Se déconnecter
-          </Button>
-        </form>
       </div>
     </PullToRefresh>
   );

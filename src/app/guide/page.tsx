@@ -50,7 +50,7 @@ const SECTIONS: GuideSection[] = [
     lines: [
       "Chaque participation, vote ou soirée créée rapporte de l'XP.",
       "Progresse à travers les rangs, de Bronze à Légende.",
-      "Débloque des badges pour tes exploits (streak, ancienneté...).",
+      "Débloque des badges pour tes exploits (séries de jours, ancienneté...).",
     ],
   },
   {
@@ -68,6 +68,7 @@ const SECTIONS: GuideSection[] = [
       "GameNight poste dans Discord à chaque étape (création, rappels, clôture).",
       "Choisis qui est mentionné à la création d'une soirée.",
       "Coupe les pings perso depuis ton profil, les messages restent postés.",
+      "Pour interroger le bot (jeux, soirées, profil…), utilise les commandes dans le salon Discord 🤖・commandes-bot.",
     ],
   },
   {

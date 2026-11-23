@@ -248,7 +248,7 @@ export function TournamentGameField({
             >
               {noResults && (
                 <li className="px-3 py-2.5 text-sm text-muted">
-                  Aucun jeu trouvé, ni dans l&apos;appli ni sur IGDB.
+                  Aucun jeu trouvé, ni dans l&apos;appli ni dans la base de jeux.
                 </li>
               )}
 
@@ -276,7 +276,7 @@ export function TournamentGameField({
 
               {igdbResultsToShow.length > 0 && (
                 <li role="presentation" aria-hidden className="px-3 pt-2 pb-1 text-xs font-medium text-faint">
-                  Résultats IGDB
+                  Résultats de la base de jeux
                 </li>
               )}
               {igdbResultsToShow.map((candidate, j) => {

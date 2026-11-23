@@ -10,6 +10,8 @@ import { accessibleSessionWhereFor } from "@/lib/session-access";
 import { formatDateTimeFr, nowMs } from "@/lib/wallclock";
 import { SESSION_STATUS_LABELS } from "@/lib/session-status";
 import { Card } from "@/components/ui/Card";
+import { Button } from "@/components/ui/Button";
+import { signOut } from "@/auth";
 import { FadeInView } from "@/components/ui/FadeInView";
 import { XpEvolutionChart, type XpEvolutionPoint } from "@/components/XpEvolutionChart";
 import { pageMetadata } from "@/lib/page-title";
@@ -225,7 +227,7 @@ export default async function ProfilApercuPage() {
           </Card>
           <Card className="flex flex-col items-center gap-1 p-3 text-center">
             <span className="text-lg font-bold text-foreground">{user.bestStreakCount}</span>
-            <span className="text-[11px] text-muted">Meilleur streak</span>
+            <span className="text-[11px] text-muted">Meilleure série</span>
           </Card>
           <Card className="flex flex-col items-center gap-1 p-3 text-center">
             <span className="text-lg font-bold text-foreground">
@@ -358,6 +360,17 @@ export default async function ProfilApercuPage() {
           </div>
         </section>
       )}
+
+      <form
+        action={async () => {
+          "use server";
+          await signOut();
+        }}
+      >
+        <Button type="submit" variant="ghost" size="sm">
+          Se déconnecter
+        </Button>
+      </form>
     </FadeInView>
   );
 }

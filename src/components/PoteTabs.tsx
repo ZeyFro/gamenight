@@ -7,7 +7,7 @@ import { TabLink } from "@/components/ui/TabLink";
 const TAB_LABELS = [
   { suffix: "", label: "Dispos" },
   { suffix: "/bibliotheque", label: "Bibliothèque" },
-  { suffix: "/tierlist", label: "Tierlist" },
+  { suffix: "/tierlist", label: "Jeux classés" },
   { suffix: "/badges", label: "Badges" },
   { suffix: "/superlatifs", label: "Récompenses" },
 ] as const;

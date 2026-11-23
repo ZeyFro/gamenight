@@ -6,7 +6,7 @@ import { ReadOnlyTierlist, type TierlistRowGame } from "@/components/ReadOnlyTie
 import type { Tier } from "@prisma/client";
 import { pageMetadata } from "@/lib/page-title";
 
-export const metadata = pageMetadata("Tier list d'un pote");
+export const metadata = pageMetadata("Jeux classés d'un pote");
 
 /** Onglet "Tierlist" — voir `../layout.tsx` pour l'en-tête. */
 export default async function PoteTierlistPage({

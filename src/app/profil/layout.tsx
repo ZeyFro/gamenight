@@ -46,7 +46,7 @@ function StreakStatCard({ value }: { value: number }) {
         <CountUp value={value} />
         {value > 0 && <StreakFlame />}
       </span>
-      <span className="text-[11px] text-muted">Streak</span>
+      <span className="text-[11px] text-muted">Série</span>
     </div>
   );
 }

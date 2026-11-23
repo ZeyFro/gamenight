@@ -9,7 +9,7 @@ import { TierlistBoard } from "@/components/TierlistBoard";
 import { pageMetadata } from "@/lib/page-title";
 import { plural } from "@/lib/plural";
 
-export const metadata = pageMetadata("Tier list");
+export const metadata = pageMetadata("Classement des jeux");
 
 /**
  * Tierlist perso (PR 6/9) — classe TOUTE la biblio commune (owned ou non
