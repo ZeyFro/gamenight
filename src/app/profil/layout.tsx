@@ -14,6 +14,7 @@ import { loadViewerBoosterState } from "@/lib/booster-profile";
 import { BannerImage } from "@/components/BannerImage";
 import { ColorDot } from "@/components/ColorDot";
 import { ProfilTabs } from "@/components/ProfilTabs";
+import { ProfilHero } from "@/components/ProfilHero";
 import { CopyProfileLinkButton } from "@/components/CopyProfileLinkButton";
 import { StreakFlame } from "@/components/StreakFlame";
 import { ButtonLink } from "@/components/ui/Button";
@@ -97,6 +98,11 @@ export default async function ProfilLayout({ children }: { children: ReactNode }
 
   return (
     <div className="mx-auto flex w-full gn-profile-shell max-w-6xl flex-col gap-6 pb-8 sm:pb-12">
+      <ProfilHero compact={<div className="flex flex-wrap items-center gap-3 px-4 sm:px-6">
+        <Link href="/profil" className="gn-touch-target relative text-sm text-accent hover:underline">← Aperçu du profil</Link>
+        <span className="text-sm font-semibold text-foreground">{user.discordName}</span>
+        <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${rank.colorClass}`}>{rank.name}</span>
+      </div>}>
       <div className="gn-profile-cover relative overflow-hidden mx-4 sm:mx-6">
         <ShineBorder shineColor={["#b99aff", "#d4ef80"]} aria-hidden="true" />
         {presentation?.bannerFx ? (
@@ -165,6 +171,10 @@ export default async function ProfilLayout({ children }: { children: ReactNode }
           <StreakStatCard value={stats.streakCount} />
         </div>
 
+      </div>
+      </ProfilHero>
+
+      <div className="flex flex-col gap-4 px-4 sm:px-6">
         <ProfilTabs showCustomization={isProfileCustomizationEnabled()} />
 
         {children}

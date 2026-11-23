@@ -22,6 +22,7 @@ import {
   type GameMode,
 } from "@/lib/game-filters";
 import type { GameSource, UserGameSource } from "@prisma/client";
+import { plural } from "@/lib/plural";
 
 /**
  * Bug UX corrigé (remonté en prod, PR 32 2.5/4) : 2 `<input type="range">`
@@ -273,8 +274,7 @@ export function GameFilterDrawer({
 
               <fieldset className="flex flex-col gap-2">
                 <legend className="text-xs font-medium text-muted">
-                  Possédé par au moins {filters.ownedMin} pote
-                  {filters.ownedMin > 1 ? "s" : ""}
+                  Possédé par au moins {filters.ownedMin} {plural(filters.ownedMin, "pote")}
                 </legend>
                 <input
                   type="range"

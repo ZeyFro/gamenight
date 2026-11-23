@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { filterTeamGameOptions, uniqueTeamGameOptions, type TeamGameOption } from "./game-picker-rules";
+import { plural } from "@/lib/plural";
 
 /** Searchable form field; duplicate labels are hidden without deleting records. */
 export function GamePicker({ games }: { games: TeamGameOption[] }) {
@@ -37,7 +38,7 @@ export function GamePicker({ games }: { games: TeamGameOption[] }) {
       </select>
       <p className="text-xs text-muted" role="status">
         {filtered.length === 0 ? "Aucun jeu trouvé. Essaie un autre terme." :
-          `${filtered.length} jeu${filtered.length > 1 ? "x" : ""} disponible${filtered.length > 1 ? "s" : ""}.`}
+          `${filtered.length} ${plural(filtered.length, "jeu", "jeux")} ${plural(filtered.length, "disponible")}.`}
       </p>
     </div>
   );

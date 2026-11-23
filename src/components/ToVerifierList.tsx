@@ -10,6 +10,7 @@ import {
   setToVerifierGamePlayInfo,
   type ToVerifierMode,
 } from "@/app/bibliotheque/actions";
+import { plural } from "@/lib/plural";
 
 export interface ToVerifierGame {
   id: string;
@@ -56,7 +57,7 @@ export function ToVerifierList({ games }: { games: ToVerifierGame[] }) {
   return (
     <div className="flex flex-col gap-3">
       <p className="text-sm font-medium text-foreground">
-        {remaining.length} jeu{remaining.length === 1 ? "" : "x"} à vérifier
+        {remaining.length} {plural(remaining.length, "jeu", "jeux")} à vérifier
       </p>
       <div className="flex flex-col gap-3">
         <AnimatePresence initial={false}>

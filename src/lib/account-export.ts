@@ -164,7 +164,7 @@ export async function buildAccountExport(userId: string, now: Date = new Date())
       id: true, discordId: true, discordName: true, discordAvatar: true, bannerUrl: true, color: true, role: true, createdAt: true,
       steamId64: true, steamPublic: true, steamLastSyncAt: true, psnId: true, xboxGamertag: true, switchFriendCode: true, epicDisplayName: true,
       battleTag: true, riotId: true, preferredGameCategories: true, refusedGameCategories: true, inputDevices: true, availablePlatforms: true,
-      microphoneAvailable: true, silenceReminders: true, soundEnabled: true, onboardingCompleted: true, xpTotal: true, streakCount: true,
+      microphoneAvailable: true, languages: true, playHabits: true, communityPreferences: true, silenceReminders: true, soundEnabled: true, onboardingCompleted: true, xpTotal: true, streakCount: true,
       bestStreakCount: true, lastPlayedGame: true, lastPlayedAt: true,
     },
   });

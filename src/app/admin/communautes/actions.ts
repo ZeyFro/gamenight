@@ -6,6 +6,7 @@ import { requireAdmin } from "@/lib/admin";
 import { checkRateLimit } from "@/lib/rate-limit";
 import { activateCommunity, isCommunityAdminEnabled, parseChannelCategory, setCommunityAttendanceXp, setCommunityChannel, setCommunityGuide, setCommunityFreeGames, setCommunitySteamPriceAlerts, setCommunityGroupPurchasePlans, setCommunityPlayerClassifieds, setCommunityTeams, setCommunityTowerLevelsPerFloor } from "@/lib/community-admin";
 import { setCommunitySessionGallery } from "@/lib/community-admin";
+import { recordSensitiveOperation, type SensitiveOperation } from "@/lib/sensitive-operation-log";
 
 /**
  * Administration des communautés (drapeau COMMUNITY_ADMIN_ENABLED, onglet
@@ -20,6 +21,12 @@ function done(code: string): never {
   redirect(`${BACK}&r=${code}`);
 }
 
+/** Journal des opérations sensibles (cahier §19.1), puis retour à l'onglet avec le même code. */
+async function logged(adminId: string, action: SensitiveOperation, communityId: FormDataEntryValue | null, code: string): Promise<never> {
+  await recordSensitiveOperation({ actorId: adminId, action, communityId: typeof communityId === "string" ? communityId : null, outcome: code });
+  done(code);
+}
+
 export async function activateCommunityAction(formData: FormData): Promise<void> {
   if (!isCommunityAdminEnabled()) redirect("/admin");
   const admin = await requireAdmin();
@@ -28,7 +35,7 @@ export async function activateCommunityAction(formData: FormData): Promise<void>
 
   const communityId = formData.get("communityId");
   if (typeof communityId !== "string" || communityId === "") done("invalid");
-  done(`activate-${await activateCommunity(communityId, admin.id)}`);
+  await logged(admin.id, "community.activate", communityId, `activate-${await activateCommunity(communityId, admin.id)}`);
 }
 
 export async function setCommunityChannelAction(formData: FormData): Promise<void> {
@@ -44,7 +51,7 @@ export async function setCommunityChannelAction(formData: FormData): Promise<voi
     done("invalid");
   }
   const result = await setCommunityChannel({ communityId, category, channelId: channelId.trim() });
-  done(result.ok ? "channel-ok" : `channel-${result.reason}`);
+  await logged(admin.id, "community.channel", formData.get("communityId"), result.ok ? "channel-ok" : `channel-${result.reason}`);
 }
 
 export async function setCommunityGuideAction(formData: FormData): Promise<void> {
@@ -58,7 +65,7 @@ export async function setCommunityGuideAction(formData: FormData): Promise<void>
     rules: formData.get("guideRules"),
     contacts: formData.get("guideContacts"),
   });
-  done(result === "saved" ? "guide-ok" : `guide-${result}`);
+  await logged(admin.id, "community.guide", formData.get("communityId"), result === "saved" ? "guide-ok" : `guide-${result}`);
 }
 
 export async function setCommunityFreeGamesAction(formData: FormData): Promise<void> {
@@ -72,7 +79,7 @@ export async function setCommunityFreeGamesAction(formData: FormData): Promise<v
     communityId: formData.get("communityId"),
     enabled: enabled === "true" ? true : enabled === "false" ? false : null,
   });
-  done(result === "saved" ? "free-games-ok" : `free-games-${result}`);
+  await logged(admin.id, "community.free_games", formData.get("communityId"), result === "saved" ? "free-games-ok" : `free-games-${result}`);
 }
 
 export async function setCommunitySteamPriceAlertsAction(formData: FormData): Promise<void> {
@@ -85,7 +92,7 @@ export async function setCommunitySteamPriceAlertsAction(formData: FormData): Pr
     enabled: formData.get("enabled") === "true",
     threshold: formData.get("threshold"),
   });
-  done(result === "saved" ? "price-alerts-ok" : `price-alerts-${result}`);
+  await logged(admin.id, "community.steam_price_alerts", formData.get("communityId"), result === "saved" ? "price-alerts-ok" : `price-alerts-${result}`);
 }
 
 export async function setCommunityGroupPurchasePlansAction(formData: FormData): Promise<void> {
@@ -98,7 +105,7 @@ export async function setCommunityGroupPurchasePlansAction(formData: FormData): 
     communityId: formData.get("communityId"),
     enabled: enabledValue === "true" ? true : enabledValue === "false" ? false : null,
   });
-  done(result === "saved" ? "purchase-plan-ok" : `purchase-plan-${result}`);
+  await logged(admin.id, "community.group_purchase_plans", formData.get("communityId"), result === "saved" ? "purchase-plan-ok" : `purchase-plan-${result}`);
 }
 
 export async function setCommunityAttendanceXpAction(formData: FormData): Promise<void> {
@@ -112,7 +119,7 @@ export async function setCommunityAttendanceXpAction(formData: FormData): Promis
     bonusXp: formData.get("bonusXp"),
     absencePenaltyXp: formData.get("absencePenaltyXp"),
   });
-  done(result === "saved" ? "attendance-ok" : `attendance-${result}`);
+  await logged(admin.id, "community.attendance_xp", formData.get("communityId"), result === "saved" ? "attendance-ok" : `attendance-${result}`);
 }
 
 export async function setCommunityPlayerClassifiedsAction(formData: FormData): Promise<void> {
@@ -126,7 +133,7 @@ export async function setCommunityPlayerClassifiedsAction(formData: FormData): P
     communityId: formData.get("communityId"),
     enabled: enabled === "true" ? true : enabled === "false" ? false : null,
   });
-  done(result === "saved" ? "classifieds-ok" : `classifieds-${result}`);
+  await logged(admin.id, "community.player_classifieds", formData.get("communityId"), result === "saved" ? "classifieds-ok" : `classifieds-${result}`);
 }
 
 export async function setCommunityTeamsAction(formData: FormData): Promise<void> {
@@ -136,7 +143,7 @@ export async function setCommunityTeamsAction(formData: FormData): Promise<void>
   if (!checkRateLimit(admin.id, "setCommunityTeams")) done("rate");
   const enabled = formData.get("enabled");
   const result = await setCommunityTeams({ communityId: formData.get("communityId"), enabled: enabled === "true" ? true : enabled === "false" ? false : null });
-  done(result === "saved" ? "teams-ok" : `teams-${result}`);
+  await logged(admin.id, "community.teams", formData.get("communityId"), result === "saved" ? "teams-ok" : `teams-${result}`);
 }
 
 export async function setCommunityTowerLevelsPerFloorAction(formData: FormData): Promise<void> {
@@ -148,7 +155,7 @@ export async function setCommunityTowerLevelsPerFloorAction(formData: FormData):
     communityId: formData.get("communityId"),
     levelsPerFloor: formData.get("levelsPerFloor"),
   });
-  done(result === "saved" ? "tower-floor-ok" : `tower-floor-${result}`);
+  await logged(admin.id, "community.tower_levels_per_floor", formData.get("communityId"), result === "saved" ? "tower-floor-ok" : `tower-floor-${result}`);
 }
 
 export async function setCommunitySessionGalleryAction(formData: FormData): Promise<void> {
@@ -160,5 +167,5 @@ export async function setCommunitySessionGalleryAction(formData: FormData): Prom
     communityId: formData.get("communityId"),
     enabled: formData.get("enabled") === "on",
   });
-  done(result === "saved" ? "gallery-ok" : `gallery-${result}`);
+  await logged(admin.id, "community.session_gallery", formData.get("communityId"), result === "saved" ? "gallery-ok" : `gallery-${result}`);
 }

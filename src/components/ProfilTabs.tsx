@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useRef } from "react";
 import { usePathname } from "next/navigation";
 import { TabLink } from "@/components/ui/TabLink";
 
@@ -32,12 +33,15 @@ const TABS = [
  */
 export function ProfilTabs({ showCustomization = false }: { showCustomization?: boolean }) {
   const pathname = usePathname();
+  const bar = useRef<HTMLDivElement>(null);
+  // Sur téléphone la barre défile : l'onglet de la page ouverte doit être visible sans geste.
+  useEffect(() => { bar.current?.querySelector("[aria-current=page]")?.scrollIntoView?.({ inline: "center", block: "nearest" }); }, [pathname]);
   const tabs = showCustomization
     ? [...TABS.slice(0, -1), { href: "/profil/personnalisation", label: "Personnalisation" }, TABS[TABS.length - 1]]
     : TABS;
 
   return (
-    <div className="flex gap-4 overflow-x-auto border-b border-border">
+    <div ref={bar} className="flex gap-4 overflow-x-auto border-b border-border">
       {tabs.map((tab) => (
         <TabLink key={tab.href} href={tab.href} active={pathname === tab.href} layoutId="profil-tabs-underline">
           {tab.label}

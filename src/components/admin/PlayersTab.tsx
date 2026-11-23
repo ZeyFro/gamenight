@@ -13,6 +13,7 @@ import {
 import { XP_REASON_LABELS } from "@/lib/xp-reason-labels";
 import { formatDateTimeFr } from "@/lib/wallclock";
 import type { XpReason } from "@prisma/client";
+import { plural } from "@/lib/plural";
 
 const FIELD_CLASS =
   "w-full rounded-lg border border-border bg-background px-3 py-3 text-base text-foreground placeholder:text-muted focus:border-accent focus:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-background";
@@ -119,7 +120,7 @@ function PlayerCard({ detail, communityId, communityName }: { detail: AdminPlaye
           <strong className={detail.creations.deleted > 0 ? "text-warning" : "text-foreground"}>
             {detail.creations.deleted}
           </strong>{" "}
-          supprimée{detail.creations.deleted > 1 ? "s" : ""} depuis.
+          {plural(detail.creations.deleted, "supprimée")} depuis.
         </p>
       )}
 

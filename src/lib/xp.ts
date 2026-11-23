@@ -71,9 +71,12 @@ export function levelForXp(xp: number): number {
  * demandé) — paliers 1/5/10/20/50/100 fournis, paliers intermédiaires
  * ajoutés pour garder une progression qui "raconte quelque chose" entre
  * deux paliers fournis.
+ *
+ * Palier 1 : « Recrue » (et non « Victime », jugé peu engageant pour un nouveau qui le lit en premier sur
+ * l'accueil, le profil et le classement) ; l'auto-dérision commence à « Noob ».
  */
 const LEVEL_TITLES: { level: number; title: string }[] = [
-  { level: 1, title: "Victime" },
+  { level: 1, title: "Recrue" },
   { level: 5, title: "Noob" },
   { level: 10, title: "PAPED" },
   { level: 15, title: "Habitué" },
