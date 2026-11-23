@@ -23,6 +23,8 @@ import { SkipLink } from "@/components/SkipLink";
 import { ServiceWorkerRegistration } from "@/components/ServiceWorkerRegistration";
 import { isSkipLinkEnabled, SKIP_LINK_TARGET_ID } from "@/lib/skip-link";
 import { getSeasonalTheme } from "@/lib/seasonal-theme";
+import { resolveAppOrigin } from "@/lib/app-url";
+import { siteMetadata } from "@/lib/site-metadata";
 
 const geistSans = DM_Sans({
   variable: "--font-geist-sans",
@@ -38,9 +40,15 @@ const geistMono = Geist_Mono({
 
 // PWA : manifest et méta Apple pour l'installation ; le service worker ne
 // garde qu'une page hors-ligne statique, jamais de contenu de compte.
+// Aperçu du lien dans Discord (audit du 23/11/2026, constats 3.1 à 3.3) : un robot non connecté ne voit que la page de connexion,
+// donc UNIQUEMENT des métadonnées statiques et publiques ; jamais de titre de soirée privée. `metadataBase` vient des variables
+// que Vercel injecte (aucune valeur codée en dur) ; absente (dev local), Next retombe sur son comportement par défaut.
 export const metadata: Metadata = {
-  title: { default: "GameNight", template: "%s · GameNight" },
-  description: "Organise tes soirées jeux avec tes potes.",
+  ...siteMetadata(resolveAppOrigin({
+    VERCEL_ENV: process.env.VERCEL_ENV,
+    VERCEL_URL: process.env.VERCEL_URL,
+    VERCEL_PROJECT_PRODUCTION_URL: process.env.VERCEL_PROJECT_PRODUCTION_URL,
+  })),
   manifest: "/manifest.json",
   appleWebApp: {
     capable: true,
