@@ -4362,3 +4362,20 @@ model AccountDeletionLog {
   @@index([userId])
   @@index([createdAt])
 }
+
+// Cahier §19.1 : journal des opérations sensibles (actions d'administration), écrit par
+// `src/lib/sensitive-operation-log.ts`, lu sur /admin/journal. Sans relation (survit à l'anonymisation d'un compte),
+// sans texte saisi : action, cible technique, résultat.
+model SensitiveOperationLog {
+  id          String   @id @default(cuid())
+  actorId     String?
+  action      String   @db.VarChar(64)
+  // Communauté concernée, à titre d'information : journal transversal d'administration, jamais filtré par communauté.
+  communityRef String?
+  target      String?  @db.VarChar(191)
+  outcome     String   @db.VarChar(64)
+  createdAt   DateTime @default(now())
+
+  @@index([createdAt])
+  @@index([action, createdAt])
+}
