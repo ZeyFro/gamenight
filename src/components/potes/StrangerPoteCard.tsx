@@ -23,7 +23,7 @@ export async function StrangerPoteCard({ viewerId, poteId }: { viewerId: string;
   if (!user) return null;
   return (
     <div className="mx-auto flex w-full max-w-2xl flex-col gap-4 px-4 py-8 sm:px-6 sm:py-12">
-      <Link href="/potes" className="text-sm text-accent">← Potes</Link>
+      <Link href="/potes" className="gn-touch-target relative text-sm text-accent">← Potes</Link>
       <Card>
         <div className="flex flex-wrap items-center justify-between gap-4">
           <div className="flex items-center gap-3">

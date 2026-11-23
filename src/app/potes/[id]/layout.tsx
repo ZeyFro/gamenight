@@ -85,8 +85,8 @@ export default async function PoteLayout({
         poteId={id}
         compact={
           <div className="flex flex-wrap items-center gap-3">
-            <Link href="/potes" className="text-sm text-muted hover:text-foreground hover:underline">← Potes</Link>
-            <Link href={`/potes/${id}`} className="text-sm text-accent hover:underline">Aperçu de {pote.discordName}</Link>
+            <Link href="/potes" className="gn-touch-target relative text-sm text-muted hover:text-foreground hover:underline">← Potes</Link>
+            <Link href={`/potes/${id}`} className="gn-touch-target relative text-sm text-accent hover:underline">Aperçu de {pote.discordName}</Link>
             <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${rank.colorClass}`}>{rank.name}</span>
           </div>
         }
@@ -94,7 +94,7 @@ export default async function PoteLayout({
       <ProfileCosmeticsRoot view={presentation}>
         <Link
           href="/potes"
-          className="text-sm text-muted hover:text-foreground hover:underline"
+          className="gn-touch-target relative text-sm text-muted hover:text-foreground hover:underline"
         >
           ← Potes
         </Link>

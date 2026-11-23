@@ -299,7 +299,7 @@ export default async function ProfilApercuPage() {
       <section className="flex flex-col gap-2">
         <div className="flex items-center justify-between">
           <h2 className="text-sm font-semibold text-muted">Récompenses récentes</h2>
-          <Link href="/profil/superlatifs" className="text-xs text-accent hover:underline">
+          <Link href="/profil/superlatifs" className="gn-touch-target relative text-xs text-accent hover:underline">
             Voir tout →
           </Link>
         </div>
