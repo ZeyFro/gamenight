@@ -2,10 +2,12 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/current-user";
 import { getCommunityTeamsCommunityId, listCommunityTeams } from "@/lib/community-teams";
-import { transferCommunityTeamCaptainAction, dissolveCommunityTeamAction, saveTeamRecruitmentCriteriaAction } from "../actions";
+import { transferCommunityTeamCaptainAction, dissolveCommunityTeamAction, saveTeamRecruitmentCriteriaAction, setCommunityTeamIdentityAction } from "../actions";
+import { TEAM_EMBLEMS, safeTeamColor } from "@/lib/team-identity";
 import { listTeamRecruitmentCriteria } from "@/lib/team-recruitment-criteria";
 import { isTeamRecruitmentCriteriaEnabled } from "@/lib/team-recruitment-criteria-rules";
 import { TeamCriteriaForm } from "../TeamCriteria";
+import { TeamBadge } from "../TeamBadge";
 import { pageMetadata } from "@/lib/page-title";
 import { isTeamRecruitersEnabled, MAX_TEAM_RECRUITERS } from "@/lib/team-recruiters-rules";
 import { listGuestInviteOptions, listTeamGuests, listTeamRecruiters } from "@/lib/team-recruiters";
@@ -15,7 +17,7 @@ export const metadata = pageMetadata("Gérer mes équipes");
 
 const RESULTS: Record<string, string> = {
   saved: "Critères de recrutement enregistrés.", cleared: "Critères de recrutement effacés.", forbidden: "Seul le responsable de l’équipe peut modifier ses critères.", missing: "Équipe introuvable.",
-  rate: "Trop de demandes, réessaie dans une minute.",
+  rate: "Trop de demandes, réessaie dans une minute.", identity_saved: "Couleur et emblème enregistrés.",
   transferred: "Capitanat transmis.", dissolved: "Équipe dissoute, historique conservé.",
   active_challenges: "Impossible : un défi de cette équipe est encore en cours.",
   recruiter_added: "Recruteur nommé.", recruiter_removed: "Recruteur retiré.", recruiter_limit: `Deux recruteurs au plus par équipe.`,
@@ -48,8 +50,26 @@ export default async function CommunityTeamManagementPage({ searchParams }: { se
     <p className="text-sm text-muted">La passation conserve le créateur historique. Une dissolution libère les membres, mais conserve les preuves et bloque une nouvelle adhésion pendant sept jours.</p>
     {captained.length === 0 && <p>Tu n’es capitaine d’aucune équipe active.</p>}
     {captained.map(team => <section key={team.id} className="rounded-lg border border-border p-4">
-      <h2 className="font-semibold">{team.name}</h2>
+      <h2 className="font-semibold"><TeamBadge color={team.color} emblem={team.emblem} />{team.name}</h2>
       {extras.get(team.id) && <RecruiterAndGuestSections teamId={team.id} members={team.members.filter(member => member.userId !== user.id)} extra={extras.get(team.id)!} />}
+      <form action={setCommunityTeamIdentityAction} className="mt-4 grid gap-3 border-b border-border pb-4">
+        <input type="hidden" name="teamId" value={team.id} />
+        <h3 className="font-medium">Couleur et emblème</h3>
+        <p className="text-sm text-muted">Affichés à côté du nom de l’équipe. Seul le capitaine les choisit.</p>
+        <div className="flex flex-wrap items-end gap-4">
+          <label className="grid gap-1">Couleur
+            <input type="color" name="color" defaultValue={safeTeamColor(team.color) ?? "#6366f1"} className="h-11 w-20 rounded-lg border border-border bg-background p-1" />
+          </label>
+          <label className="flex items-center gap-2 text-sm"><input type="checkbox" name="noColor" defaultChecked={!safeTeamColor(team.color)} /> Sans couleur</label>
+          <label className="grid gap-1">Emblème
+            <select name="emblem" defaultValue={team.emblem ?? ""} className="rounded-lg border border-border bg-background p-3">
+              <option value="">Aucun</option>
+              {TEAM_EMBLEMS.map(emblem => <option key={emblem} value={emblem}>{emblem}</option>)}
+            </select>
+          </label>
+        </div>
+        <button type="submit" className="rounded-lg border border-border px-4 py-2">Enregistrer</button>
+      </form>
       {isTeamRecruitmentCriteriaEnabled() && <TeamCriteriaForm teamId={team.id} action={saveTeamRecruitmentCriteriaAction} criteria={criteriaByTeam.get(team.id)} />}
       <form action={transferCommunityTeamCaptainAction} className="mt-4 grid gap-3">
         <input type="hidden" name="teamId" value={team.id} />

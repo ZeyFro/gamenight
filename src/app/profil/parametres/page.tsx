@@ -19,6 +19,8 @@ import { CursorTrailToggle } from "@/components/CursorTrailToggle";
 import { GamePreferencesForm } from "@/components/GamePreferencesForm";
 import { visiblePreferenceGames } from "@/lib/game-suggestions";
 import { PlayerEquipmentForm } from "@/components/PlayerEquipmentForm";
+import { PlayerMatchingForm } from "@/components/PlayerMatchingForm";
+import { isPlayerMatchingEnabled } from "@/lib/player-matching-rules";
 import { RATE_LIMIT_MESSAGE } from "@/lib/rate-limit";
 import { GAMING_IDENTIFIER_FIELDS } from "@/lib/gaming-identifiers";
 import { CONNECTION_LABELS, CONNECTION_TARGETS, isDiscordConnectionsScopeEnabled, prefillIdentifier, type ConnectionPlatform } from "@/lib/discord-connections";
@@ -127,6 +129,7 @@ export default async function ProfilParametresPage({
     notifications?: string;
     gouts?: string;
     materiel?: string;
+    habitudes?: string;
     identifiants?: string;
     connexions?: string;
     niveaux?: string;
@@ -136,7 +139,7 @@ export default async function ProfilParametresPage({
   const user = await getCurrentUser();
   if (!user) redirect("/");
 
-  const { steam, count, upload, family, new: newCount, notifications, gouts, materiel, identifiants, connexions, niveaux, style } = await searchParams;
+  const { steam, count, upload, family, new: newCount, notifications, gouts, materiel, habitudes, identifiants, connexions, niveaux, style } = await searchParams;
   const connectionsEnabled = isDiscordConnectionsScopeEnabled();
   const suggestions = connectionsEnabled
     ? await prisma.platformConnectionSuggestion.findMany({ where: { userId: user.id }, select: { platform: true, value: true } })
@@ -194,6 +197,7 @@ export default async function ProfilParametresPage({
       </Card></StaggerItem>
       <StaggerItem><GamePreferencesForm user={user} games={preferenceGames} refusals={gameRefusals} feedback={gouts} /></StaggerItem>
       <StaggerItem><PlayerEquipmentForm user={user} feedback={materiel} /></StaggerItem>
+      {isPlayerMatchingEnabled() && <StaggerItem><PlayerMatchingForm user={user} feedback={habitudes} /></StaggerItem>}
       {connectionsEnabled && <StaggerItem>
         <Card className="flex flex-col gap-3">
           <h2 className="font-semibold">Importer mes comptes de jeu depuis Discord</h2>

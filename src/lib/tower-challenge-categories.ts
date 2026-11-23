@@ -1,0 +1,158 @@
+// Catégories de variété des défis (cahier §8.5), par titre : appliquées à l'import du catalogue.
+// Garde : tower-challenge-categories.test.ts (chaque défi des packs a une catégorie, et les 9 catégories sont couvertes).
+export const TOWER_CHALLENGE_CATEGORIES = {
+  GAMING: "Gaming",
+  CREATIF: "Créatif",
+  ARTISTIQUE: "Artistique",
+  ABSURDE: "Absurde",
+  HUMOUR: "Humoristique",
+  COOPERATION: "Coopération",
+  DECOUVERTE: "Découverte",
+  LONGUE_DUREE: "Longue durée",
+  HORS_JEU: "Hors jeu",
+} as const;
+
+export type TowerChallengeCategory = keyof typeof TOWER_CHALLENGE_CATEGORIES;
+
+const BY_TITLE = new Map<string, TowerChallengeCategory>([
+  ["Le guide touristique du chaos", "HUMOUR"],
+  ["La légende de l’objet banal", "ABSURDE"],
+  ["La victoire la moins glorieuse", "HUMOUR"],
+  ["Le trophée invisible", "GAMING"],
+  ["Le musée du plan foireux", "HUMOUR"],
+  ["La critique cinq étoiles", "HUMOUR"],
+  ["Carte postale de nulle part", "ARTISTIQUE"],
+  ["Le boss du rien", "ABSURDE"],
+  ["Zoom sur le détail", "DECOUVERTE"],
+  ["Le détour diplomatique", "GAMING"],
+  ["Un mot, tout un jeu", "CREATIF"],
+  ["Le podium des pires idées", "HUMOUR"],
+  ["Le jeu gratuit du soir", "DECOUVERTE"],
+  ["Le menu digne du musée", "ARTISTIQUE"],
+  ["Première découverte gratuite", "DECOUVERTE"],
+  ["La carte postale gratuite", "ARTISTIQUE"],
+  ["L'astuce qui ne coûte rien", "DECOUVERTE"],
+  ["Le guide des trois obstacles", "GAMING"],
+  ["L'expédition de la seconde chance", "GAMING"],
+  ["L'enquête des cinq détails", "DECOUVERTE"],
+  ["Le défi de patience raisonnée", "GAMING"],
+  ["Le reportage des trois actes", "CREATIF"],
+  ["Premier contact GameNight", "COOPERATION"],
+  ["Le passeur de jeu", "DECOUVERTE"],
+  ["La soirée surprise", "COOPERATION"],
+  ["Le duo de l’inconnu", "COOPERATION"],
+  ["Une cabane avant la nuit", "CREATIF"],
+  ["Le premier matin de la saison", "GAMING"],
+  ["Une récolte tranquille", "GAMING"],
+  ["Le décor du jour", "ARTISTIQUE"],
+  ["L’équipement dépareillé", "HUMOUR"],
+  ["Trois minutes d’exploration", "DECOUVERTE"],
+  ["Le point de vue du jour", "ARTISTIQUE"],
+  ["Le premier niveau, vraiment", "GAMING"],
+  ["Un succès sans prétention", "GAMING"],
+  ["La playlist de la partie", "ARTISTIQUE"],
+  ["L’animal du village", "HUMOUR"],
+  ["Le coffre du débutant", "GAMING"],
+  ["Un screen de qualité", "ARTISTIQUE"],
+  ["Quatre blocs, un monument", "CREATIF"],
+  ["Le raccourci que tu connais", "GAMING"],
+  ["Une partie pour le plaisir", "GAMING"],
+  ["Le recoin secret", "DECOUVERTE"],
+  ["La découverte du dimanche", "DECOUVERTE"],
+  ["Le sac à dos honnête", "HUMOUR"],
+  ["Le premier pas hors des sentiers", "DECOUVERTE"],
+  ["La ferme automatique minimaliste", "CREATIF"],
+  ["Une nuit de survie", "GAMING"],
+  ["Le village habité", "CREATIF"],
+  ["Dix minutes de speedrun du coin", "GAMING"],
+  ["Le duel amical contre l’IA", "GAMING"],
+  ["Un classement à ta portée", "GAMING"],
+  ["Le mode inconnu, version sérieuse", "DECOUVERTE"],
+  ["La construction thématique", "CREATIF"],
+  ["Le tutoriel que personne ne lit", "GAMING"],
+  ["Le défi sans carte", "GAMING"],
+  ["Le jeu coopératif en solo", "GAMING"],
+  ["Deux heures, une histoire", "LONGUE_DUREE"],
+  ["Le collectionneur du soir", "GAMING"],
+  ["L’architecte du minimalisme", "CREATIF"],
+  ["La route la plus longue", "LONGUE_DUREE"],
+  ["Une défaite instructive", "GAMING"],
+  ["La recette inventée", "CREATIF"],
+  ["Le tour du propriétaire", "CREATIF"],
+  ["Le défi des trois ennemis", "GAMING"],
+  ["Le tutoriel inversé", "CREATIF"],
+  ["Une partie d’avance", "GAMING"],
+  ["La mission sans mourir", "GAMING"],
+  ["Le jeu gratuit à découvrir", "DECOUVERTE"],
+  ["Le pas de côté", "GAMING"],
+  ["Défi de précision", "GAMING"],
+  ["La grande construction", "CREATIF"],
+  ["Le marathon de l’exploration", "LONGUE_DUREE"],
+  ["La victoire en difficile", "GAMING"],
+  ["Le défi sans dégâts", "GAMING"],
+  ["La série invaincue", "GAMING"],
+  ["Le projet de mini-jeu", "CREATIF"],
+  ["La session sans HUD", "ABSURDE"],
+  ["Le trio d’objectifs", "GAMING"],
+  ["L’expédition longue durée", "LONGUE_DUREE"],
+  ["Le défi du jeu oublié", "DECOUVERTE"],
+  ["La création de A à Z", "ARTISTIQUE"],
+  ["Le guide du jeu pour les nouveaux", "CREATIF"],
+  ["Le challenge sans arme principale", "GAMING"],
+  ["Le jeu compétitif en progression", "LONGUE_DUREE"],
+  ["La nuit de l’inattendu", "ABSURDE"],
+  ["Le comité des architectes douteux", "HUMOUR"],
+  ["La mission avec un plan trop ambitieux", "HUMOUR"],
+  ["Le musée des décisions collectives", "COOPERATION"],
+  ["Le boss nommé par le conseil", "HUMOUR"],
+  ["La stratégie votée à main levée", "COOPERATION"],
+  ["La photo de classe du jeu", "COOPERATION"],
+  ["Les experts du détail inutile", "ABSURDE"],
+  ["La cérémonie de la victoire modeste", "COOPERATION"],
+  ["Le salut de l’escouade", "COOPERATION"],
+  ["Le mini-objectif collectif", "COOPERATION"],
+  ["La photo d’équipe en pleine action", "COOPERATION"],
+  ["Le rituel d’avant-partie", "HUMOUR"],
+  ["Un point de ralliement", "COOPERATION"],
+  ["Le nom de l’escouade du jour", "HUMOUR"],
+  ["La partie courte à plusieurs", "COOPERATION"],
+  ["La découverte à deux voix", "DECOUVERTE"],
+  ["La ville construite à plusieurs", "CREATIF"],
+  ["La mission coopérative de la soirée", "COOPERATION"],
+  ["Le match amical", "GAMING"],
+  ["Le relais des ressources", "COOPERATION"],
+  ["L’exposition de l’équipe", "ARTISTIQUE"],
+  ["La stratégie improvisée", "COOPERATION"],
+  ["Le tournoi express", "GAMING"],
+  ["Le jeu d’un autre", "DECOUVERTE"],
+  ["Le monument commémoratif", "CREATIF"],
+  ["Le gros chantier collectif", "LONGUE_DUREE"],
+  ["L’expédition d’équipe", "LONGUE_DUREE"],
+  ["La victoire en difficulté haute", "GAMING"],
+  ["La série d’équipe", "COOPERATION"],
+  ["Le projet créatif commun", "CREATIF"],
+  ["Le dessin du héros", "HORS_JEU"],
+  ["La figurine fait maison", "HORS_JEU"],
+  ["Le souvenir de jeu", "DECOUVERTE"],
+]);
+
+/** Catégorie d'un défi du catalogue d'après son titre (insensible à la casse), ou null s'il n'est pas classé. */
+export function towerChallengeCategoryOf(title: string): TowerChallengeCategory | null {
+  const exact = BY_TITLE.get(title);
+  if (exact) return exact;
+  const lower = title.trim().toLowerCase();
+  for (const [known, category] of BY_TITLE) if (known.toLowerCase() === lower) return category;
+  return null;
+}
+
+/** Libellé affiché d'une catégorie stockée (valeur inconnue ou vide : null). */
+export function towerChallengeCategoryLabel(category: string | null | undefined): string | null {
+  return category && category in TOWER_CHALLENGE_CATEGORIES ? TOWER_CHALLENGE_CATEGORIES[category as TowerChallengeCategory] : null;
+}
+
+/** Mention explicite de la règle de preuve d'un défi (cahier §9.1). */
+export function towerProofRuleNotice(allowsPastProof: boolean | null | undefined): string {
+  return allowsPastProof
+    ? "Preuve ancienne acceptée : ce défi accepte une réalisation antérieure à son attribution, sans code de preuve."
+    : "Preuve postérieure à l'attribution du défi, avec le code de preuve.";
+}

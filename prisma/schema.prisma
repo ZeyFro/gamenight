@@ -144,6 +144,10 @@ model User {
   inputDevices             String[]  @default([])
   availablePlatforms       String[]  @default([])
   microphoneAvailable      Boolean?
+  // §12.2 : langues parlées, habitudes de jeu, préférences d'ambiance (clés de src/lib/player-matching-rules.ts).
+  languages                String[]  @default([])
+  playHabits               String[]  @default([])
+  communityPreferences     String[]  @default([])
   // Fix bug remonté (biblio Steam auto-sync) — posé par `importSteamLibrary`
   // à CHAQUE appel (lien initial, bouton "Réimporter", cron quotidien,
   // resync Family) : source de vérité unique pour "Dernière sync : il y a
@@ -3301,6 +3305,9 @@ model CommunityTeam {
   platform    String   @db.VarChar(40)
   maxMembers  Int
   isRecruiting Boolean @default(true)
+  // §11.2 : identité visuelle choisie par le capitaine (couleur #RRGGBB, emblème parmi TEAM_EMBLEMS).
+  color String? @db.VarChar(7)
+  emblem String? @db.VarChar(16)
   captainLastActivityAt DateTime @default(now())
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
@@ -3970,6 +3977,10 @@ model TowerChallengeDefinition {
   measureAppId Int?
   measureTarget Int?
   measureAchievement String? @db.VarChar(100)
+  // §9.1 : vrai = une preuve antérieure à l’attribution est acceptée (le code de preuve n’est pas exigé), affiché explicitement.
+  allowsPastProof Boolean @default(false)
+  // §8.5 : catégorie de variété (GAMING, CREATIF, ARTISTIQUE, ABSURDE, HUMOUR, COOPERATION, DECOUVERTE, LONGUE_DUREE, HORS_JEU).
+  category String? @db.VarChar(30)
   attempts TowerChallengeAttempt[]
 
   @@unique([id, communityId])
@@ -4361,4 +4372,32 @@ model AccountDeletionLog {
 
   @@index([userId])
   @@index([createdAt])
+}
+
+// Limitation de débit partagée entre instances (src/lib/shared-rate-limit.ts), actions sensibles seulement.
+// Fenêtre fixe ; lignes expirées supprimées au fil des appels. Sans relation, aucune donnée personnelle.
+model RateLimitWindow {
+  key         String   @db.VarChar(255)
+  windowStart DateTime
+  count       Int      @default(0)
+
+  @@id([key, windowStart])
+  @@index([windowStart])
+}
+
+// Cahier §19.1 : journal des opérations sensibles (actions d'administration), écrit par
+// `src/lib/sensitive-operation-log.ts`, lu sur /admin/journal. Sans relation (survit à l'anonymisation d'un compte),
+// sans texte saisi : action, cible technique, résultat.
+model SensitiveOperationLog {
+  id          String   @id @default(cuid())
+  actorId     String?
+  action      String   @db.VarChar(64)
+  // Communauté concernée, à titre d'information : journal transversal d'administration, jamais filtré par communauté.
+  communityRef String?
+  target      String?  @db.VarChar(191)
+  outcome     String   @db.VarChar(64)
+  createdAt   DateTime @default(now())
+
+  @@index([createdAt])
+  @@index([action, createdAt])
 }

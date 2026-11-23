@@ -8,6 +8,8 @@ vi.mock("@/lib/admin", () => ({ requireAdmin }));
 vi.mock("@/lib/community-stats", () => ({ writeCommunityIdForUser }));
 vi.mock("@/lib/rate-limit", async (original) => ({ ...(await original<typeof import("@/lib/rate-limit")>()), checkRateLimit }));
 vi.mock("next/cache", () => ({ revalidatePath }));
+const recordSensitiveOperation = vi.hoisted(() => vi.fn());
+vi.mock("@/lib/sensitive-operation-log", () => ({ recordSensitiveOperation }));
 vi.mock("@/lib/admin-xp", async (original) => ({ ...(await original<typeof import("@/lib/admin-xp")>()), applyXpAdjustment }));
 
 import { adjustPlayerXpAction } from "./actions";
@@ -71,5 +73,11 @@ describe("adjustPlayerXpAction", () => {
     applyXpAdjustment.mockResolvedValue({ ok: false, reason: "stale" });
     expect(await adjustPlayerXpAction(form(valid))).toEqual({ ok: false, error: "stale" });
     expect(revalidatePath).toHaveBeenCalledWith("/admin");
+  });
+
+  it("journalise la correction d'XP (cahier 19.1) : auteur, communauté, joueur visé, résultat", async () => {
+    applyXpAdjustment.mockResolvedValueOnce({ ok: true });
+    await adjustPlayerXpAction(form(valid));
+    expect(recordSensitiveOperation).toHaveBeenCalledWith({ actorId: "admin1", action: "player.xp_adjust", communityId: "c1", target: "u1", outcome: "ok" });
   });
 });
