@@ -214,6 +214,63 @@
 
 ---
 
+## Pour ChatGPT
+
+Étapes exactes, à faire dans cet ordre, **sans jamais écrire une valeur de secret dans le dépôt, un commentaire de PR ou une conversation** (la valeur reste dans Vercel et dans le coffre de mots de passe de Maxime). Production : `https://gamenight-zeyfro.vercel.app`.
+
+### (a) Nouveau secret `FORCE_RELOGIN_SECRET` (route `POST /api/admin/force-relogin`)
+
+Pourquoi : avant, cette route (déconnexion de tous les membres) s'ouvrait avec `CRON_SECRET`, partagé avec tous les jobs cron-job.org ; la fuite d'un seul job permettait de déconnecter tout le monde. Depuis la PR « secret dédié », **`CRON_SECRET` n'ouvre plus cette route** et, sans `FORCE_RELOGIN_SECRET`, elle répond **503 (désactivée)**. Le bouton « Forcer la reconnexion » de `/admin?tab=reglages` ne dépend pas de ce secret.
+
+1. **Nom exact de la variable** : `FORCE_RELOGIN_SECRET`.
+2. **Générer la valeur** (sur un poste de confiance, jamais dans une conversation) : `openssl rand -base64 48`. La valeur doit être **différente** de `CRON_SECRET`, `AUTH_SECRET` et de tout autre secret.
+3. **Vercel → Project gamenight → Settings → Environment Variables → Add** : nom `FORCE_RELOGIN_SECRET`, valeur générée, environnement **Production uniquement** (pas Preview : la route est de toute façon bloquée sur Preview), marquer **Sensitive** si proposé.
+4. **Redéployer la production** (Deployments → dernier déploiement de `main` → Redeploy) : une variable ajoutée n'agit qu'au déploiement suivant.
+5. **Vérifier** (la commande ne doit RIEN déconnecter, donc ne la lancer qu'avec un faux secret) :
+   - `curl -s -o /dev/null -w '%{http_code}\n' -X POST -H 'Authorization: Bearer faux' https://gamenight-zeyfro.vercel.app/api/admin/force-relogin` → **401** (secret configuré, mauvais en-tête). Un **503** veut dire que la variable n'est pas prise en compte (pas redéployé, mauvais environnement ou mauvais nom).
+   - Ne PAS tester avec le vrai secret : cela déconnecterait tous les membres.
+6. **Ailleurs** : rien d'autre à changer (aucun script, workflow ni job cron-job.org n'appelle cette route ; vérifié dans le dépôt). Noter dans le journal ci-dessous la date, sans la valeur. **Rotation** : refaire les étapes 2 à 4 (la nouvelle valeur remplace l'ancienne) ; à faire si le secret a pu fuir.
+
+### (b) Tâches cron-job.org (à créer ou à vérifier)
+
+Le dépôt ne déclare **aucune** tâche planifiée dans `vercel.json` : tout le travail de fond (livraison des MP, rappels, clôtures) dépend de cron-job.org. Sans ces tâches : plus de MP, plus de rappels, plus de clôtures.
+
+**Réglages communs à CHAQUE tâche**
+- Adresse : `https://gamenight-zeyfro.vercel.app` + le chemin du tableau.
+- En-tête de requête : `Authorization` = `Bearer ` suivi de la valeur de `CRON_SECRET` (la même que dans Vercel Production). Aucune autre en-tête.
+- Fuseau horaire de la tâche : **Europe/Paris**. Délai d'attente (timeout) : **30 s** (les routes longues répondent 202 et travaillent en arrière-plan, voir `docs/CRONS.md`).
+- Notifications : **e-mail en cas d'échec** activé pour chaque tâche ; activer aussi « désactivation automatique après échecs » seulement si on veut être prévenu avant, jamais en silence.
+- Réponse attendue : **200** ou **202**. **401** = mauvais secret. **503** = `CRON_SECRET` absent de Vercel (ou Preview). Une route dont l'interrupteur est éteint n'est pas une erreur : elle répond sans rien faire (à constater au premier appel manuel avec « Tester l'exécution »).
+- Après création : cliquer **Tester l'exécution** sur chaque tâche et lire le statut ; puis provoquer UN échec volontaire (mauvais secret sur une tâche de test) pour vérifier que l'e-mail arrive.
+
+**Tâches à créer** (méthode GET sauf indication). « Documenté » = cadence écrite dans le dépôt ; « Proposition » = à confirmer par Maxime.
+
+| # | Chemin | Horaire (Europe/Paris) | Source de la cadence | Indispensable |
+|---|---|---|---|---|
+| 1 | `/api/cron/notification-executor` | toutes les minutes | Proposition (livraison des MP et éditions différées, retries ; `docs/RUNBOOK.md` § 175) | **Oui** |
+| 2 | `/api/cron/reminders` | toutes les 5 minutes | Proposition (rappels de soirée à la minute près, clôture des projets) | **Oui** |
+| 3 | `/api/cron/close-sessions` | toutes les 5 minutes | Proposition | **Oui** |
+| 4 | `/api/health` | toutes les 5 minutes, **e-mail à Maxime en cas d'échec** | Proposition (alerte de panne, réveil de la base : `docs/audit/02-bot-cron-sauvegarde.md`) | **Oui** |
+| 5 | `/api/cron/hosting-usage` | 1 fois par jour à 08:00 | Proposition (lot I, `HOSTING_ALERT_ENABLED` ; répond 503 `alert` au-delà de 70 % : l'e-mail d'échec sert d'alerte) | Si lot I allumé |
+| 6 | `/api/cron/monthly-tasks` | 1 fois par jour à 03:00 | Documenté (« un seul cron quotidien », commentaire de la route) | Oui |
+| 7 | `/api/cron/refresh-discord-profiles` | toutes les heures | Documenté (commentaire de la route : « externe toutes les heures ») | Oui |
+| 8 | `/api/cron/steam-library-sync` | toutes les 15 minutes | Documenté (`docs/CAPACITE.md` : « toutes les 10 à 15 minutes ») | Si Steam utilisé |
+| 9 | `/api/cron/steam-library-full-sync` | toutes les 2 heures | Documenté (« recommandé : toutes les ~2 h », commentaire de la route) | Si Steam utilisé |
+| 10 | `/api/cron/community-guild-sync` | toutes les 15 minutes | Proposition | Si multi-serveurs |
+| 11 | `/api/cron/discord-thread-cleanup` | toutes les 15 minutes | Proposition (dry-run tant que `DISCORD_THREAD_CLEANUP_MODE` ≠ `execute`) | Si nettoyage allumé |
+| 12 | `/api/cron/retention-cleanup` | 1 fois par jour à 04:00 | Proposition (dry-run tant que `RETENTION_CLEANUP_MODE` ≠ `execute`) | Si rétention allumée |
+| 13 | `/api/cron/free-game-discord` | toutes les 6 heures | Proposition | Si jeux gratuits allumés |
+| 14 | `/api/cron/booster-sync` | toutes les 30 minutes | Documenté (`docs/BOOSTERS_NITRO.md`) | Si `DISCORD_BOOSTERS_ENABLED` |
+| 15 | `/api/cron/tower-steam-autovalidate` | toutes les 10 minutes | Proposition (une tentative n'est pas relue avant 10 minutes : `docs/TOWER_STEAM_AUTOVALIDATE.md`) ; GET ou POST | Si défis Steam allumés |
+| 16 | `/api/cron/tournament-teams` | toutes les 15 minutes | Proposition | Si `TOURNAMENT_TEAMS_ENABLED` |
+| 17 | `/api/cron/team-applications` | toutes les heures | Proposition | Si `TEAM_RECRUITERS_ENABLED` |
+| 18 | `/api/cron/team-captain-handover` | 1 fois par jour à 05:00 | Proposition (simulation tant que le mode n'est pas `execute`) | Si passation allumée |
+| 19 | `/api/cron/tower-team-daily` | **18:00 Europe/Paris** (jamais avant) | Décision du 17/11/2026 ; déjà assuré par le workflow GitHub `tower-team-daily.yml` (créneaux 16 h et 17 h UTC, garde « heure ≥ 18 ») : **ne créer cette tâche que si on abandonne le workflow**, jamais les deux sans le savoir (le second appel du soir est sans effet : clé `team-<jour>`) | Si `TOWER_TEAM_DAILY_ENABLED` |
+
+**À ne PAS planifier** : les routes `/api/backfill/*` (déclenchement manuel, une fois) et `/api/admin/force-relogin` (manuel, secret dédié du (a)).
+
+**Contrôle de planification (à refaire après création)** : lister les 18 ou 19 tâches ; vérifier que chacune porte l'en-tête `Authorization`, le fuseau Europe/Paris et l'e-mail d'échec ; déclencher chacune à la main ; le lendemain du changement d'heure (29/03/2027 et 31/10/2027), vérifier qu'une seule ligne `team-<jour>` existe pour le défi de 18 h.
+
 ## Journal des allumages (à remplir par ChatGPT)
 
 | Lot | Date et heure | Branche de sauvegarde | Vérifications OK | Retour arrière fait ? |
