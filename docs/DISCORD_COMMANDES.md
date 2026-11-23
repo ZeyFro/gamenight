@@ -70,5 +70,7 @@ Définies dans `scripts/discord-commands.json` (état de `main`), toutes enregis
 | `/joueurs` | annonces, chercher, mes-annonces, publier, retirer | aucune restriction |
 | `/soiree` | liste, voir, creer, rejoindre, quitter | aucune restriction |
 | `/tournoi` | liste, voir, inscription, desinscription, mes-inscriptions | aucune restriction |
+| `/projet` | liste, voir, rejoindre, quitter, creer, recrutement, espace | aucune restriction |
+| `Signaler` (clic droit sur un message, type 3) | aucune | aucune restriction |
 
-`/projet` n'est pas dans le manifeste de `main` : elle sera enregistrée dès qu'elle y sera déclarée, sans changement du script. Le test `src/lib/discord-commands-manifest.test.ts` garde l'alignement manifeste ↔ routage (`src/lib/discord-interactions.ts`) : une commande déclarée sans handler, ou routée sans déclaration, fait échouer la CI. Les droits réels des commandes sans restriction de permission sont vérifiés par leurs handlers (membre actif, flags), pas par Discord.
+Le manifeste compte **13 entrées** : 12 commandes `/…` et la commande contextuelle « Signaler » (clic droit sur un message → Applications → Signaler). `/projet` est une façade sur les équipes (mêmes services que `/equipe`). Messages prêts à publier dans chaque salon : [MESSAGES_SALONS.md](MESSAGES_SALONS.md).
