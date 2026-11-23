@@ -31,6 +31,9 @@
 
 ## Exploitation et sécurité
 
+- [Cahier final : la ligne d’arrivée](CAHIER_FINAL.md) — chaque élément du cahier, son statut réel, ce qu’il reste à faire, le responsable et la preuve.
+- [Plan d’allumage par lots](ALLUMAGES.md) — lots A à H pour ChatGPT : variables exactes, vérifications, retour arrière.
+- [Questions pour Maxime](QUESTIONS_MAXIME.md) — les choix à faire, en une seule liste, avec recommandation.
 - [Fiche de l'application](FICHE_APPLICATION.md) — pages, rôles, interrupteurs en Production, données, tâches automatiques, limites des offres gratuites, 10 risques d'ouverture.
 - [Plan de tests par rôle](PLAN_TESTS.md) — parcours, résultat et preuve attendus du visiteur à l'admin, et tests à faire par un humain.
 - [Contrôle de sécurité passif](CONTROLE_SECURITE.md) — en-têtes, cookies, pages refusées, routes sensibles, constats classés par gravité.
