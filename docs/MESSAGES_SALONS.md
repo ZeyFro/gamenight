@@ -14,8 +14,8 @@ Un message court par salon, prêt à copier-coller, en français simple. Chaque 
 - **Commandes** : lues dans `scripts/discord-commands.json` (13 entrées : 12 commandes `/…` et « Signaler » par clic droit), nom, sous-commandes et options exacts. La description de chaque commande est celle du manifeste. Aucune commande inventée.
 - **Valeurs du niveau** de `/joueurs chercher` : `DEBUTANT`, `INTERMEDIAIRE`, `AVANCE`, `EXPERT` (sans accent, en majuscules).
 - **Pages du site** : chaque lien correspond à un dossier existant de `src/app`.
-- **Activation** : plusieurs fonctions sont éteintes par défaut. Une commande dont la fonction est éteinte répond « en attente d'activation » (`/aide` donne l'état de chacune) ; une page derrière un interrupteur (`/ce-soir`, `/projets`, rivalités d'équipe, calendrier à abonnement, `/profil/personnalisation`, `/profil/lore`) ne s'ouvre pas tant qu'il n'est pas allumé. Publier un message n'allume rien : vérifier `/aide` avant.
-- **À confirmer par le staff avant publication** : (1) le panneau « Aide privée » de `#requête` (Ticket Tool, état « actif non identifié » dans `docs/PLAN_SERVEUR_DISCORD.md`) ; (2) le mécanisme exact de validation du règlement (YAGPDB) ; (3) les votes par boutons ✅/❌ de `épreuves` (`TOWER_DISCORD_VOTES_ENABLED`) et la règle « 3 jours de présence » (PR #578) ; (4) ce que le bot publie réellement dans `chroniques-de-la-tour` (le plan dit seulement « écriture bot GameNight et staff »).
+- **Activation** : plusieurs fonctions sont éteintes par défaut. Une commande dont la fonction est éteinte répond « en attente d’activation » (`/aide` donne l'état de chacune) ; une page derrière un interrupteur (`/ce-soir`, `/projets`, rivalités d'équipe, calendrier à abonnement, `/profil/personnalisation`, `/profil/lore`) ne s'ouvre pas tant qu'il n'est pas allumé. Publier un message n'allume rien : vérifier `/aide` avant.
+- **À confirmer par le staff avant publication** : (1) le panneau « Aide privée » de `#requête` (Ticket Tool, état « actif non identifié » dans `docs/PLAN_SERVEUR_DISCORD.md`) ; (2) le mécanisme exact de validation du règlement (YAGPDB) ; (3) les votes par boutons ✅/❌ de `épreuves` (`TOWER_DISCORD_VOTES_ENABLED`) et la règle « 3 jours de présence » : elle n'est vraie qu'une fois la PR #578 fusionnée (jusque-là, `main` exige 7 jours ; le code de #578 écrit « au moins 3 jours »), donc publier `épreuves` et `défis-communautaires` après cette fusion ; (4) ce que le bot publie réellement dans `chroniques-de-la-tour` (le plan dit seulement « écriture bot GameNight et staff »).
 - `docs/DISCORD_COMMANDES.md` est tenu à jour avec le même manifeste.
 
 ---
@@ -136,7 +136,7 @@ Liste complète des 13 commandes (12 commandes `/…` plus « Signaler »), en *
 **Message 1 sur 2**
 
 ````
-🤖 **Commandes GameNight (1/2)** : tape `/` puis le nom de la commande. `/aide` montre lesquelles sont actives (« en attente d'activation » = pas encore ouverte).
+🤖 **Commandes GameNight (1/2)** : tape `/` puis le nom de la commande. `/aide` montre lesquelles sont actives (« en attente d’activation » = pas encore ouverte).
 **Pour tous**
 `/aide` : la liste des commandes et leur état
 `/profil` : ton niveau d'XP, ton rang, tes étages, tes badges et tes équipes
@@ -346,7 +346,7 @@ Lecture seule : discute des résultats dans #général.
 
 ````
 ⭐ **Hall of fame** : les champions et les records de la Tour.
-Lecture seule : rien à taper ici (seulement des résultats réels).
+Lecture seule : rien à taper ici. Seuls des résultats réels y sont affichés.
 Le classement en cours : `/tower classement`
 🌐 https://gamenight-zeyfro.vercel.app/classement
 ````
