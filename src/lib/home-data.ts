@@ -63,7 +63,7 @@ async function loadHomeDataUncached(rawUser: User) {
   const recapMonth = prevMonthDate.getUTCMonth() + 1;
   const [lastMonthRecap, seasonProgress, activeTournament] = await Promise.all([
     getMonthlyRecap(recapYear, recapMonth, user.id),
-    getSeasonProgress(user.id),
+    getSeasonProgress(),
     getActiveTournament(user.id),
   ]);
 
