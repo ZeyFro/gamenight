@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { logger } from "@/lib/logger";
 import { isVercelPreview } from "@/lib/preview-safety";
-import { stripEveryoneParse } from "@/lib/notification-policy";
+import { isApprovedRolePing, stripEveryoneParse } from "@/lib/notification-policy";
 import { isTombstoneDiscordId } from "@/lib/account-deletion-plan";
 
 /**
@@ -123,10 +123,16 @@ export interface AllowedMentions {
 export const NO_MENTIONS: AllowedMentions = { parse: [] };
 
 function toDiscordAllowedMentions(input: AllowedMentions) {
+  // Lot 5, Q19 : aucune mention de rôle sauf celle produite par `buildGameRolePing` (jeu avec abonnés opt-in). `parse: ["roles"]`
+  // (tous les rôles) et toute liste de rôles non approuvée sont retirés ici, quel que soit l'appelant, et journalisés.
+  const rolePingApproved = isApprovedRolePing(input);
+  if (!rolePingApproved && ((input.roles?.length ?? 0) > 0 || input.parse?.includes("roles"))) {
+    logger.warn("notification-policy", "Mention de rôle retirée : elle ne vient pas d'un ping de rôle de jeu opt-in.", { roles: input.roles?.length ?? 0 });
+  }
   return {
     // Jamais @everyone/@here (sujet I) : retiré ici, quel que soit l'appelant.
-    parse: stripEveryoneParse(input.parse),
-    roles: input.roles,
+    parse: stripEveryoneParse(input.parse).filter((kind) => kind !== "roles"),
+    roles: rolePingApproved ? input.roles : undefined,
     users: input.users,
     replied_user: input.repliedUser,
   };

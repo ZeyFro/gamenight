@@ -75,6 +75,9 @@ function inviteSlot(instantSessionId: string, userId: string): string {
 
 const NO_MENTIONS_PARSE: { parse: [] } = { parse: [] };
 
+/** Décision du lot 5 : faux, l'annonce publique n'est plus créée. */
+const PUBLIC_INSTANT_SESSION_ANNOUNCE_ALLOWED = false as boolean;
+
 const announceSlot = (id: string) => `${GUILD_SLOT_PREFIX}:INSTANT_SESSION:${id}:announce`;
 
 /** La partie immédiate est ouverte aux membres du serveur. Une annonce
@@ -82,6 +85,9 @@ const announceSlot = (id: string) => `${GUILD_SLOT_PREFIX}:INSTANT_SESSION:${id}
 export async function enqueueInstantSessionAnnouncement(
   instantSessionId: string, db: Prisma.TransactionClient | typeof prisma = prisma,
 ): Promise<void> {
+  // Lot 5 (D10, Q18) : une partie « Jouer maintenant » n'est pas un moment marquant, donc plus d'annonce publique ; l'invitation reste un MP
+  // (`enqueueInstantSessionInvites`) et le centre de notifications. `INSTANT_SESSION_ANNOUNCE` est classé « dans l'app seulement ».
+  if (!PUBLIC_INSTANT_SESSION_ANNOUNCE_ALLOWED) return;
   if (process.env.DISCORD_BOT_SESSION_ANNOUNCE_ENABLED !== "true") return;
   const event = await createNotificationEvent({ category: "INSTANT_SESSION", eventType: "INSTANT_SESSION_ANNOUNCE", sourceId: instantSessionId }, db);
   await enqueueDelivery({ eventId: event.id, channel: "DISCORD_CHANNEL", transport: "BOT", operation: "SEND",

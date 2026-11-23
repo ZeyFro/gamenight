@@ -16,6 +16,6 @@ Le texte des réponses est dans [QUESTIONS_MAXIME.md](QUESTIONS_MAXIME.md) (sect
 | Q14 | Garder MEE6 et YAGPDB, **retirer Atlas** | [PERMISSIONS_BOTS.md](PERMISSIONS_BOTS.md) | ⬜ geste Discord (ChatGPT) |
 | Q15 | Garder Discord.Me | `PERMISSIONS_BOTS.md` | ✅ rien à faire |
 | Q16 | Couper niveaux et monnaie de MEE6 et UnbelievaBoat | `PERMISSIONS_BOTS.md` | ⬜ geste Discord (ChatGPT) |
-| Q17–Q19 | MP personnels seulement ; annonces publiques pour les moments marquants ; ping d'un rôle de jeu sur abonnement | Lot Code 5 (notifications) | ⬜ à coder |
+| Q17–Q19 | MP personnels seulement ; annonces publiques pour les moments marquants ; ping d'un rôle de jeu sur abonnement | **Lot 5** : `src/lib/notification-kinds.ts` (genre explicite par type d'événement, liste fermée, évalué par l'executor AVANT tout envoi), `discord-rest.ts` (aucune mention de rôle hors `buildGameRolePing`), [CENTRE_NOTIFICATIONS.md](CENTRE_NOTIFICATIONS.md) | ✅ codé et testé ; ⬜ allumage `NOTIFICATION_CENTER_ENABLED` (lot G) ; décisions prises seules à valider : voir CENTRE_NOTIFICATIONS.md |
 | Q20 | Classements : règle actuelle conservée ; **Potes = amis** | **Code 7** : [POTES_AMIS.md](POTES_AMIS.md), `POTES_FRIENDS_ENABLED`, migration `20261123150000_friendships` | ✅ codé (cette PR) ; ⬜ allumage (lot C) |
 | Q21 | Fusion maintenant, une par une | File de fusion terminée pour les PR à migration #525 à #530 ; les migrations s'appliquent **automatiquement** à la fusion (sans approbation) | ✅ fait |
