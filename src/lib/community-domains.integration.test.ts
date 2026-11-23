@@ -231,7 +231,8 @@ describe.skipIf(!TEST_DATABASE_URL)("domaines collectifs : Postgres local, aucun
     expect((await db.communityMemberStats.findUniqueOrThrow({ where: { communityId_userId: { communityId: ids.a, userId: ids.carol } } })).xpTotal).toBe(0);
     expect((await db.communityMemberStats.findUniqueOrThrow({ where: { communityId_userId: { communityId: ids.b, userId: ids.carol } } })).xpTotal).toBe(999);
     expect((await db.seasonSnapshot.findFirstOrThrow()).xp).toBe(75);
-    expect(await seasons.getSeasonProgress(ids.none)).toBeNull();
+    // La saison affichée est la saison Tower (calendrier commun), identique pour tous, y compris sans serveur.
+    expect(await seasons.getSeasonProgress()).toMatchObject({ name: expect.stringMatching(/^(S[123]|Été) · /) });
   });
 
   it("récap : même mois par serveur, lu dans le serveur actif et inaccessible sans membership", async () => {

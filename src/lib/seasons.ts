@@ -1,3 +1,4 @@
+import { getTowerSeasonProgress } from "@/lib/tower-challenge-seasons";
 import { scopedPrismaForCommunityId, scopedTransactionPrisma } from "@/lib/community-scoped-client";
 import { listCronCommunityIds } from "@/lib/community-isolation";
 import { getDefaultCommunityId } from "@/lib/default-community";
@@ -169,23 +170,18 @@ async function finalizeCommunitySeasonIfDue(communityId: string): Promise<void> 
   if (!result.ok) logger.warn("seasons", "Notif Discord fin de saison non envoyée.", { seasonId: season.id });
 }
 
-/** Home — "Saison X — Jour Y/30" avec barre de progression. `null` si aucune saison active (ne devrait pas arriver post-bootstrap). */
-export async function getSeasonProgress(viewerId: string): Promise<{
-  number: number;
+/**
+ * Accueil et /saisons — progression de la saison affichée aux joueurs : la saison TOWER (S1 décembre à mars, S2, Été, S3 ;
+ * `tower-challenge-seasons.ts`, décisions du 17/11/2026), jamais la saison mensuelle d’XP qui contredisait /tower
+ * (« Saison 2 — Jour 23/30 » contre « S3 · 2026 »). Ne dépend ni de la base ni du viewer : tous les joueurs voient la même saison.
+ */
+export async function getSeasonProgress(): Promise<{
   name: string;
-  dayOfMonth: number;
+  day: number;
   totalDays: number;
-} | null> {
-  const communityId = await writeCommunityIdForUser(viewerId);
-  if (communityId === null) return null;
-  const season = await getActiveSeason(communityId);
-  if (!season) return null;
-
-  const now = wallClockNow();
-  const dayOfMonth = now.getUTCDate();
-  const totalDays = endOfMonthUTC(now).getUTCDate();
-
-  return { number: season.number, name: season.name, dayOfMonth, totalDays };
+  daysLeft: number;
+}> {
+  return getTowerSeasonProgress();
 }
 
 export async function ensureActiveSeasonExistsForViewer(viewerId: string): Promise<void> {

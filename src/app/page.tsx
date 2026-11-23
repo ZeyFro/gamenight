@@ -198,7 +198,7 @@ async function HomeContent({
     // La barre de saison lit la saison active : créée d'abord si elle manque
     // (garde-fou idempotent, voir `ensureActiveSeasonExistsForViewer`,
     // src/lib/seasons.ts), sans retarder les autres lectures.
-    ensureActiveSeasonExistsForViewer(user.id).then(() => getSeasonProgress(user.id)),
+    ensureActiveSeasonExistsForViewer(user.id).then(() => getSeasonProgress()),
     getActiveTournament(user.id),
   ]);
 
@@ -528,14 +528,14 @@ async function HomeContent({
             <Link href="/saisons">
               <Card className="flex flex-col gap-2">
                 <p className="text-sm text-muted">
-                  🏆 {seasonProgress.name} — Jour {seasonProgress.dayOfMonth}/
+                  🏆 Saison {seasonProgress.name} — jour {seasonProgress.day}/
                   {seasonProgress.totalDays}
                 </p>
                 <div className="h-2 overflow-hidden rounded-full bg-surface-hover">
                   <div
                     className="h-full rounded-full bg-accent"
                     style={{
-                      width: `${Math.min(100, (seasonProgress.dayOfMonth / seasonProgress.totalDays) * 100)}%`,
+                      width: `${Math.min(100, (seasonProgress.day / seasonProgress.totalDays) * 100)}%`,
                     }}
                   />
                 </div>
