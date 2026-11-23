@@ -1,10 +1,10 @@
 import type { NextConfig } from "next";
 import { buildCsp, isCspReportEnabled } from "./src/lib/csp-policy";
 
-// CSP en Report-Only : observée dans la console du navigateur avant de
-// devenir bloquante. `'unsafe-inline'` (scripts/styles) : Next injecte des
-// scripts inline sans nonce — à resserrer avec des nonces si on passe en
-// mode bloquant. `img-src https:` : covers IGDB/Steam, avatars Discord et
+// CSP BLOQUANTE (en-tête Content-Security-Policy) depuis le 23/11/2026, après
+// plusieurs semaines en Report-Only. `'unsafe-inline'` (scripts/styles) : Next
+// injecte des scripts inline sans nonce — à resserrer avec des nonces plus tard.
+// Le rapport des violations reste possible avec CSP_REPORT_ENABLED. `img-src https:` : covers IGDB/Steam, avatars Discord et
 // bannières déjà enregistrées sur d'anciens hôtes.
 const isDev = process.env.NODE_ENV !== "production";
 const csp = buildCsp({ isDev, reportEnabled: isCspReportEnabled() });
@@ -14,7 +14,9 @@ const securityHeaders = [
   { key: "X-Frame-Options", value: "DENY" },
   { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
   { key: "Permissions-Policy", value: "camera=(), microphone=(), geolocation=(), payment=(), usb=()" },
-  { key: "Content-Security-Policy-Report-Only", value: csp },
+  { key: "Content-Security-Policy", value: csp },
+  // HSTS : 2 ans, sous-domaines compris (le domaine .app est déjà en HTTPS obligatoire chez les navigateurs).
+  { key: "Strict-Transport-Security", value: "max-age=63072000; includeSubDomains" },
 ];
 
 const nextConfig: NextConfig = {

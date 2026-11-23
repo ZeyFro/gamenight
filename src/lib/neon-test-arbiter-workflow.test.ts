@@ -25,7 +25,7 @@ it("reste manuel, main uniquement et protégé, sans option apply", () => {
 });
 it("scelle les quatre sources et assemble uniquement les trois dossiers autorisés", () => {
   const steps = workflow.jobs["migration-test"].steps;
-  expect(steps.filter((s: { uses?: string }) => s.uses === "actions/checkout@v4").map((s: { with?: { ref?: string } }) => s.with?.ref).filter(Boolean)).toEqual([
+  expect(steps.filter((s: { uses?: string }) => /^actions\/checkout@v\d+$/.test(s.uses ?? "")).map((s: { with?: { ref?: string } }) => s.with?.ref).filter(Boolean)).toEqual([
     "6d6e30e76f4f96acb25c37fa6f97f08f42dca6c7", "4a18b7491d1887cfc4fe38c7f1e68eb77a7571cb", "1a495ede501784167b597c43438c1527b2d58082", "5c3e722c83f7898aaa5516e75d7b1b41ee86f3e8",
   ]);
   const assembly = steps.find((s: { name?: string }) => s.name?.includes("Assemble")).run;

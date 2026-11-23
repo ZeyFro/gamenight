@@ -15,6 +15,11 @@ describe("buildCsp", () => {
     expect(withReport).toBe(`${without}; report-uri ${CSP_REPORT_PATH}`);
   });
 
+  it("upgrade-insecure-requests hors développement seulement", () => {
+    expect(buildCsp({ isDev: false, reportEnabled: false })).toContain("upgrade-insecure-requests");
+    expect(buildCsp({ isDev: true, reportEnabled: false })).not.toContain("upgrade-insecure-requests");
+  });
+
   it("'unsafe-eval' uniquement en développement", () => {
     expect(buildCsp({ isDev: true, reportEnabled: false })).toContain("'unsafe-eval'");
     expect(buildCsp({ isDev: false, reportEnabled: false })).not.toContain("'unsafe-eval'");

@@ -57,6 +57,24 @@ Vercel déploie `main` dès la fusion ; la migration attend l'approbation. Entre
 - Réglages GitHub : environnement `production-migrations` avec relecteurs requis et **branches de déploiement limitées à `main`** ; protection de `main` avec `verify` et `immutable` obligatoires. Au dernier relevé (#400), `main` n'avait aucune règle de protection : sans elle, rien n'empêche une fusion sans CI verte.
 - Avant #370 : `node scripts/check-team-membership-duplicates.mjs` contre Production en lecture seule (doublons d'appartenance, créateurs orphelins).
 
+## Retour arrière d'une migration (cahier §21.4)
+
+Chaque migration créée à partir du 23 novembre 2026 a un fichier **manuel** `prisma/rollbacks/<nom>.sql` (garde : `src/lib/migrations-rollback.test.ts`). Il n'est **jamais** exécuté automatiquement. La CI le valide (`src/lib/migrations-rollback.integration.test.ts`) : sur la base de test, dans une transaction toujours annulée, retour arrière puis migration rejouée, sans erreur et sans changement final du schéma.
+
+Une migration additive gêne rarement : l'ancien code ignore les colonnes en plus. **Préférer revenir au code précédent (Instant Rollback Vercel) en laissant la migration en place.** Le retour arrière SQL ne sert que si la migration elle-même pose problème.
+
+Si Maxime décide de défaire une migration :
+
+| # | Étape | Qui | Preuve |
+| --- | --- | --- | --- |
+| 1 | Éteindre l'interrupteur concerné, puis remettre en Production un déploiement **antérieur** à la migration (Vercel, Instant Rollback) | Maxime | Déploiement actif daté d'avant la fusion |
+| 2 | Noter l'heure UTC (point de restauration Neon, au cas où) | Maxime | Heure notée |
+| 3 | Exécuter le contenu de `prisma/rollbacks/<nom>.sql` dans la console SQL Neon, branche `production` | Maxime | Message « succès » de la console |
+| 4 | Marquer la migration comme annulée : `npx prisma migrate resolve --rolled-back <nom>` (même accès que le run « Migrations Production ») | Maxime | Sortie de la commande |
+| 5 | Vérifier `prisma migrate status` puis une page de l'application | Maxime | Capture |
+
+Les données écrites dans les colonnes supprimées depuis la migration sont **perdues** : c'est pourquoi l'étape 1 (revenir au code sans toucher à la base) suffit presque toujours.
+
 ## Procédure de fusion d'une PR avec migration (modèle : #370)
 
 À suivre dans l'ordre. Chaque étape a une preuve.
