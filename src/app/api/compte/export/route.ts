@@ -1,5 +1,5 @@
 import { getCurrentUser } from "@/lib/current-user";
-import { checkRateLimit } from "@/lib/rate-limit";
+import { checkSharedRateLimit } from "@/lib/shared-rate-limit";
 import { isAccountDeletionEnabled } from "@/lib/account-deletion-flag";
 import { buildAccountExport, serializeAccountExport } from "@/lib/account-export";
 
@@ -16,7 +16,7 @@ export async function GET() {
   if (!isAccountDeletionEnabled()) return new Response(null, { status: 404, headers: NO_STORE });
   const user = await getCurrentUser({ recordActivity: false });
   if (!user) return new Response(null, { status: 401, headers: NO_STORE });
-  if (!checkRateLimit(user.id, "exportAccountData", { limit: 3, windowMs: 60_000 })) return new Response(null, { status: 429, headers: NO_STORE });
+  if (!(await checkSharedRateLimit(user.id, "exportAccountData", { limit: 3, windowMs: 60_000 }))) return new Response(null, { status: 429, headers: NO_STORE });
 
   const data = await buildAccountExport(user.id);
   if (!data) return new Response(null, { status: 404, headers: NO_STORE });

@@ -212,6 +212,7 @@ export const NON_FK_PLAN: Record<string, NonFkRule> = {
   "Community.installedByDiscordId": { action: "SCRUB", reason: "mis à NULL : identifiant Discord de la personne qui a installé le bot" },
   "Community.activatedById": { action: "KEEP", reason: "identifiant opaque du compte qui a activé la communauté" },
   "BoosterSupport.discordId": { action: "COVERED", reason: "ligne supprimée avec le soutien (BoosterSupport.userId)" },
+  "SensitiveOperationLog.actorId": { action: "KEEP", reason: "journal des opérations sensibles : identifiant opaque de l'administrateur, sans texte saisi" },
   "AccountDeletionLog.userId": { action: "KEEP", reason: "journal de suppression sans donnée personnelle (identifiant opaque + compteurs)" },
 };
 
@@ -278,6 +279,9 @@ export function tombstoneUserData(userId: string, now: Date): Prisma.UserUpdateI
     inputDevices: [],
     availablePlatforms: [],
     microphoneAvailable: null,
+    languages: [],
+    playHabits: [],
+    communityPreferences: [],
     steamLastSyncAt: null,
     steamActivityCheckedAt: null,
     steamFullSyncAttemptedAt: null,

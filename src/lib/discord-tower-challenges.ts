@@ -1,3 +1,4 @@
+import { towerProofRuleNotice } from "@/lib/tower-challenge-categories";
 import { safeTowerErrorCategory } from "@/lib/discord-tower-error-category";
 import { z } from "zod";
 import type { InteractionOutput } from "@/lib/discord-interactions";
@@ -69,7 +70,9 @@ type State = Extract<Awaited<ReturnType<typeof getTowerChallengeState>>, { statu
 function renderState(state: State) {
   const latest = state.attempts[0];
   const history = state.attempts.map(attempt => `**${attempt.title}** — ${attempt.status === "ASSIGNED" ? "à réaliser" : attempt.status === "SUBMITTED" ? "en vote" : attempt.status === "APPROVED" ? "réussi" : "refusé"}`).join("\n");
-  const proofCode = latest?.proofCode
+  const proofCode = latest?.allowsPastProof
+    ? `\n${towerProofRuleNotice(true)}`
+    : latest?.proofCode
     ? `\nCode de preuve : **${latest.proofCode}**. Inscris-le dans le jeu si possible, sinon dans la composition GameNight qui accompagne la capture. Il associe les éléments, mais ne prouve pas la date de capture.` : "";
   const measure = latest?.measureKind && latest.status === "ASSIGNED"
     ? latest.measureStatus === "PRIVATE"
@@ -103,7 +106,9 @@ function renderTeamState(state: TeamState) {
       : " Tes étages personnels sont crédités."
     : state.joined ? " Tu participes à ce défi."
       : " Rejoins le défi pour participer à sa récompense.";
-  const proofCode = attempt.proofCode
+  const proofCode = attempt.allowsPastProof
+    ? `\n${towerProofRuleNotice(true)}`
+    : attempt.proofCode
     ? `\nCode de preuve : **${attempt.proofCode}**. Inscris-le dans le jeu si possible, sinon dans la composition GameNight qui accompagne la capture. Il ne prouve pas la date de capture.` : "";
   const details = `🏰 **Défi quotidien · ${team.name}**\n**${attempt.title}** — ${phase}\n${proofCode}\n${attempt.instructions}\n${team.memberCount} membre(s) actif(s) · ${state.participantCount} participant(s) confirmé(s) · +${attempt.rewardFloors} étage(s) personnel(s) chacun après validation.${reward}\nDeux réussites récompensées par jour, solo et équipe confondus. Défi attribué jusqu’au <t:${Math.floor(attempt.expiresAt.getTime() / 1000)}:f>.`;
   return { content: details.slice(0, 1900), components: [{ type: 1 as const, components: buttons.slice(0, 5) }] };

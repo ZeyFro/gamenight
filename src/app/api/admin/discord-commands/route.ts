@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
 import { requireAdmin } from "@/lib/admin";
 import { logger } from "@/lib/logger";
-import { checkRateLimit } from "@/lib/rate-limit";
+import { checkSharedRateLimit } from "@/lib/shared-rate-limit";
+import { recordSensitiveOperation } from "@/lib/sensitive-operation-log";
 import { isVercelPreview } from "@/lib/preview-safety";
 import {
   REGISTRATION_SECRET_HEADER,
@@ -37,7 +38,7 @@ export async function POST(request: Request) {
   }
   const admin = await requireAdmin();
   if (!admin) return respond({ error: "unauthorized" }, 401);
-  if (!checkRateLimit(admin.id, "discordCommandRegistration", { limit: 5, windowMs: 60_000 })) {
+  if (!(await checkSharedRateLimit(admin.id, "discordCommandRegistration", { limit: 5, windowMs: 60_000 }))) {
     return respond({ error: "rate_limited" }, 429);
   }
 
@@ -60,5 +61,9 @@ export async function POST(request: Request) {
     stage: report.failure?.stage ?? null,
     http: report.failure?.http ?? null,
   });
+  // Journal des opérations sensibles (cahier §19.1) : seul l'enregistrement écrit dans Discord.
+  if (mode === "execute") {
+    await recordSensitiveOperation({ actorId: admin.id, action: "discord.commands_execute", outcome: report.ok ? "ok" : report.failure?.stage ?? "failed" });
+  }
   return respond(report, registrationHttpStatus(report));
 }

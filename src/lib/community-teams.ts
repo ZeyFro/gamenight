@@ -6,6 +6,7 @@ import { accessibleSessionWhereFor } from "@/lib/session-access";
 import { DEFAULT_COMMUNITY_SLUG } from "@/lib/default-community";
 import { prisma } from "@/lib/prisma";
 import { clearTeamRecruiterRoles } from "@/lib/team-recruiter-cleanup";
+import type { TeamIdentity } from "@/lib/team-identity";
 
 /**
  * Conflit sérialisable (P2034) entre deux inscriptions simultanées : PostgreSQL annule l'une des transactions, qui
@@ -61,6 +62,8 @@ export async function listCommunityTeams(userId: string, communityId: string) {
       platform: true,
       maxMembers: true,
       isRecruiting: true,
+      color: true,
+      emblem: true,
       createdById: true,
       captainId: true,
       captain: { select: { discordName: true } },
@@ -282,6 +285,40 @@ export async function setCommunityTeamRecruitment(userId: string, communityId: s
     if (leaderId !== userId) return "missing";
     if (open && team._count.members >= team.maxMembers) return "full";
     const updated = await scopedDb.communityTeam.updateMany({ where: { id: teamId, communityId }, data: { isRecruiting: open, captainLastActivityAt: new Date() } });
+    return updated.count ? "saved" : "missing";
+  }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+}
+
+/**
+ * Identité visuelle (cahier §11.2) : seul le responsable actuel de l'équipe (même règle que le recrutement :
+ * capitaine actif, sinon le plus ancien membre actif) peut la changer. Valeurs déjà validées par parseTeamIdentity.
+ */
+export async function setCommunityTeamIdentity(
+  userId: string, communityId: string, teamId: string, identity: TeamIdentity,
+): Promise<"saved" | "missing" | "unavailable"> {
+  if (await getCommunityTeamsCommunityId(userId) !== communityId) return "unavailable";
+  return prisma.$transaction(async (tx) => {
+    if (!await canUseTeams(tx, userId, communityId)) return "unavailable";
+    const scopedDb = scopedTransactionPrisma(tx, { communityIds: [communityId], includesDefault: false });
+    const team = await scopedDb.communityTeam.findFirst({
+      where: { id: teamId, communityId, members: { some: { userId, ...activeTeamMemberWhere(communityId) } } },
+      select: {
+        createdById: true,
+        captainId: true,
+        createdBy: { select: { memberships: { where: { communityId, status: "ACTIVE" }, select: { id: true } } } },
+        captain: { select: { memberships: { where: { communityId, status: "ACTIVE" }, select: { id: true } } } },
+        members: { where: activeTeamMemberWhere(communityId), orderBy: { joinedAt: "asc" }, take: 1, select: { userId: true } },
+      },
+    });
+    if (!team) return "missing";
+    const configuredCaptainId = team.captainId ?? team.createdById;
+    const activeCaptain = team.captainId ? Boolean(team.captain?.memberships.length) : team.createdBy.memberships.length > 0;
+    const leaderId = activeCaptain ? configuredCaptainId : team.members[0]?.userId;
+    if (leaderId !== userId) return "missing";
+    const updated = await scopedDb.communityTeam.updateMany({
+      where: { id: teamId, communityId },
+      data: { color: identity.color, emblem: identity.emblem, captainLastActivityAt: new Date() },
+    });
     return updated.count ? "saved" : "missing";
   }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
 }

@@ -43,18 +43,32 @@ describe("GET /api/admin/tower-preflight", () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
-  it("allumé → GET en lecture seule sur le serveur de DISCORD_BOT_GUILD_ID", async () => {
-    fetchMock.mockResolvedValue(new Response(JSON.stringify([
+  const discord = (botRolePermissions: string) => (url: string) => {
+    const json = (value: unknown) => Promise.resolve(new Response(JSON.stringify(value)));
+    if (url.endsWith("/guilds/g1/channels")) return json([
       { id: "c1", name: "cat", type: 4, parent_id: null },
       { id: "t1", name: "general", type: 0, parent_id: "c1" },
-    ])));
+    ]);
+    if (url.endsWith("/users/@me")) return json({ id: "bot1" });
+    if (url.endsWith("/guilds/g1/members/bot1")) return json({ roles: ["r-bot"] });
+    if (url.endsWith("/guilds/g1/roles")) return json([{ id: "g1", permissions: "0" }, { id: "r-bot", permissions: botRolePermissions }, { id: "r-autre", permissions: "8" }]);
+    return Promise.resolve(new Response("{}", { status: 404 }));
+  };
+
+  it("allumé → GET en lecture seule sur le serveur de DISCORD_BOT_GUILD_ID, permissions du bot complètes", async () => {
+    fetchMock.mockImplementation(discord("395408788496"));
     const res = await GET();
     expect(res.status).toBe(200);
-    expect(fetchMock).toHaveBeenCalledOnce();
-    const [url, init] = fetchMock.mock.calls[0];
-    expect(url).toBe("https://discord.com/api/v10/guilds/g1/channels");
-    expect(init.method).toBe("GET");
+    expect(fetchMock.mock.calls.every(([, init]) => init.method === "GET")).toBe(true);
+    expect(fetchMock.mock.calls[0][0]).toBe("https://discord.com/api/v10/guilds/g1/channels");
     const body = await res.json();
-    expect(body).toMatchObject({ guildId: "g1", totalChannels: 2, writesApplied: false });
+    expect(body).toMatchObject({ guildId: "g1", totalChannels: 2, writesApplied: false, botPermissions: { status: "checked", administrator: false, missing: [] } });
+  });
+
+  it("signale « Mentionner @everyone, @here et tous les rôles » s'il manque après le retrait d'Administrateur", async () => {
+    fetchMock.mockImplementation(discord("395408657424"));
+    const body = await (await GET()).json();
+    expect(body.botPermissions).toEqual({ status: "checked", administrator: false, missing: ["Mentionner @everyone, @here et tous les rôles"] });
+    expect(JSON.stringify(body)).not.toContain("tok");
   });
 });
