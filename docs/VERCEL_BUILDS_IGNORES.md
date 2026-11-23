@@ -2,6 +2,11 @@
 
 `vercel.json` définit `"ignoreCommand": "node scripts/vercel-ignore-build.mjs"`. Vercel exécute ce script avant chaque build : **code 0 = build ignoré, code 1 = build exécuté**. La CI GitHub (`verify`, `immutable`) n'est pas concernée.
 
+## Aucun déploiement hors main : `git.deploymentEnabled` (23/11/2026)
+Décision de Maxime : `vercel.json` porte `"git": { "deploymentEnabled": { "*": false, "main": true } }` en plus de `ignoreCommand`. Vercel ne crée plus de déploiement pour une branche autre que `main` ; la règle « une branche vaut vrai si au moins une règle correspondante vaut vrai » garde `main` actif. La doc Vercel ne dit pas si les pull requests sont couvertes ni si un déploiement évité sort du compteur de 100 par jour : l'effet est à CONSTATER.
+
+**Retour arrière immédiat** si un déploiement de production de `main` ne réussit plus après cette fusion (hors erreur « Deployment rate limited ») : retirer le bloc `git` de `vercel.json` (revert du commit, aucune autre dépendance) ; `ignoreCommand` continue de limiter les aperçus.
+
 ## Règle actuelle (23/11/2026) : seul main est construit
 L'offre gratuite plafonne les déploiements par 24 h (limite atteinte le 23/11). Aucun aperçu n'est donc construit par PR ni par mise à jour de branche ; `verify` et `immutable` (GitHub) valident les PR. Un aperçu n'existe que sur **demande explicite** : branche préfixée `preview/` ou `[preview]` dans le message du dernier commit. Production et `main` sont toujours construits ; sans `VERCEL_ENV` (contexte inconnu), on construit par sûreté. Le tableau ci-dessous ne s'applique qu'aux aperçus explicitement demandés.
 
