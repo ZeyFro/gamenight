@@ -12,16 +12,16 @@ const potes = [
   { id: "b", discordName: "Bob", discordAvatar: null, color: "#ffffff", tagIds: [] },
 ];
 const success: SlotSuggestionsResult = { ok: true, suggestions: [{ date: "2026-10-09", time: "20:30", endDate: "2026-10-09", endTime: "22:30", availableCount: 2, totalParticipants: 3, unknownCount: 1, creatorAvailable: true }] };
-function setup() {
+function setup(initialGuestIds?: string[]) {
   const submit = vi.fn((event: React.FormEvent) => event.preventDefault());
-  const view = render(<form onSubmit={submit}><SessionPlanningFields potes={potes} tags={[{ id: "team", name: "Team", color: "#ffffff" }]} minDate="2026-10-08" initialDate="2026-10-10" initialTime="19:00" /><button type="submit">Créer</button></form>);
+  const view = render(<form onSubmit={submit}><SessionPlanningFields potes={potes} tags={[{ id: "team", name: "Team", color: "#ffffff" }]} minDate="2026-10-08" initialDate="2026-10-10" initialTime="19:00" initialGuestIds={initialGuestIds} /><button type="submit">Créer</button></form>);
   return { ...view, submit };
 }
 beforeEach(() => { vi.clearAllMocks(); suggest.mockResolvedValue(success); });
 afterEach(cleanup);
 
 it("aucune recherche au montage ; choisir remplit les champs postés sans soumettre ni changer les invités", async () => {
-  const { container, submit } = setup();
+  const { container, submit } = setup(["a", "b"]);
   expect(suggest).not.toHaveBeenCalled();
   await userEvent.click(screen.getByRole("button", { name: "Proposer des créneaux" }));
   expect(suggest).toHaveBeenCalledWith({ guestIds: ["a", "b"], durationMinutes: 120 });
@@ -33,8 +33,16 @@ it("aucune recherche au montage ; choisir remplit les champs postés sans soumet
   expect(screen.getByText(/1 personne sans disponibilité/)).toBeTruthy();
 });
 
-it("la sélection individuelle, par tag, tout et rien restent synchronisées", async () => {
+it("sans invités de départ (défaut), personne n'est coché et on coche à la main", async () => {
   setup();
+  expect((screen.getAllByRole("checkbox") as HTMLInputElement[]).filter((box) => box.name !== "").every((box) => !box.checked)).toBe(true);
+  await userEvent.click(screen.getByRole("checkbox", { name: "Bob" }));
+  await userEvent.click(screen.getByRole("button", { name: "Proposer des créneaux" }));
+  await waitFor(() => expect(suggest).toHaveBeenLastCalledWith({ guestIds: ["b"], durationMinutes: 120 }));
+});
+
+it("la sélection individuelle, par tag, tout et rien restent synchronisées", async () => {
+  setup(["a", "b"]);
   await userEvent.click(screen.getByRole("button", { name: /Team/ })); // Retire Alice.
   await userEvent.click(screen.getByRole("button", { name: "Proposer des créneaux" }));
   await waitFor(() => expect(suggest).toHaveBeenLastCalledWith({ guestIds: ["b"], durationMinutes: 120 }));
