@@ -11,6 +11,7 @@ import { creationKey } from "@/lib/creation-intent";
 import { resumeCreation } from "@/lib/creation-resume";
 import { logger } from "@/lib/logger";
 import { AvailabilityPollError } from "@/lib/session-availability-poll-data";
+import { DailyCreationLimitError, SESSION_QUOTA_ERROR_KEY } from "@/lib/creation-quota";
 import {
   answerAvailabilityPoll,
   chooseAvailabilityPollSlot,
@@ -94,6 +95,7 @@ export async function chooseAvailabilityPollSlotAction(formData: FormData) {
     redirect(`/sessions/${session.id}`);
   } catch (error) {
     if (error && typeof error === "object" && "digest" in error && String(error.digest).startsWith("NEXT_REDIRECT")) throw error;
+    if (error instanceof DailyCreationLimitError) redirect(`/sessions/sondages/${pollId}?error=${SESSION_QUOTA_ERROR_KEY}`);
     if (!(error instanceof AvailabilityPollError)) logger.error("availability-poll-choose", error, { userId: user.id, pollId });
     redirect(`/sessions/sondages/${pollId}?error=unavailable`);
   }

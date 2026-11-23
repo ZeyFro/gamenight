@@ -204,4 +204,20 @@ describe.skipIf(!TEST_DATABASE_URL)("sondages privés de disponibilités (Postgr
     expect(await db.sessionAvailabilityPollSlot.count({ where: { pollId: first.id } })).toBe(0);
     expect(await db.session.count()).toBe(1);
   });
+
+  it("plafond de 10 soirées par jour : choisir un créneau au-delà est refusé, rien n'est créé et le sondage reste ouvert", async () => {
+    const poll = await create();
+    const { rateLimitWindowStart } = await import("./shared-rate-limit");
+    const { DailyCreationLimitError } = await import("./creation-quota");
+    // Compteur du jour déjà à 10 pour le créateur (soirées du site, de Discord, de la roulette ou d'autres sondages).
+    await db.rateLimitWindow.create({ data: { key: `dailyCreateSession:${creator.id}`, windowStart: rateLimitWindowStart(Date.now(), 86_400_000), count: 10 } });
+    await expect(polls.chooseAvailabilityPollSlot(creator.id, poll.id, poll.slots[0].id)).rejects.toBeInstanceOf(DailyCreationLimitError);
+    expect(await db.session.count()).toBe(0);
+    expect(await db.notificationEvent.count()).toBe(0);
+    const after = await polls.loadAvailabilityPoll(creator.id, poll.id);
+    expect(after.status).toBe("OPEN");
+    expect(after.sessionId).toBeNull();
+    // Transaction annulée : le compteur reste au plafond, sans dériver.
+    expect((await db.rateLimitWindow.findMany({ where: { key: `dailyCreateSession:${creator.id}` } })).map((row) => row.count)).toEqual([10]);
+  });
 });
