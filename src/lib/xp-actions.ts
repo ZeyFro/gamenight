@@ -5,7 +5,7 @@ import { statsCommunityIdForSession } from "@/lib/community-stats";
 import { getDefaultCommunityId } from "@/lib/default-community";
 import { getMemberStats, lockCommunityProgress, ZERO_MEMBER_STATS, type CommunityProgress } from "@/lib/member-stats";
 import { announceLevelUp } from "@/lib/discord-level-up";
-import { computeAwardedAmount, didLevelUp, levelForXp, rankForLevel, titleForLevel, xpLevelLabel, xpWindowCap } from "@/lib/xp";
+import { VOTE_XP_CAP_PER_SESSION, computeAwardedAmount, countSessionVoteGains, didLevelUp, levelForXp, rankForLevel, titleForLevel, xpLevelLabel, xpWindowCap } from "@/lib/xp";
 import { createNotification } from "@/lib/notifications";
 import { logger } from "@/lib/logger";
 import { attemptDefaultRewardDelivery, persistRewardNotice, type RewardNotice } from "@/lib/reward-notifications";
@@ -15,11 +15,33 @@ export function isUniqueConstraintViolation(error: unknown): boolean {
   return error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002";
 }
 
-/** Ledger, progression, solde et niveau atomiques ; l'incrément fournit le vrai solde précédent. */
+type ScopedTx = ReturnType<typeof scopedTransactionPrisma>;
+
+/**
+ * Plafond « gains VOTE par membre et par soirée » (audit 23/11/2026, constat 1.10). Le ledger n'a pas de lien direct avec la soirée :
+ * on lit les gains `VOTE` du membre créés depuis la création de la soirée (un vote n'existe qu'après elle), puis on écarte ceux dont
+ * la proposition appartient à une AUTRE soirée (`countSessionVoteGains`). Les propositions retirées restent comptées. Appelé sous le
+ * verrou de la ligne de stats du membre : deux votes simultanés ne passent pas ensemble sous le plafond.
+ */
+async function sessionVoteCapReached(scopedDb: ScopedTx, communityId: string, userId: string, session: { id: string; createdAt: Date }): Promise<boolean> {
+  const gains = await scopedDb.xpEvent.findMany({
+    where: { communityId, userId, reason: "VOTE", createdAt: { gte: session.createdAt } }, select: { sourceId: true },
+  });
+  // Voie rapide : moins de gains que le plafond depuis la création de la soirée, quoi qu'ils soient.
+  if (gains.length < VOTE_XP_CAP_PER_SESSION) return false;
+  const sourceIds = gains.map((gain) => gain.sourceId);
+  const elsewhere = await scopedDb.proposal.findMany({ where: { id: { in: sourceIds }, sessionId: { not: session.id } }, select: { id: true } });
+  return countSessionVoteGains(sourceIds, new Set(elsewhere.map((proposal) => proposal.id))) >= VOTE_XP_CAP_PER_SESSION;
+}
+
+/**
+ * Ledger, progression, solde et niveau atomiques ; l'incrément fournit le vrai solde précédent.
+ * `voteSession` (motif `VOTE` seulement) : la soirée de la proposition votée, pour le plafond de gains par soirée.
+ */
 export async function awardXp(
   userId: string, communityId: string | null, reason: XpReason,
   sourceId: string, baseAmount: number,
-  { applyStreak = true, rewardNotice }: { applyStreak?: boolean; rewardNotice?: RewardNotice } = {},
+  { applyStreak = true, rewardNotice, voteSession }: { applyStreak?: boolean; rewardNotice?: RewardNotice; voteSession?: { id: string; createdAt: Date } } = {},
 ): Promise<{ leveledUp: boolean; awarded: boolean }> {
   const id = await statsCommunityIdForSession(communityId);
   const defaultId = await getDefaultCommunityId();
@@ -41,6 +63,7 @@ export async function awardXp(
       if (!user) return null;
       const scopedDb = scopedTransactionPrisma(tx, { communityIds: [id], includesDefault: false });
       await scopedDb.communityMemberStats.createMany({ data: [{ communityId: id, userId }], skipDuplicates: true });
+      const votedSession = reason === "VOTE" ? voteSession : undefined;
       const windowCap = xpWindowCap(reason);
       if (windowCap) {
         // Plafond anti-farm glissant, compté dans le ledger (création puis suppression en boucle ; soirées fantômes et tournois
@@ -51,6 +74,10 @@ export async function awardXp(
           where: { communityId: id, userId, reason, createdAt: { gte: new Date(Date.now() - windowCap.windowMs) } },
         });
         if (recentGains >= windowCap.max) return null;
+      } else if (votedSession) {
+        // Même verrou : deux votes simultanés ne peuvent pas lire « 9 gains » et en inscrire chacun un.
+        await tx.$queryRaw`SELECT "userId" FROM "CommunityMemberStats" WHERE "communityId" = ${id} AND "userId" = ${userId} FOR UPDATE`;
+        if (await sessionVoteCapReached(scopedDb, id, userId, votedSession)) return null;
       }
       const stats = await scopedDb.communityMemberStats.findUniqueOrThrow({ where: { communityId_userId: { communityId: id, userId } } });
       const amount = computeAwardedAmount(baseAmount, stats.streakCount, applyStreak);

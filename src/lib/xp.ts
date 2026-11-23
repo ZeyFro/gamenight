@@ -50,6 +50,25 @@ export const CREATE_SESSION_XP_WINDOW_MS = 24 * 60 * 60 * 1000;
  */
 export const PARTICIPATE_DAILY_XP_CAP = 3;
 
+/**
+ * Plafond anti-farm des gains « vote » (audit du 23/11/2026, constat 1.10) : `VOTE` rapportait 5 XP par proposition votée, et
+ * rien ne limitait le nombre de propositions d'une soirée (un créateur en ajoutait N puis les votait). Valeur proposée, à valider :
+ * au plus `VOTE_XP_CAP_PER_SESSION` gains `VOTE` par membre et par soirée, comptés dans le ledger (`XpEvent`, sourceId = id de la
+ * proposition). Le 11ᵉ vote d'une soirée ne rapporte plus d'XP ; le vote lui-même reste enregistré. Le plafond de propositions par
+ * soirée (`MAX_PROPOSALS_PER_SESSION`, src/lib/session-proposal-limit.ts) a la même valeur : une soirée normale ne l'atteint jamais.
+ */
+export const VOTE_XP_CAP_PER_SESSION = 10;
+
+/**
+ * Nombre de gains `VOTE` déjà versés pour une soirée. `sourceIds` = gains `VOTE` du membre créés depuis la création de la soirée ;
+ * on retire ceux dont la proposition appartient à UNE AUTRE soirée (`proposalIdsOfOtherSessions`). Une proposition retirée (donc
+ * absente de toute soirée) reste comptée : sinon « proposer, voter, retirer, recommencer » contournerait le plafond, la ligne du
+ * ledger n'ayant pas de lien direct avec la soirée.
+ */
+export function countSessionVoteGains(sourceIds: readonly string[], proposalIdsOfOtherSessions: ReadonlySet<string>): number {
+  return sourceIds.filter((id) => !proposalIdsOfOtherSessions.has(id)).length;
+}
+
 /** Gains plafonnés par membre sur `CREATE_SESSION_XP_WINDOW_MS`, par motif. */
 export const DAILY_XP_CAPS = {
   CREATE_SESSION: CREATE_SESSION_DAILY_XP_CAP,
