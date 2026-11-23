@@ -5,7 +5,7 @@ OFF par défaut, sans migration. S'ajoute aux annonces de preuve : exige `TOWER_
 ## Ce que le drapeau change
 - **Message public** : boutons ✅ Valider / ❌ Refuser. Chaque vote, modification de vote, prolongation et règlement met en file une édition du même message (créneau `…:TOWER:<tentative>:proof`, opération `EDIT`) ; le contenu est relu à l'envoi, une rafale de votes se réduit à la dernière édition. Le message affiche le nombre de votants, jamais le détail pour/contre. Au règlement (validée, refusée, clos sans quorum) les boutons disparaissent.
 - **Un fil par preuve** : créé depuis le message public (créneau `…:proof-thread`, une fois par soumission, avec le rang de resoumission de #465), archivage automatique 3 jours.
-- **Votants** : membre actif de la communauté avec au moins 7 jours d'ancienneté (`Membership.joinedAt`). Ni auto-vote, ni vote d'un participant de l'équipe concernée, un seul vote par personne.
+- **Votants** : membre actif de la communauté avec au moins 3 jours d'ancienneté (`Membership.joinedAt`). Ni auto-vote, ni vote d'un participant de l'équipe concernée, un seul vote par personne.
 - **Vote modifiable** jusqu'à l'échéance (24 h, plus la prolongation unique de 24 h sans quorum, règles de #465). Le `createdAt` d'origine est conservé : le décompte du quorum ne change pas. L'échéance dépassée, la modification est refusée (`CLOSED`).
 
 ## Limites connues
