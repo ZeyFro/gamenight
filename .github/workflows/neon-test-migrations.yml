@@ -26,14 +26,14 @@ jobs:
     environment: neon-migration-test
     steps:
       - name: Checkout main migration baseline
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           persist-credentials: false
 
       # Read-only pinned copies: this does not modify PR #325 and intentionally
       # does not add its six pending migration directories to this run.
       - name: Checkout the reviewed migration runner
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           ref: 4a18b7491d1887cfc4fe38c7f1e68eb77a7571cb
           path: runner-source
@@ -42,7 +42,7 @@ jobs:
           persist-credentials: false
 
       - name: Checkout the exact approved migration files
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           ref: 4a18b7491d1887cfc4fe38c7f1e68eb77a7571cb
           path: migration-370
@@ -50,7 +50,7 @@ jobs:
           persist-credentials: false
 
       - name: Checkout the exact approved migration files
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           ref: 1a495ede501784167b597c43438c1527b2d58082
           path: migration-406
