@@ -144,6 +144,10 @@ model User {
   inputDevices             String[]  @default([])
   availablePlatforms       String[]  @default([])
   microphoneAvailable      Boolean?
+  // §12.2 : langues parlées, habitudes de jeu, préférences d'ambiance (clés de src/lib/player-matching-rules.ts).
+  languages                String[]  @default([])
+  playHabits               String[]  @default([])
+  communityPreferences     String[]  @default([])
   // Fix bug remonté (biblio Steam auto-sync) — posé par `importSteamLibrary`
   // à CHAQUE appel (lien initial, bouton "Réimporter", cron quotidien,
   // resync Family) : source de vérité unique pour "Dernière sync : il y a
