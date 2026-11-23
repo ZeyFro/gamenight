@@ -10,6 +10,7 @@ import type {
 } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { logger } from "@/lib/logger";
+import { persistServerError } from "@/lib/error-log";
 import { scopedTransactionPrisma } from "@/lib/community-scoped-client";
 import { isCommunityIsolationEnabled } from "@/lib/community-isolation";
 import { kickNotificationExecutor } from "@/lib/notification-executor-kick";
@@ -698,6 +699,14 @@ export async function finalizeDeliveryFailure(
       "Finalisation échec orpheline (réservation déjà reprise ou expirée)",
       { id }
     );
+  }
+  // Échec TERMINAL seulement (pas les nouvelles tentatives), journal d'erreurs durable : le code d'erreur seul, jamais le contenu du message
+  // ni `lastError` (qui peut citer un destinataire ou un texte).
+  if (!input.retryable && result.count === 1) {
+    persistServerError("notification-executor", new Error(`livraison en échec terminal : ${input.errorClass}`), {
+      code: input.errorClass,
+      route: "executor/livraison",
+    });
   }
   return result.count === 1;
 }
