@@ -6,6 +6,7 @@ import { accessibleSessionWhereFor } from "@/lib/session-access";
 import { creationMemberUserWhere, memberUserWhereFor } from "@/lib/community-isolation";
 import { getActiveScopedPrisma } from "@/lib/community-scoped-client";
 import { writeCommunityIdForUser } from "@/lib/community-stats";
+import { isFrenchNewsTitle } from "@/lib/news-language";
 
 /**
  * Données agrégées pour la home (refonte : "Activité récente", "Stats du
@@ -234,6 +235,8 @@ export interface GameNewsItem {
 }
 
 const RECENT_NEWS_COUNT = 5;
+/** Lignes lues avant de ne garder que les actualités en français (Steam renvoie aussi de l'anglais, du russe, etc.). */
+const NEWS_CANDIDATES = 60;
 
 /**
  * Card "Actu gaming" (Sprint 3) — lit uniquement le cache `GameNews`,
@@ -247,7 +250,7 @@ const RECENT_NEWS_COUNT = 5;
 export async function getRecentGameNews(limit = RECENT_NEWS_COUNT): Promise<GameNewsItem[]> {
   const news = await prisma.gameNews.findMany({
     orderBy: { publishedAt: "desc" },
-    take: limit,
+    take: NEWS_CANDIDATES,
     select: {
       id: true,
       title: true,
@@ -257,7 +260,7 @@ export async function getRecentGameNews(limit = RECENT_NEWS_COUNT): Promise<Game
     },
   });
 
-  return news.map((n) => ({
+  return news.filter((n) => isFrenchNewsTitle(n.title)).slice(0, limit).map((n) => ({
     id: n.id,
     gameName: n.game.name,
     gameCoverUrl: n.game.coverUrl,
