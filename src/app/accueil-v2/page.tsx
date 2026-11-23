@@ -209,7 +209,7 @@ export default async function AccueilV2Page() {
               <Card className="gradient-border h-full">
                 <div className="flex items-center justify-between">
                   <p className="text-lg font-semibold text-foreground">Classement rapide</p>
-                  <Link href="/classement" className="text-xs font-medium text-accent hover:underline">
+                  <Link href="/classement" className="gn-touch-target relative text-xs font-medium text-accent hover:underline">
                     Voir tout
                   </Link>
                 </div>

@@ -720,7 +720,7 @@ async function HomeContent({
           <Card className="gradient-border">
             <div className="flex items-center justify-between">
               <p className="text-lg font-semibold text-foreground">Classement rapide</p>
-              <Link href="/classement" className="text-xs font-medium text-accent hover:underline">
+              <Link href="/classement" className="gn-touch-target relative text-xs font-medium text-accent hover:underline">
                 Voir tout
               </Link>
             </div>
