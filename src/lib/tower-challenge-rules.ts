@@ -67,6 +67,25 @@ export function canReceiveChallengeReward(completedAt: readonly Date[], now: Dat
   return count < 2;
 }
 
+/**
+ * Plafond explicite des récompenses d'ÉQUIPE par personne et par jour de Paris (décision de Maxime, audit du 23/11/2026, constat 1.5) :
+ * une personne gagne au plus 3 récompenses d'équipe par jour. Le quota partagé solo + équipe (`canReceiveChallengeReward`, 2 par jour)
+ * reste en vigueur et est plus strict : ce plafond est un second verrou, indépendant, qui tient même si le quota partagé évoluait.
+ */
+export const TOWER_TEAM_DAILY_REWARD_CAP = 3;
+
+/** À appeler sous verrou avec les récompenses d'équipe déjà versées à la personne (dates `rewardedAt` des participations). */
+export function canReceiveTeamReward(teamRewardedAt: readonly Date[], now: Date): boolean {
+  const current = timestamp(now);
+  const today = parisDayFormatter.format(now);
+  let count = 0;
+  for (const rewarded of teamRewardedAt) {
+    if (timestamp(rewarded) > current) throw new RangeError("Récompense dans le futur");
+    if (parisDayFormatter.format(rewarded) === today) count += 1;
+  }
+  return count < TOWER_TEAM_DAILY_REWARD_CAP;
+}
+
 export function remainingChallengeRewardsToday(completedAt: readonly Date[], now: Date): number {
   const current = timestamp(now);
   const today = parisDayFormatter.format(now);
