@@ -2,7 +2,10 @@
 
 `vercel.json` définit `"ignoreCommand": "node scripts/vercel-ignore-build.mjs"`. Vercel exécute ce script avant chaque build : **code 0 = build ignoré, code 1 = build exécuté**. La CI GitHub (`verify`, `immutable`) n'est pas concernée.
 
-## Règle de sûreté
+## Règle actuelle (23/11/2026) : seul main est construit
+L'offre gratuite plafonne les déploiements par 24 h (limite atteinte le 23/11). Aucun aperçu n'est donc construit par PR ni par mise à jour de branche ; `verify` et `immutable` (GitHub) valident les PR. Un aperçu n'existe que sur **demande explicite** : branche préfixée `preview/` ou `[preview]` dans le message du dernier commit. Production et `main` sont toujours construits ; sans `VERCEL_ENV` (contexte inconnu), on construit par sûreté. Le tableau ci-dessous ne s'applique qu'aux aperçus explicitement demandés.
+
+## Règle de sûreté (aperçu demandé)
 On n'ignore un build que si l'on a **prouvé** que tous les fichiers modifiés depuis le dernier déploiement réussi de la branche sont hors application. Au moindre doute, on construit.
 
 | Cas | Résultat |
