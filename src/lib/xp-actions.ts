@@ -85,7 +85,7 @@ export async function awardXp(
         logger.error("xp-actions", error, { userId, communityId: id, reason, sourceId, effect: "discord" });
       }
       await createNotification({
-        userId, communityId: id, type: "LEVEL_UP", title: "🎉 Level up !",
+        userId, communityId: id, type: "LEVEL_UP", title: "🎉 Niveau d’XP supérieur !",
         message: xpLevelLabel(result.beforeLevel) + " → " + xpLevelLabel(result.afterLevel) + " · " + titleForLevel(result.afterLevel) + " · " + rankForLevel(result.afterLevel).name,
       });
     }
