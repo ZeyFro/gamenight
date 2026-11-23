@@ -38,20 +38,22 @@ export type RegistrationReport = {
   ok: boolean;
   commands: CommandReport[];
   outsideManifest: number | null;
-  failure: { stage: string; command?: string; http?: number; code?: string; hint?: string; errorName?: string } | null;
+  failure: { stage: string; command?: string; http?: number; code?: string; hint?: string; errorName?: string; retryAfterSeconds?: number } | null;
 };
 
 /**
- * Exécute `check` (un GET, lecture seule) ou `execute`. Le rapport ne contient que des noms de commandes, des statuts,
+ * Exécute `check` (un GET, lecture seule) ou `execute` (saute les commandes déjà à jour, respecte la limite de débit
+ * Discord dans un budget de 45 s, compatible avec `maxDuration` 60 de la route). Le rapport ne contient que des noms de commandes, des statuts,
  * le statut HTTP et le code numérique Discord : jamais le jeton ni une valeur de l'environnement.
  */
 export async function runCommandRegistration(
   mode: RegistrationMode,
   env: Env = process.env,
-  fetchImpl: typeof fetch = fetch
+  fetchImpl: typeof fetch = fetch,
+  timing: { sleep?: (ms: number) => Promise<void>; now?: () => number } = {}
 ): Promise<RegistrationReport> {
   const commands = prepareManifest(manifestRaw as object[]);
-  const result = await registerCommands({ mode, commands, env, fetchImpl });
+  const result = await registerCommands({ mode, commands, env, fetchImpl, ...timing });
   const failure = result.failure;
   return {
     mode,
@@ -70,13 +72,18 @@ export async function runCommandRegistration(
           ...(failure.code !== undefined ? { code: failure.code } : {}),
           ...(failure.hint ? { hint: failure.hint } : {}),
           ...(failure.errorName !== undefined ? { errorName: failure.errorName } : {}),
+          ...(failure.retryAfterSeconds !== undefined ? { retryAfterSeconds: failure.retryAfterSeconds } : {}),
         }
       : null,
   };
 }
 
-/** Code HTTP de la réponse de la route selon le résultat. */
+/**
+ * Code HTTP de la réponse de la route selon le résultat. 202 = enregistrement partiel arrêté par la limite de débit
+ * Discord (à relancer : les commandes déjà à jour sont sautées), distinct du 429 de la limite propre à la route.
+ */
 export function registrationHttpStatus(report: RegistrationReport): number {
   if (report.ok) return 200;
+  if (report.failure?.stage === "rate_limit") return 202;
   return report.failure?.stage === "config" ? 503 : 502;
 }
