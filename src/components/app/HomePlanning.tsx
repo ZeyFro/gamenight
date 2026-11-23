@@ -29,7 +29,7 @@ export function HomePlanningLinks() {
     <nav className="gn-home-planning" aria-label="Préparer la prochaine soirée">
       <Link href="/calendrier" prefetch={false}><span aria-hidden="true">▦</span><b>Trouver une date</b><small>Calendrier & dispos</small><i aria-hidden="true">↗</i></Link>
       <Link href="/bibliotheque/groupe" prefetch={false}><span aria-hidden="true">🎮</span><b>Les jeux du groupe</b><small>Votre bibliothèque</small><i aria-hidden="true">↗</i></Link>
-      <Link href="/tierlist" prefetch={false}><span aria-hidden="true">✦</span><b>Classer mes jeux</b><small>Ma tierlist</small><i aria-hidden="true">↗</i></Link>
+      <Link href="/tierlist" prefetch={false}><span aria-hidden="true">✦</span><b>Classer mes jeux</b><small>Mon classement de jeux</small><i aria-hidden="true">↗</i></Link>
     </nav>
   );
 }

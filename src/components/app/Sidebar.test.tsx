@@ -14,7 +14,7 @@ describe("navigation complète desktop/mobile", () => {
     const nav = within(screen.getByRole("navigation", { name: "Navigation principale" }));
     expect(nav.getByRole("link", { name: "Bibliothèque du groupe" }).getAttribute("aria-current")).toBe("page");
     expect(nav.getByRole("link", { name: "Ma bibliothèque" }).getAttribute("aria-current")).toBeNull();
-    for (const name of ["Tierlist", "À acheter", "À vérifier", "Tournois", "Roulette", "Calendrier"]) expect(nav.getByRole("link", { name })).toBeTruthy();
+    for (const name of ["Classement des jeux", "À acheter", "À vérifier", "Tournois", "Roulette", "Calendrier"]) expect(nav.getByRole("link", { name })).toBeTruthy();
     expect(activeSidebarHref("/profil/badges")).toBe("/profil");
   });
   it("le menu mobile contient les autres parcours et se ferme au choix d'une page", async () => {

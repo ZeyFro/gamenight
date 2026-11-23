@@ -95,7 +95,7 @@ export function AjouterJeuForm({ initialName }: { initialName?: string }) {
         {results.length > 0 && (
           <div className="flex flex-col gap-1 rounded-lg border border-border p-2">
             <p className="px-1 py-1 text-sm text-muted">
-              Résultats IGDB — choisis une correspondance :
+              Résultats de la base de jeux — choisis une correspondance :
             </p>
             {results.map((r) => (
               <button
@@ -123,7 +123,7 @@ export function AjouterJeuForm({ initialName }: { initialName?: string }) {
 
         {selected && (
           <p className="text-sm text-accent">
-            Correspondance IGDB sélectionnée.{" "}
+            Fiche de la base de jeux sélectionnée.{" "}
             <button
               type="button"
               onClick={saisieManuelle}
@@ -192,7 +192,7 @@ export function AjouterJeuForm({ initialName }: { initialName?: string }) {
 
         {!selected && (
           <p className="text-xs text-muted">
-            Pas de correspondance IGDB trouvée ou utile ? Laisse les champs
+            Pas de fiche trouvée dans la base de jeux ou utile ? Laisse les champs
             ci-dessus tels quels (2 joueurs par défaut) ou ajuste-les à la main.
           </p>
         )}

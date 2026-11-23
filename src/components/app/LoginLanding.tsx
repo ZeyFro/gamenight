@@ -19,7 +19,7 @@ export function LoginLanding({ children }: { children: ReactNode }) {
       {children}
       {launchTexts && <p className="mt-4 text-sm text-muted">{LOGIN_MEMBERS_ONLY_NOTICE}{inviteUrl && <>{" "}<a href={inviteUrl} target="_blank" rel="noopener noreferrer" className="font-semibold text-accent underline underline-offset-2">Rejoindre le serveur</a></>}</p>}
       {isLegalPagesEnabled() && <nav aria-label="Informations légales" className="mt-4 flex flex-wrap gap-x-3 gap-y-1 text-xs text-muted">{LEGAL_LINKS.map((link) => <Link key={link.href} href={link.href} className="underline underline-offset-2 hover:text-foreground">{link.label}</Link>)}</nav>}
-      <ul className="gn-login-benefits"><li>Des soirées et roulettes à organiser ensemble</li><li>Une bibliothèque commune et vos tierlists</li><li>Une progression propre à chaque serveur</li></ul>
+      <ul className="gn-login-benefits"><li>Des soirées et roulettes à organiser ensemble</li><li>Une bibliothèque commune et vos classements de jeux</li><li>Une progression propre à chaque serveur</li></ul>
     </section>
   </div>;
 }

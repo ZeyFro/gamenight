@@ -41,9 +41,7 @@ export default async function AVerifierPage() {
       <LibraryTabs active="a-verifier" />
 
       <p className="text-sm text-muted">
-        Ces jeux n&apos;ont pas encore de mode de jeu confirmé (ni par le
-        backfill Steam/IGDB, ni manuellement). Vérifie-les rapidement
-        ci-dessous.
+        « À vérifier » = des jeux dont on ne sait pas encore s&apos;ils se jouent en solo, en coop ou en ligne : ni la base de jeux, ni Steam, ni toi ne l&apos;avez confirmé. Pour chacun, indique le mode de jeu ci-dessous : cela aide le groupe à choisir les soirées.
       </p>
 
       <ToVerifierList games={games} />

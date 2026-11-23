@@ -1,14 +1,14 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import type { SVGProps } from "react";
 import Link from "next/link";
 import Image from "next/image";
-import { removeUserGame, toggleGameCoop } from "@/app/actions";
+import { toggleGameCoop } from "@/app/actions";
 import { Card } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
 import { Stagger, StaggerItem } from "@/components/motion";
 import { EditGameDialog } from "@/components/EditGameDialog";
+import { RemoveGameConfirmDialog } from "@/components/RemoveGameConfirmDialog";
 
 export interface BibliothequeGame {
   id: string;
@@ -127,30 +127,8 @@ function GameCard({ game }: { game: BibliothequeGame }) {
       </form>
       <div className="absolute top-1.5 right-1.5 flex gap-1.5 pointer-coarse:gap-2">
         <EditGameDialog game={game} />
-        <form action={removeUserGame}>
-          <input type="hidden" name="gameId" value={game.id} />
-          <button
-            type="submit"
-            aria-label={`Retirer ${game.name} de ma bibliothèque`}
-            title="Retirer de ma bibliothèque"
-            className="gn-touch-target relative flex h-9 w-9 items-center justify-center rounded-full bg-black/60 text-white backdrop-blur-sm transition-colors hover:bg-destructive/90 active:bg-destructive"
-          >
-            <TrashIcon className="h-5 w-5" />
-          </button>
-        </form>
+        <RemoveGameConfirmDialog gameId={game.id} gameName={game.name} />
       </div>
     </div>
-  );
-}
-
-function TrashIcon(props: SVGProps<SVGSVGElement>) {
-  return (
-    <svg viewBox="0 0 20 20" fill="currentColor" aria-hidden="true" {...props}>
-      <path
-        fillRule="evenodd"
-        d="M8.75 1a.75.75 0 0 0-.75.75V2h-3a.75.75 0 0 0 0 1.5h.32l.83 11.6A2 2 0 0 0 8.14 17h3.72a2 2 0 0 0 1.99-1.9l.83-11.6h.32a.75.75 0 0 0 0-1.5h-3v-.25a.75.75 0 0 0-.75-.75h-2.5ZM7.6 3.5h4.8l-.82 11.5a.5.5 0 0 1-.5.46H8.92a.5.5 0 0 1-.5-.46L7.6 3.5Z"
-        clipRule="evenodd"
-      />
-    </svg>
   );
 }

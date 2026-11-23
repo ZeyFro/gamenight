@@ -91,7 +91,7 @@ export function RecapWrapped({
 
       {data.bestStreak && (
         <WrappedSection>
-          <StatLabel>🔥 Meilleur streak</StatLabel>
+          <StatLabel>🔥 Meilleure série</StatLabel>
           <StatValue>{data.bestStreak.discordName}</StatValue>
           <p className="text-white/70">{data.bestStreak.streak} jours d&apos;affilée</p>
         </WrappedSection>
