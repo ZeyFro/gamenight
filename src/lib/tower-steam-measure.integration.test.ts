@@ -86,6 +86,16 @@ describe.skipIf(!url)("validation automatique Steam des défis Tower", () => {
     expect(await db.notificationDelivery.count({ where: { targetSlot: slot, operation: "SEND" } })).toBe(1);
   });
 
+  it("plafonne le temps de jeu compté à 2 h par jour : un jeu laissé ouvert n'atteint pas un objectif de 5 h", async () => {
+    await db.towerChallengeAttempt.update({ where: { id: attemptId }, data: { measureTarget: 300 } });
+    clock.now = new Date("2026-12-10T20:00:00Z");
+    steam.playtime.mockResolvedValue({ ok: true, minutes: 500 + 720 });
+    const summary = await measure.runTowerSteamAutovalidation(new Date(clock.now.getTime() + 30_000));
+    expect(summary).toMatchObject({ checked: 1, achieved: 0 });
+    const row = await db.towerChallengeAttempt.findUniqueOrThrow({ where: { id: attemptId } });
+    expect(row).toMatchObject({ measureStatus: "WATCHING", measureValue: 120, autoValidatedAt: null });
+  });
+
   it("repli sur le vote pour un profil Steam privé, sans plus aucune lecture", async () => {
     steam.playtime.mockResolvedValue({ ok: false, reason: "private" });
     const summary = await measure.runTowerSteamAutovalidation(new Date(clock.now.getTime() + 30_000));
