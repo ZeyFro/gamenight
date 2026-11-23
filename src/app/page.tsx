@@ -1,7 +1,7 @@
 import { withCommunityReadContext } from "@/lib/community-read-context";
 import Image from "next/image";
 import Link from "next/link";
-import { signIn, signOut } from "@/auth";
+import { signIn } from "@/auth";
 import { authErrorView } from "@/lib/auth-error-messages";
 import { getCurrentUser } from "@/lib/current-user";
 import { requireCommunityChosen } from "@/lib/community-picker";
@@ -299,15 +299,6 @@ async function HomeContent({
             {xpLevelLabel(level)} · {title} · {rank.name}
           </p>
         </div>
-        {/* FIX1 (retours visuels post-Sprint2) : le bouton "?" flottant
-            (`GuideFab`) est discret par design (coin d'écran, toujours
-            visible) — pas assez visible en tant que point d'entrée
-            principal vers le guide pour un nouvel utilisateur. Lien
-            explicite ici, juste après l'en-tête, en plus du FAB (les deux
-            coexistent, cf. spec). */}
-        <ButtonLink href="/guide" variant="ghost" size="sm" className="shrink-0 !px-2">
-          📖 Guide
-        </ButtonLink>
       </ParallaxHeader>
 
       <Stagger className="gn-home-sections" staggerDelay={0.04}>
@@ -747,16 +738,6 @@ async function HomeContent({
         </StaggerItem>
       </Stagger>
 
-      <form
-        action={async () => {
-          "use server";
-          await signOut();
-        }}
-      >
-        <Button type="submit" variant="ghost" size="sm">
-          Se déconnecter
-        </Button>
-      </form>
     </div>
     </PullToRefresh>
   );
