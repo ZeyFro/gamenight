@@ -44,7 +44,7 @@ describe.skipIf(!TEST_DATABASE_URL)("tournois par équipes inscrites : PostgreSQ
     ids.community = (await db.community.create({ data: { slug: "tower-tt", name: "The Tower", status: "ACTIVE", communityTeamsEnabled: true } })).id;
     for (const name of ["org", "a1", "a2", "b1", "b2", "c1", "c2", "d1", "d2", "outsider"]) {
       ids[name] = (await db.user.create({ data: { discordId: `tt-${name}`, discordName: name } })).id;
-      await db.membership.create({ data: { userId: ids[name], communityId: ids.community, status: "ACTIVE", joinedAt: new Date() } });
+      await db.membership.create({ data: { userId: ids[name], communityId: ids.community, status: "ACTIVE", joinedAt: new Date(Date.now() - 30 * 24 * H) } });
     }
     ids.game = (await db.game.create({ data: { name: "Deadlock", source: "MANUAL", addedById: ids.org } })).id;
     for (const [letter, captain, member] of [["A", "a1", "a2"], ["B", "b1", "b2"], ["C", "c1", "c2"], ["D", "d1", "d2"]]) {

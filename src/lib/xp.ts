@@ -57,6 +57,36 @@ export const DAILY_XP_CAPS = {
 } as const;
 
 /**
+ * Plafond anti-farm de l'XP de tournoi (audit du 23/11/2026, constat 1.11) : 4 comptes complices suffisent à monter un tournoi et
+ * à se verser l'XP du podium à volonté. Au plus `TOURNAMENT_XP_WEEKLY_CAP` gains `TOURNAMENT_RESULT` par membre et par communauté sur
+ * `TOURNAMENT_XP_WINDOW_MS` (7 jours glissants), comptés dans le ledger comme pour la présence. Un joueur ne reçoit qu'un gain par
+ * tournoi (1er, 2e ou demi-finaliste) : 5 tournois primés par semaine restent donc entièrement récompensés.
+ * Valeurs PROPOSÉES par l'audit, à valider par Maxime.
+ */
+export const TOURNAMENT_XP_WEEKLY_CAP = 5;
+export const TOURNAMENT_XP_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
+
+/**
+ * Seconde garde de l'XP de tournoi : elle n'est versée que si au moins `TOURNAMENT_XP_MIN_ESTABLISHED_PARTICIPANTS` participants
+ * sont des membres actifs établis (ancienneté de `tower-vote-eligibility.ts`, 3 jours) ; voir `tournament-xp-eligibility.ts`.
+ * Valeur PROPOSÉE par l'audit, à valider par Maxime.
+ */
+export const TOURNAMENT_XP_MIN_ESTABLISHED_PARTICIPANTS = 3;
+
+export interface XpWindowCap {
+  max: number;
+  windowMs: number;
+}
+
+/** Plafonds glissants du ledger, par motif ; `null` = motif non plafonné. */
+export function xpWindowCap(reason: string): XpWindowCap | null {
+  if (reason === "CREATE_SESSION") return { max: DAILY_XP_CAPS.CREATE_SESSION, windowMs: CREATE_SESSION_XP_WINDOW_MS };
+  if (reason === "PARTICIPATE") return { max: DAILY_XP_CAPS.PARTICIPATE, windowMs: CREATE_SESSION_XP_WINDOW_MS };
+  if (reason === "TOURNAMENT_RESULT") return { max: TOURNAMENT_XP_WEEKLY_CAP, windowMs: TOURNAMENT_XP_WINDOW_MS };
+  return null;
+}
+
+/**
  * Formules pures du chantier XP/niveaux/rangs — aucune I/O ici
  * volontairement (ni Prisma, ni Discord), pour que `discord-level-up.ts`
  * puisse les utiliser sans créer de dépendance circulaire avec
