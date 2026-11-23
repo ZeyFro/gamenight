@@ -14,6 +14,7 @@ import {
   type FamilyImportSuggestion,
 } from "@/app/profil/family-import-actions";
 import { FAMILY_IMPORT_BATCH_SIZE, parseGameNamesFromText } from "@/lib/family-import";
+import { plural } from "@/lib/plural";
 
 interface PendingItem {
   id: string;
@@ -94,7 +95,7 @@ export function FamilyImportForm() {
 
     setPhase("done");
     toast.success(
-      `${importedAcc.length} jeu${importedAcc.length === 1 ? "" : "x"} importé${importedAcc.length === 1 ? "" : "s"}${pendingAcc.length > 0 ? `, ${pendingAcc.length} à confirmer` : ""}`
+      `${importedAcc.length} ${plural(importedAcc.length, "jeu", "jeux")} ${plural(importedAcc.length, "importé")}${pendingAcc.length > 0 ? `, ${pendingAcc.length} à confirmer` : ""}`
     );
   }
 
@@ -198,8 +199,7 @@ export function FamilyImportForm() {
             />
           </div>
           <p className="text-xs text-muted">
-            {processed}/{total} jeux analysés — {imported.length} importé
-            {imported.length === 1 ? "" : "s"}, {pending.length} à confirmer
+            {processed}/{total} jeux analysés — {imported.length} {plural(imported.length, "importé")}, {pending.length} à confirmer
           </p>
         </div>
       )}

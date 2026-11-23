@@ -14,6 +14,7 @@ import { FadeInView } from "@/components/ui/FadeInView";
 import { XpEvolutionChart, type XpEvolutionPoint } from "@/components/XpEvolutionChart";
 import { pageMetadata } from "@/lib/page-title";
 import { attendanceRatePercent } from "@/lib/session-attendance";
+import { plural } from "@/lib/plural";
 
 export const metadata = pageMetadata("Mon profil");
 
@@ -263,7 +264,7 @@ export default async function ProfilApercuPage() {
               <p className="text-xs text-muted">Jeu le plus joué</p>
               <p className="truncate text-sm font-medium text-foreground">{mostPlayedGame.name}</p>
               <p className="text-xs text-muted">
-                {mostPlayedGame.count} soirée{mostPlayedGame.count > 1 ? "s" : ""}
+                {mostPlayedGame.count} {plural(mostPlayedGame.count, "soirée")}
               </p>
             </div>
           </Card>
@@ -277,7 +278,7 @@ export default async function ProfilApercuPage() {
         </Card>
 
         <p className="text-xs text-muted">
-          Membre depuis {memberSinceDays} jour{memberSinceDays > 1 ? "s" : ""}
+          Membre depuis {memberSinceDays} {plural(memberSinceDays, "jour")}
         </p>
       </section>
 

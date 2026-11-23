@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { batchMarkGamesCoop } from "@/app/bibliotheque/actions";
 import { Button } from "@/components/ui/Button";
+import { plural } from "@/lib/plural";
 
 /**
  * Bonus de l'onglet `/bibliotheque` (PR 32.6, Bloc B) : affiché uniquement
@@ -22,7 +23,7 @@ export function MarkAllCoopButton({ gameIds }: { gameIds: string[] }) {
     startTransition(async () => {
       const result = await batchMarkGamesCoop(gameIds);
       toast.success(
-        `${result.count} jeu${result.count === 1 ? "" : "x"} confirmé${result.count === 1 ? "" : "s"} en coop`
+        `${result.count} ${plural(result.count, "jeu", "jeux")} ${plural(result.count, "confirmé")} en coop`
       );
       router.refresh();
     });

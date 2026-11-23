@@ -14,6 +14,7 @@ import {
   sendChatMessageAction,
   toggleReactionAction,
 } from "@/app/chat/actions";
+import { plural } from "@/lib/plural";
 
 const POLL_INTERVAL_MS = 15_000;
 const LONG_PRESS_MS = 500;
@@ -258,7 +259,7 @@ export function ChatMessages({
                           key={emoji}
                           type="button"
                           onClick={() => react(m.id, emoji)}
-                          aria-label={`${count} réaction${count > 1 ? "s" : ""} ${emoji} — cliquer pour réagir aussi`}
+                          aria-label={`${count} ${plural(count, "réaction")} ${emoji} — cliquer pour réagir aussi`}
                           className="flex min-h-11 min-w-11 items-center justify-center rounded-full border border-border bg-background px-1.5 py-0.5 text-[11px]"
                         >
                           {emoji} {count}

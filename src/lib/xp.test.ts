@@ -36,8 +36,8 @@ describe("xpForLevel / levelForXp (courbe 50 × (niveau-1)²)", () => {
 
 describe("titleForLevel", () => {
   it("renvoie le titre du palier courant, pas le suivant", () => {
-    expect(titleForLevel(1)).toBe("Victime");
-    expect(titleForLevel(4)).toBe("Victime");
+    expect(titleForLevel(1)).toBe("Recrue");
+    expect(titleForLevel(4)).toBe("Recrue");
     expect(titleForLevel(5)).toBe("Noob");
     expect(titleForLevel(9)).toBe("Noob");
     expect(titleForLevel(10)).toBe("PAPED");

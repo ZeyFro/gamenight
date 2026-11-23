@@ -16,6 +16,7 @@ import { PullToRefresh } from "@/components/PullToRefresh";
 import { SegmentedControl } from "@/components/ui/SegmentedControl";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { pageMetadata } from "@/lib/page-title";
+import { plural } from "@/lib/plural";
 
 export const metadata = pageMetadata("Tournois");
 
@@ -118,8 +119,7 @@ export default async function TournoisPage({
                         </p>
                       ) : (
                         <p className="mt-1 text-xs text-muted">
-                          {t.participants.length}/{t.maxPlayers} joueur
-                          {t.maxPlayers === 1 ? "" : "s"}
+                          {t.participants.length}/{t.maxPlayers} {plural(t.maxPlayers, "joueur")}
                         </p>
                       )}
                     </div>

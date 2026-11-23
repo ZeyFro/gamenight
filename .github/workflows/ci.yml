@@ -2,6 +2,12 @@
 # sur un Postgres de service jetable), typage, lint, build. Aucun secret ni
 # variable Vercel : la base est celle du conteneur de service, jamais Neon.
 # Pas d'auto-merge.
+#
+# Jobs parallèles (aucun test retiré) : les tests d'intégration sont répartis en 4 tranches
+# (`vitest --shard`), chacune avec SA PROPRE base Postgres de service (les suites partagent leurs
+# tables par TRUNCATE : jamais deux tranches sur la même base) ; typage, lint, build et tests
+# unitaires tournent à côté. Le job `verify` ci-dessous est l'agrégat : c'est lui, et lui seul,
+# que la règle de `main` exige (avec `immutable`) ; il échoue si UN des autres jobs échoue.
 name: CI
 
 on:
@@ -15,10 +21,18 @@ concurrency:
   group: ci-${{ github.event.pull_request.number }}
   cancel-in-progress: true
 
+env:
+  NEXT_TELEMETRY_DISABLED: "1"
+
 jobs:
-  verify:
+  postgres:
+    name: tests Postgres (tranche ${{ matrix.shard }}/4)
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4]
     services:
       postgres:
         # Variante alpine déjà utilisée pour les tests Postgres locaux, plus légère
@@ -34,8 +48,46 @@ jobs:
           --health-interval 5s
           --health-timeout 5s
           --health-retries 10
-    env:
-      NEXT_TELEMETRY_DISABLED: "1"
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - run: npx prisma generate
+
+      # Base de service JETABLE (conteneur détruit en fin de job, jamais Neon ni une base à conserver) :
+      # durabilité inutile. Sans fsync, `TRUNCATE … CASCADE` ne recrée plus ~100 tables sur disque et les
+      # checkpoints ne synchronisent plus des dizaines de milliers de fichiers (mesure du dépôt : 283 s au
+      # lieu de 930 à 1222 s pour toute la suite). Mêmes réglages que la base de test locale (CLAUDE.md).
+      - name: Base de service sans fsync (jetable)
+        env:
+          PGPASSWORD: test
+        run: |
+          for setting in "fsync = off" "synchronous_commit = off" "full_page_writes = off" "checkpoint_timeout = '1h'" "max_wal_size = '8GB'"; do
+            psql -h 127.0.0.1 -p 55439 -U postgres -d gamenight_test -v ON_ERROR_STOP=1 -c "ALTER SYSTEM SET ${setting}"
+          done
+          psql -h 127.0.0.1 -p 55439 -U postgres -d gamenight_test -v ON_ERROR_STOP=1 -c "SELECT pg_reload_conf()"
+          psql -h 127.0.0.1 -p 55439 -U postgres -d gamenight_test -Atc "SHOW fsync"
+
+      - name: prisma migrate deploy (base de service)
+        run: npx prisma migrate deploy
+        env:
+          DATABASE_URL: postgresql://postgres:test@127.0.0.1:55439/gamenight_test
+
+      - name: npm run test:postgres (tranche ${{ matrix.shard }}/4)
+        run: npm run test:postgres -- --shard=${{ matrix.shard }}/4
+        env:
+          TEST_DATABASE_URL: postgresql://postgres:test@127.0.0.1:55439/gamenight_test
+
+  unit:
+    name: tests unitaires
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
 
@@ -51,17 +103,23 @@ jobs:
 
       - run: npx prisma generate
 
-      - name: prisma migrate deploy (base de service)
-        run: npx prisma migrate deploy
-        env:
-          DATABASE_URL: postgresql://postgres:test@127.0.0.1:55439/gamenight_test
-
-      - name: npm run test:postgres
-        run: npm run test:postgres
-        env:
-          TEST_DATABASE_URL: postgresql://postgres:test@127.0.0.1:55439/gamenight_test
-
       - run: npm test
+
+  typecheck:
+    name: typage
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - run: npx prisma generate
 
       # Types globaux de Next (`LayoutProps`, `PageProps`…) générés dans
       # `.next/types` : absents d'un checkout neuf, tsc échoue sans eux.
@@ -69,7 +127,64 @@ jobs:
 
       - run: npx tsc --noEmit
 
+  lint:
+    name: lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
       - run: npm run lint
+
+  build:
+    name: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      # Cache de compilation de Next (accélère le build ; une clé périmée ne fausse jamais le résultat).
+      - uses: actions/cache@v4
+        with:
+          path: .next/cache
+          key: next-build-${{ runner.os }}-${{ hashFiles('package-lock.json') }}-${{ hashFiles('src/**', 'next.config.*') }}
+          restore-keys: |
+            next-build-${{ runner.os }}-${{ hashFiles('package-lock.json') }}-
+            next-build-${{ runner.os }}-
+
+      - run: npx prisma generate
 
       # `npm run build` appelle scripts/build.mjs (prisma generate + next build); aucune migration n'est lancée.
       - run: npx next build
+
+  # Agrégat : seul check requis par `main` (avec `immutable`). Échoue si un job amont échoue,
+  # est annulé ou n'a pas tourné.
+  verify:
+    name: verify
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    needs: [postgres, unit, typecheck, lint, build]
+    if: ${{ always() }}
+    steps:
+      - name: Tous les jobs doivent être verts
+        run: |
+          echo "postgres=${{ needs.postgres.result }} unit=${{ needs.unit.result }} typecheck=${{ needs.typecheck.result }} lint=${{ needs.lint.result }} build=${{ needs.build.result }}"
+          test "${{ needs.postgres.result }}" = success
+          test "${{ needs.unit.result }}" = success
+          test "${{ needs.typecheck.result }}" = success
+          test "${{ needs.lint.result }}" = success
+          test "${{ needs.build.result }}" = success
