@@ -214,6 +214,45 @@
 
 ---
 
+## Lot J — Compléments (variables restantes, à poser avec le lot indiqué)
+
+> Relevé du 24/11/2026 : cette section couvre les 19 interrupteurs d'`.env.example` qui n'étaient dans aucun lot. Ensemble avec les lots A à I, **tous** les interrupteurs du dépôt sont maintenant décrits ici. Valeur exacte `true` partout, Production seulement, type « Plain ».
+
+**Déjà allumés en Production (rien à poser, seulement vérifier au prérequis P1)** : `TOWER_CHALLENGES_ENABLED`, `TOWER_DISCORD_ANNOUNCE_ENABLED`, `COMMUNITY_ISOLATION_ENABLED`, `COMMUNITY_PICKER_ENABLED`, `COMMUNITY_CHANNELS_ENABLED`, `DISCORD_DM_SESSION_ENABLED`, `DISCORD_DM_TOURNAMENT_ENABLED`, `DISCORD_DM_ROULETTE_ENABLED`. Si l'un n'est pas `true`, arrêter et prévenir Maxime : l'ordre des lots suppose qu'ils le sont.
+
+| Variable | À poser avec | Prérequis | Vérifier après le redéploiement | Retour arrière |
+| --- | --- | --- | --- | --- |
+| `LEGAL_PAGES_ENABLED` + `LEGAL_PUBLISHER`, `LEGAL_PUBLICATION_DIRECTOR`, `LEGAL_CONTACT_EMAIL`, `LEGAL_MIN_AGE` | R1 (affichage seulement) | **Poser les 4 valeurs AVANT** `LEGAL_PAGES_ENABLED` : une variable vide s'affiche « À COMPLÉTER » en public. Valeurs à demander à Maxime (éditeur, directeur de publication, e-mail de contact, âge minimum) ; le lien d'e-mail a pour texte visible « ZeyFro » (Q13). Les textes sont provisoires : à faire relire par un juriste | `/mentions-legales`, `/confidentialite` et `/conditions` s'ouvrent sans « À COMPLÉTER » ; liens dans le pied de page et sur la page de connexion ; `/confidentialite` liste les cookies | Supprimer `LEGAL_PAGES_ENABLED` (les 3 pages répondent 404, les liens disparaissent) |
+| `SKIP_LINK_ENABLED` | R1 | Aucun | Sur n'importe quelle page, appuyer sur Tab : le lien « Aller au contenu » apparaît en premier | Supprimer la variable |
+| `STEAM_NOW_PLAYING_ENABLED` | R1 | Migration `steam_now_playing` (appliquée automatiquement à la fusion : vérifier que le dernier run « Migrations Production » est vert) ; `STEAM_API_KEY` déjà posée | `/potes` : un pote qui joue affiche « En jeu » (un seul appel Steam groupé) | Supprimer la variable |
+| `ACCOUNT_DELETION_ENABLED` | R3 (avec les lots D/E) | Migration `20261121100000_account_deletion_log` appliquée (même contrôle). **Tester UNIQUEMENT avec un compte de test dédié** : la suppression anonymise le compte de façon irréversible ([SUPPRESSION_COMPTE.md](SUPPRESSION_COMPTE.md)) | `/profil/compte` s'ouvre ; l'export JSON se télécharge (`/api/compte/export`) ; avec la variable absente la page et l'export répondent 404 | Supprimer la variable (404) ; les comptes déjà anonymisés le restent |
+| `DISCORD_THREAD_CLEANUP_ENABLED` (sans `DISCORD_THREAD_CLEANUP_MODE`) | R5 | Permission Discord « Gérer les fils » pour le bot. **Une semaine en simulation** (comme Q5) | `/api/cron/discord-thread-cleanup` rapporte ce qu'il **aurait** archivé ou supprimé ; relire avant tout `execute` | Supprimer la variable |
+| `DISCORD_THREAD_CLEANUP_MODE=execute` | Après une semaine de simulation relue par Maxime | Décision de Maxime (suppression réelle de fils) | Un fil terminé est archivé puis supprimé au passage suivant | Retirer `MODE` (retour à la simulation) |
+| `DISCORD_THREAD_CLOSE_ON_END_ENABLED` | Avec `MODE=execute` seulement | Le nettoyage ci-dessus est en `execute` | Le fil d'une soirée est archivé dès sa fin | Supprimer la variable |
+| `TOWER_DISCORD_PREFLIGHT_ENABLED` | Le temps d'un contrôle, puis à retirer | Compte administrateur ; `DISCORD_BOT_GUILD_ID` posée | `GET /api/admin/tower-preflight` (administrateur) liste les salons du serveur en lecture seule ; sans la variable : 404 | Supprimer la variable |
+| `COMMUNITY_AUTO_CREATE_ENABLED`, `COMMUNITY_SETUP_COMMAND_ENABLED` | **Ne pas allumer** tant que The Tower est le seul serveur | Exigent `DISCORD_APP_PUBLIC_KEY` et un second serveur | — | — |
+| `DISCORD_ROLE_SELF_CREATION_ENABLED` | **Ne pas allumer** | Remplacé par `DISCORD_ROLE_AUTOCREATE_ENABLED` (lot G, création par la file, jamais en direct) | — | — |
+| `VOICE_PRESENCE_WORKER_MODE` | **Ne jamais poser sur Vercel** | Réservé au worker auto-hébergé du vocal ; vide partout ailleurs | — | — |
+
+## Regroupement en 5 redéploiements (moins de codes 2FA)
+
+Principe : une même fenêtre de redéploiement peut porter plusieurs lots **tant qu'ils ne partagent pas de risque** ; chaque redéploiement est suivi de 30 minutes de contrôles (les « À vérifier » de chaque lot). Une vérification en échec retire **seulement les variables de ce lot** (retour arrière ci-dessus), jamais tout. Une **branche de sauvegarde Neon** (nom `avant-RX-AAAAMMJJ`) est créée juste avant R2, R3, R4 et R5, qui écrivent en base ou dans Discord. Le quota de déploiements de Vercel est de 100 par jour : aucun souci avec 5.
+
+| Redéploiement | Contenu | Pourquoi ensemble | Contrôle avant de passer au suivant |
+| --- | --- | --- | --- |
+| **R0 : secrets et identifiants** (aucun effet visible) | `FORCE_RELOGIN_SECRET` ([§ Pour ChatGPT (a)](#pour-chatgpt)), `DISCORD_PHOTOS_CHANNEL_ID`, `GAMENIGHT_CRON_BASE_URL` (variable GitHub), variables `LEGAL_PUBLISHER`, `LEGAL_PUBLICATION_DIRECTOR`, `LEGAL_CONTACT_EMAIL`, `LEGAL_MIN_AGE` | Ce ne sont que des valeurs : rien ne change tant qu'aucun interrupteur ne les lit | La route de reconnexion répond 401 avec un faux secret (503 = non pris en compte) |
+| **R1 : affichage seulement** | Lot A1 (7) + lot A2 (2) + `LEGAL_PAGES_ENABLED`, `SKIP_LINK_ENABLED`, `STEAM_NOW_PLAYING_ENABLED` | Aucune écriture en base ni dans Discord, l'ancien affichage revient en les retirant | Les « À vérifier » du lot A1 ; les 3 pages légales ; Tab sur une page ; « En jeu » sur `/potes` |
+| **R2 : The Tower et profils** | Lot B (7) + lot C (10) | Mêmes prérequis (commandes enregistrées, catalogue importé, salon des preuves) ; B écrit dans Discord par la file, C est surtout de l'affichage | Les « À vérifier » des lots B puis C ; un défi complet de bout en bout avec un compte de test ; `TOWER_TEAM_DAILY_ENABLED` exige aussi la variable GitHub (lot B) |
+| **R3 : soirées, équipes, tournois, mémoire du serveur, suppression de compte** | Lots D (8), E (8), F (7) + `ACCOUNT_DELETION_ENABLED` | Tous passent par l'interface du site ; D et E peuvent envoyer des MP par la file (déjà ouverte) ; F exige le lot A2 | Les « À vérifier » des lots D, E, F ; suppression testée **seulement** avec un compte de test dédié |
+| **R4 : écritures Discord** | Lots G (10) et G2 (7) | Rôles, salons, signalement : c'est le seul groupe qui crée des ressources Discord ; prérequis P4 (plus de bot Administrateur) | Les « À vérifier » du lot G ; aucune erreur 403 dans les journaux ; rôles créés sans permission |
+| **R5 : données, médias, surveillance** | Lot H (rétention en **simulation**, push, vocal) + lot I (`HOSTING_ALERT_ENABLED`) + `DISCORD_THREAD_CLEANUP_ENABLED` (simulation) | Tout ce qui se passe en arrière-plan ; tout démarre en simulation ; les appels cron-job.org de la section « Pour ChatGPT (b) » doivent exister | Un rapport de simulation lisible après 24 h ; le moniteur de `/api/cron/hosting-usage` répond 200 |
+
+**Plus tard, après une semaine sans incident** : `RETENTION_CLEANUP_MODE=execute` et `DISCORD_THREAD_CLEANUP_MODE=execute` (une décision de Maxime à chaque fois), puis `DISCORD_THREAD_CLOSE_ON_END_ENABLED`.
+
+**Ordre à respecter** : R0 → R1 → R2 → R3 → R4 → R5. Ne jamais sauter un contrôle. Si un redéploiement échoue (« Error » dans Vercel), ne rien changer d'autre : relire les journaux de build, puis revenir à la variable qui vient d'être posée.
+
+---
+
 ## Pour ChatGPT
 
 Étapes exactes, à faire dans cet ordre, **sans jamais écrire une valeur de secret dans le dépôt, un commentaire de PR ou une conversation** (la valeur reste dans Vercel et dans le coffre de mots de passe de Maxime). Production : `https://gamenight-zeyfro.vercel.app`.
