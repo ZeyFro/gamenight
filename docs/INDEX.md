@@ -31,6 +31,9 @@
 
 ## Exploitation et sécurité
 
+- [Capacité : 100, 500 ou 1 000 membres ?](CAPACITE.md) — limites réelles de Vercel, Neon, Discord et des tâches, seuils de casse, coûts, minimum à faire.
+- [Lancement : la ligne d’arrivée (GO / NO-GO)](LANCEMENT_GO.md) — liste fermée des critères, état réel des 21 constats et des migrations.
+- [Permissions des bots](PERMISSIONS_BOTS.md) — rôle et droits minimaux de chaque bot du serveur, plan pas à pas pour retirer Administrateur (Workshop, AppBot) sans rien casser.
 - [Cahier final : la ligne d’arrivée](CAHIER_FINAL.md) — chaque élément du cahier, son statut réel, ce qu’il reste à faire, le responsable et la preuve.
 - [Plan d’allumage par lots](ALLUMAGES.md) — lots A à H pour ChatGPT : variables exactes, vérifications, retour arrière.
 - [Questions pour Maxime](QUESTIONS_MAXIME.md) — les choix à faire, en une seule liste, avec recommandation.

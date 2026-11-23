@@ -48,6 +48,13 @@ Le cahier les classe « v2 », « plus tard », « option future » ou « exclu 
 | Q18 | Annonces publiques dans les salons **seulement** pour les moments marquants : création de soirée ou de tournoi, réussite de défi, podium | ⭐ ☐ Oui · ☐ Non, annoncer aussi les modifications |
 | Q19 | Mentionner un **rôle de jeu** (par exemple @Valorant) seulement pour les membres qui l'ont demandé | ⭐ ☐ Oui · ☐ Jamais de mention de rôle |
 
+## F. Ajoutées pendant le codage (23/11)
+
+| # | Question | Choix |
+| --- | --- | --- |
+| Q20 | Un profil masqué doit-il aussi être caché dans les **classements** ? (Aujourd'hui : caché dans Potes, les fiches et les suggestions ; visible dans les classements et les soirées, pages partagées.) | ⭐ ☐ Non, garder la règle actuelle · ☐ Oui, afficher « Membre discret » |
+| Q21 | **Créneau de migration** : les PR #525, #526 et #527 ajoutent des colonnes. Je les fusionne une par une quand tu peux approuver tout de suite le run « Migrations Production » (2 minutes chacune). | ☐ Donne-moi un jour et une heure : ____ |
+
 ---
 
 **Réponds simplement** avec la liste des numéros et la case choisie, par exemple : « Q1 après, Q2 exclu, Q5 oui… ». Je mets ensuite à jour [CAHIER_FINAL.md](CAHIER_FINAL.md) et [ALLUMAGES.md](ALLUMAGES.md).

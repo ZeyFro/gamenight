@@ -18,9 +18,10 @@
 | --- | --- | --- | --- |
 | P1 | Lire en clair les variables « Sensitive » `NOTIFICATION_EXECUTOR_ENABLED`, `DISCORD_BOT_SESSION_ANNOUNCE_ENABLED`, `DISCORD_BOT_TOURNAMENT_ANNOUNCE_ENABLED`, `DISCORD_DM_*`, `COMMUNITY_*`. Si l'une n'est pas `true`, décider avec Maxime avant de continuer. | Maxime | ☐ |
 | P2 | Enregistrer les 13 commandes Discord (`/admin/discord-commands`, reprise automatique depuis #518), puis retirer `DISCORD_COMMAND_REGISTRATION_ENABLED` et son secret | ChatGPT | ☐ |
-| P3 | Importer le catalogue : `/tower-admin importer` (86 défis solo), puis `/tower-admin importer-equipe` après le lot A (30 défis d'équipe, exige les équipes activées sur le serveur) | ChatGPT | ☐ |
+| P3 | Importer le catalogue : `/tower-admin importer` (89 défis solo une fois #525 fusionnée, 86 avant), puis `/tower-admin importer-equipe` après le lot A (30 défis d'équipe, exige les équipes activées sur le serveur) | ChatGPT | ☐ |
 | P4 | Plan [PERMISSIONS_BOTS.md](PERMISSIONS_BOTS.md) appliqué (plus aucun bot Administrateur) | ChatGPT | ☐ |
 | P5 | Décision de capacité prise ([CAPACITE.md](CAPACITE.md)) | Maxime | ☐ |
+| P6 | Migrations des PR #525, #526 et #527 appliquées (run « Migrations Production » vert et approuvé juste après chaque fusion) | Maxime | ☐ |
 
 ---
 
@@ -62,7 +63,7 @@
 
 ## Lot C — Profil et joueurs
 
-**Variables (8)** : `PROFILE_VISIBILITY_ENABLED`, `GAME_LEVELS_ENABLED`, `GAME_LEVELS_MATCHMAKING_ENABLED`, `GAME_PLATFORMS_ENABLED`, `DISCORD_CONNECTIONS_SCOPE_ENABLED`, `PROFILE_CUSTOMIZATION_ENABLED`, `WHO_PLAYS_TONIGHT_ENABLED`, `NOTIFICATION_CENTER_ENABLED`.
+**Variables (9)** : `PROFILE_VISIBILITY_ENABLED`, `GAME_LEVELS_ENABLED`, `GAME_LEVELS_MATCHMAKING_ENABLED`, `GAME_PLATFORMS_ENABLED`, `DISCORD_CONNECTIONS_SCOPE_ENABLED`, `PROFILE_CUSTOMIZATION_ENABLED`, `WHO_PLAYS_TONIGHT_ENABLED`, `NOTIFICATION_CENTER_ENABLED`, `PLAYER_MATCHING_ENABLED` (après P6).
 
 **Vérifier**
 - `/profil/parametres` : masquer son profil. Un autre compte ne le voit plus dans `/potes`, mais le voit toujours dans les soirées communes.
@@ -72,8 +73,9 @@
 - `/profil/personnalisation` : acheter une couleur avec de l'XP, la voir sur `/profil`.
 - `/ce-soir` : se déclarer dispo pour 1 à 3 jeux.
 - `/notifications` s'ouvre et liste les notifications.
+- `/profil/parametres` : remplir « Pour trouver des partenaires » ; `/potes` : filtrer par langue, et voir « Partenaires compatibles » (jamais un profil masqué).
 
-**Retour arrière** : supprimer les 8 variables, Redeploy.
+**Retour arrière** : supprimer les 9 variables, Redeploy.
 
 ---
 
