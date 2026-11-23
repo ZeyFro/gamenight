@@ -45,7 +45,7 @@ async function readMeasure(row: MeasuredRow): Promise<Reading> {
   if (row.measureKind === "STEAM_PLAYTIME") {
     const playtime = await getGamePlaytimeMinutes(steamId64, row.measureAppId, { signal });
     if (!playtime.ok) return { kind: "PRIVATE" };
-    return { kind: "VALUE", current: playtime.minutes, evaluation: evaluatePlaytime({ baseline: row.measureBaseline, current: playtime.minutes, target: row.measureTarget }) };
+    return { kind: "VALUE", current: playtime.minutes, evaluation: evaluatePlaytime({ baseline: row.measureBaseline, current: playtime.minutes, target: row.measureTarget, assignedAt: row.assignedAt, now: now() }) };
   }
   const achievements = await getPlayerAchievements(steamId64, row.measureAppId, { signal });
   if (!achievements.ok) return { kind: "PRIVATE" };

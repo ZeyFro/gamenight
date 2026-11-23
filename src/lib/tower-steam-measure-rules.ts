@@ -1,5 +1,6 @@
 import { z } from "zod";
 import type { SteamAchievement } from "@/lib/steam";
+import { getTowerParisDayKey } from "@/lib/tower-challenge-rules";
 
 // Validation automatique des défis « mesurables Steam » : règles pures, sans Steam ni base.
 
@@ -11,6 +12,13 @@ export const TOWER_MEASURE_CHECK_INTERVAL_MS = 10 * 60 * 1000;
 export const TOWER_MEASURE_BATCH_SIZE = 25;
 /** Même ancienneté minimale que les votants (≥ 3 jours de Membership). */
 export const TOWER_MEASURE_DOUBT_MIN_TENURE_MS = 3 * 24 * 60 * 60 * 1000;
+
+/**
+ * Plafond de temps de jeu Steam compté par jour pour les défis « temps » : le temps de jeu se farme en laissant le jeu
+ * ouvert (AFK). Les défis « succès » ne sont pas concernés.
+ */
+export const TOWER_STEAM_DAILY_CAP_MINUTES = 120;
+const DAY_MS = 24 * 60 * 60 * 1000;
 
 export type MeasureKind = "STEAM_PLAYTIME" | "STEAM_ACHIEVEMENT";
 
@@ -33,9 +41,32 @@ export function playtimeDelta(baseline: number, current: number): number {
   return Math.max(0, Math.trunc(current) - Math.trunc(baseline));
 }
 
-export function evaluatePlaytime(input: { baseline: number | null; current: number; target: number }): MeasureEvaluation {
+const parisDayNumber = (date: Date): number => Date.parse(getTowerParisDayKey(date) + "T00:00:00Z") / DAY_MS;
+
+/**
+ * Nombre de jours pris en compte pour le plafond : jours civils Europe/Paris écoulés entre l'attribution et maintenant
+ * (différence de dates de Paris, donc insensible aux journées de 23 h et de 25 h du changement d'heure), au moins 1,
+ * et jamais plus que le nombre de périodes de 24 h entamées (`ceil(écoulé / 24 h)`). Ce second terme borne le cas du
+ * changement d'heure de printemps, où la date de Paris peut avancer d'un jour de trop : sur la durée d'un défi (48 h),
+ * le résultat ne dépasse donc jamais 2.
+ */
+export function playtimeCapDays(assignedAt: Date, now: Date): number {
+  const elapsedMs = now.getTime() - assignedAt.getTime();
+  if (!Number.isFinite(elapsedMs)) throw new RangeError("Date de défi invalide");
+  if (elapsedMs <= 0) return 1;
+  const civilDays = parisDayNumber(now) - parisDayNumber(assignedAt);
+  return Math.max(1, Math.min(civilDays, Math.ceil(elapsedMs / DAY_MS)));
+}
+
+/** Minutes de jeu comptées : le delta réel, plafonné à `TOWER_STEAM_DAILY_CAP_MINUTES` par jour (voir `playtimeCapDays`). */
+export function cappedPlaytimeMinutes(input: { baseline: number; current: number; assignedAt: Date; now: Date }): number {
+  const delta = playtimeDelta(input.baseline, input.current);
+  return Math.min(delta, TOWER_STEAM_DAILY_CAP_MINUTES * playtimeCapDays(input.assignedAt, input.now));
+}
+
+export function evaluatePlaytime(input: { baseline: number | null; current: number; target: number; assignedAt: Date; now: Date }): MeasureEvaluation {
   if (input.baseline === null) return { state: "NEEDS_BASELINE" };
-  const value = playtimeDelta(input.baseline, input.current);
+  const value = cappedPlaytimeMinutes({ baseline: input.baseline, current: input.current, assignedAt: input.assignedAt, now: input.now });
   return value >= input.target ? { state: "ACHIEVED", value } : { state: "WATCHING", value };
 }
 
