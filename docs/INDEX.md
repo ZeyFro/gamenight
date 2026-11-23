@@ -31,6 +31,7 @@
 
 ## Exploitation et sécurité
 
+- [Permissions des bots](PERMISSIONS_BOTS.md) — rôle et droits minimaux de chaque bot du serveur, plan pas à pas pour retirer Administrateur (Workshop, AppBot) sans rien casser.
 - [Fiche de l'application](FICHE_APPLICATION.md) — pages, rôles, interrupteurs en Production, données, tâches automatiques, limites des offres gratuites, 10 risques d'ouverture.
 - [Plan de tests par rôle](PLAN_TESTS.md) — parcours, résultat et preuve attendus du visiteur à l'admin, et tests à faire par un humain.
 - [Contrôle de sécurité passif](CONTROLE_SECURITE.md) — en-têtes, cookies, pages refusées, routes sensibles, constats classés par gravité.
