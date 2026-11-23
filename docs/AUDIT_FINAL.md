@@ -34,10 +34,10 @@ Aucun constat 🔴 ni haute gravité. Crons et backfills (`verifyCronRequest`, 5
 
 | Gravité | Où | Correctif | État |
 |---|---|---|---|
-| 🟠 | `/api/cron/force-relogin` : un seul `CRON_SECRET` pour tous les crons | Secret dédié par route sensible, rotation documentée | Restant |
-| 🟠 | `/api/igdb/search` sans limite de débit | `checkRateLimit` par utilisateur | Restant |
-| 🟠 | `/api/push/subscription` sans limite ni plafond | Limite par utilisateur, plafond d'abonnements | Restant |
-| 🟠 | `/api/discord/interactions` : corps lu en entier avant la signature | Refuser plus de 64 Ko avant lecture | Restant |
+| 🟠 | `/api/cron/force-relogin` : un seul `CRON_SECRET` pour tous les crons | Secret dédié par route sensible, rotation documentée | Restant : exige une nouvelle variable d'environnement chez Vercel (à décider avec Maxime) |
+| 🟠 | `/api/igdb/search` sans limite de débit | 30 recherches par minute et par membre (429 au-delà) | Corrigé (#573) |
+| 🟠 | `/api/push/subscription` sans limite ni plafond | 10 appels par minute et par membre en plus du plafond de 5 appareils | Corrigé (#573) |
+| 🟠 | `/api/discord/interactions` : corps lu en entier avant la signature | 413 au-delà de 64 Ko (Content-Length puis corps lu) | Corrigé (#573) |
 | 🟡 | Actions de délégation (équipes, tournois, calendrier, charte) | Test d'accès d'un tiers non membre, sur le modèle de `admin-guards.test.ts` | Restant |
 | 🟡 | Écritures sans limite de débit visible | Limite générique par utilisateur (`checkSharedRateLimit` sur les créations) | Restant |
 
@@ -48,8 +48,8 @@ Aucun constat 🔴 ni haute gravité. Crons et backfills (`verifyCronRequest`, 5
 | 🟢 | Commandes et boutons : réponse différée avant tout accès à la base, donc sous 3 s même base en veille | — | Vérifié en lecture du code ; **non vérifié en réel** (base endormie, Discord) |
 | 🟠 | Autocomplétion (tournois, soirées, rôles) : non différable, interroge la base avant de répondre | Course `Promise.race` à ~2 s, liste vide en repli ; appel de santé régulier | Restant |
 | 🔴 | Aucun cron déclaré dans `vercel.json` : tout dépend de cron-job.org | Créer les jobs de `docs/CRONS.md`, e-mail d'échec, test à 202 | **Non vérifié** (réglage extérieur de Maxime) |
-| 🔴 | Workflow `tower-team-daily` : garde « heure de Paris = 18 » plus stricte que la route (≥ 18) ; un retard de GitHub fait sauter la journée | Retirer la garde, créneau de rattrapage, ou cron-job.org en fuseau Europe/Paris | Restant |
-| 🟠 | Heure d'été/hiver du défi de 18 h : aucun test des deux nuits de bascule | Deux tests de `isTowerTeamDailyDue` / `getTowerParisDayKey` | Restant |
+| 🔴 | Workflow `tower-team-daily` : garde « heure de Paris = 18 » plus stricte que la route (≥ 18) ; un retard de GitHub fait sauter la journée | Garde « heure >= 18 » : un retard de GitHub ne fait plus sauter la journée ; la route reste idempotente par jour. L'exécuteur de notifications rattrapait déjà l'attribution à partir de 18 h | Corrigé (#574) |
+| 🟠 | Heure d'été/hiver du défi de 18 h : aucun test des deux nuits de bascule | Des tests existent déjà (`tower-challenge-rules.test.ts`, `tower-team-daily-workflow.test.ts`) ; #574 les complète (retard de 0 et 1 h, jours de bascule) | Constat inexact (corrigé par #574) |
 | 🟠 | Vercel Hobby : 2 crons par jour, précision ±59 min, 100 déploiements par jour | Planificateur externe conservé ; **aperçus coupés** : seul `main` est construit | Corrigé (#560) |
 | 🔴 | Sauvegarde : 6 h de restauration Neon, restauration jamais éprouvée | Essai de [`procedure-restauration.md`](audit/procedure-restauration.md) sur une branche, branche de sauvegarde avant l'ouverture, export hebdomadaire hors Neon | **Non vérifié** : la règle du dépôt interdit tout accès à Neon depuis ces sessions ; à faire par Maxime |
 | 🔴 | Aucune alerte de panne ; `/api/health` sans appelant | Job cron-job.org sur `/api/health` avec e-mail ; lot I (`HOSTING_ALERT_ENABLED`, route `hosting-usage`) | Code livré (#549) ; **réglage extérieur à faire** |
@@ -60,16 +60,16 @@ Aucun constat 🔴 ni haute gravité. Crons et backfills (`verifyCronRequest`, 5
 
 | Gravité | Où | Correctif | État |
 |---|---|---|---|
-| 🟠 | 1.9 XP de présence farmée par des soirées fantômes | Plafonner `PARTICIPATE` par joueur et par jour, exiger plusieurs participants distincts | Restant (priorité 1) |
+| 🟠 | 1.9 XP de présence farmée par des soirées fantômes | Plafond sur 24 h glissantes dans le ledger ; participants distincts non exigés (à décider) | Corrigé (#569) : plafond de 3 gains par membre et par 24 h, valeur à valider par Maxime |
 | 🟠 | 1.4 Preuve Tower validée par 3 faux comptes | Quorum de votants actifs, votes décisifs visibles du staff | Restant (priorité 2) |
 | 🟠 | 1.5 Défi d'équipe : coéquipier fantôme récompensé | Participants confirmés par le capitaine, plafond par jour | Restant (priorité 2) |
-| 🟡 | 1.3 Ancienneté de 7 jours des votants selon le seul interrupteur | Appliquer l'ancienneté même interrupteur éteint | Restant |
+| 🟡 | 1.3 Ancienneté de 7 jours des votants selon le seul interrupteur | Ancienneté appliquée même interrupteur éteint | Corrigé (#570) |
 | 🟡 | 1.6, 1.10, 1.11, 1.14 (temps Steam AFK, XP de vote, tournoi complice, MP en masse) | Plafonds par jour, limite partagée | Restant |
-| 🟡 | 1.8, 1.15 plafonds sans test (soirée créée, demandes d'ami) | Tests d'intégration | Restant |
-| 🟠 | 2.4 Web Push : `getRegistration("/sw.js")` au lieu de `/service-worker.js` ; abonnement jamais détecté après rechargement | Corriger le chemin, test jsdom | Restant (priorité 3) |
-| 🟠 | 2.5–2.6 iPhone : aucune détection du mode installé ni guide « Sur l'écran d'accueil » | Détection et texte d'aide | Restant (priorité 3) ; **réception sur iPhone réel non vérifiée** |
-| 🟡 | 2.7–2.9 icône Apple 180×180, `icon`/`badge` de notification, manifest minimal | Ajouts | Restant |
-| 🟠 | 3.1–3.2 aperçu du lien Discord : ni image `og`, ni balises `openGraph`/`twitter`, ni `metadataBase` | `opengraph-image.tsx`, métadonnées | Restant (priorité 3) ; rendu dans Discord **non vérifié** |
+| 🟡 | 1.8, 1.15 plafonds sans test (soirée créée, demandes d'ami) | Tests d'intégration | Partiel : plafond « soirée créée » testé (#569) ; demandes d'ami restantes |
+| 🟠 | 2.4 Web Push : `getRegistration("/sw.js")` au lieu de `/service-worker.js` ; abonnement jamais détecté après rechargement | Chemin `/service-worker.js`, test jsdom : abonnement détecté après rechargement | Corrigé (#572) |
+| 🟠 | 2.5–2.6 iPhone : aucune détection du mode installé ni guide « Sur l'écran d'accueil » | Détection (`detectPushSupport`), guide « Sur l'écran d'accueil », messages dédiés (navigateur sans push, permission refusée) | Corrigé (#572) ; réception sur iPhone réel non vérifiée |
+| 🟡 | 2.7–2.9 icône Apple 180×180, `icon`/`badge` de notification, manifest minimal | Ajouts | Partiel (#572) : icône de notification et `id`/`scope`/`lang` du manifest corrigés ; restent l'icône Apple 180×180 et le `badge` (images à produire) |
+| 🟠 | 3.1–3.2 aperçu du lien Discord : ni image `og`, ni balises `openGraph`/`twitter`, ni `metadataBase` | `metadataBase`, `openGraph`, `twitter`, `opengraph-image` 1200×630, `favicon.ico` (aucune métadonnée dynamique) | Corrigé (#571) ; rendu dans Discord non vérifié |
 | 🟡 | 3.4 `robots.txt` `Disallow: /` | Règle `Discordbot` si l'aperçu manque | Non vérifié (test réel dans un salon) |
 
 ## 6. Visuel et parcours : ce qui n'a PAS été vérifié
@@ -82,12 +82,14 @@ Honnêtement, ces contrôles n'ont pas pu être faits complètement :
 
 ## 7. Prochaines PR, par ordre
 
-1. XP de présence : plafond et participants distincts (1.9) + test d'intégration.
-2. Preuves et défis d'équipe : quorum de votants actifs, participants confirmés (1.4, 1.5).
-3. Web Push et aperçu : chemin du service worker, détection iPhone, `opengraph-image` et métadonnées (2.4, 2.5, 3.1, 3.2).
-4. Sécurité des routes : limites IGDB et push, plafond du corps des interactions, secret dédié de `force-relogin`.
-5. Défi de 18 h : garde du workflow et tests des changements d'heure.
-6. Autocomplétion Discord sous 3 s avec base endormie.
+Faites : XP de présence (#569), ancienneté des votants (#570), aperçu du lien (#571), notifications iPhone (#572), limites de débit (#573), garde du défi de 18 h (#574).
+
+1. **À arbitrer avec Maxime** : preuves Tower validées par de faux comptes (1.4) et coéquipier fantôme (1.5) : quorum de votants « actifs », confirmation des participants par le capitaine.
+2. Autocomplétion Discord sous 3 s avec base endormie (course à ~2 s, liste vide en repli).
+3. Secret dédié de `force-relogin` (nouvelle variable d'environnement chez Vercel).
+4. Plafonds par jour des autres gains d'XP et des MP en masse (1.6, 1.10, 1.11, 1.14) ; tests des plafonds de demandes d'ami (1.15).
+5. Icône Apple 180×180 et `badge` de notification (2.7, 2.8).
+6. Journal d'erreurs minimal en base (journaux Vercel limités à 1 h).
 
 ## 8. À faire par Maxime (aucun accès depuis ces sessions)
 
