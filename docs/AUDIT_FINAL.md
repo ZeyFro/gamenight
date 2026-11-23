@@ -24,9 +24,9 @@ Gravités : 🔴 bloquant lancement · 🟠 important · 🟡 mineur · 🟢 vé
 
 | Gravité | Où | Correctif | État |
 |---|---|---|---|
-| 🟡 | « Guide » flottant à côté du pseudo ; « Se déconnecter » en bas de l'accueil ; titre « Ce soir, on joue à quoi ? » dupliqué ; salon 🤖・commandes-bot absent de `/guide` | Voir PR « accueil et guide » | En cours (PR ouverte par un sous-agent, numéro à inscrire à la fusion) |
-| 🟡 | Anglicismes (streak, wishlist, Tierlist, IGDB) ; badge « À vérifier » ; poubelle de la bibliothèque sans confirmation | Voir PR « bibliothèque et vocabulaire » | En cours (idem) |
-| 🟡 | Onglets admin qui débordent sur mobile | Voir PR « onglets admin mobile » | En cours (idem) |
+| 🟡 | « Guide » flottant à côté du pseudo ; « Se déconnecter » en bas de l'accueil ; titre « Ce soir, on joue à quoi ? » dupliqué ; salon 🤖・commandes-bot absent de `/guide` | Lien « Guide » retiré de l'accueil (reste dans la barre latérale et le « ? ») ; « Se déconnecter » déplacé en bas de `/profil` ; titre dupliqué corrigé à la source (`AuroraText` rendait son texte deux fois) ; salon 🤖・commandes-bot cité sur `/guide` (texte seulement) | Corrigé (#567) |
+| 🟡 | Anglicismes (streak, wishlist, Tierlist, IGDB) ; badge « À vérifier » ; poubelle de la bibliothèque sans confirmation | Vocabulaire français (tier list, liste de souhaits, série, IGDB) ; badge « À vérifier » expliqué (infobulle, lecteur d'écran, page) ; poubelle de la bibliothèque avec confirmation « Annuler / Retirer ». Les badges de provenance « IGDB » des cartes restent tels quels | Corrigé (#568) |
+| 🟡 | Onglets admin qui débordent sur mobile | Onglets à la ligne, cibles de 44 px, sans défilement horizontal à 320 px, iPhone 13 et Pixel 7 (page de test isolée ; rendu réel de `/admin` non vérifié visuellement). `LibraryTabs`, `PoteTabs`, `ProfilTabs` utilisent encore le défilement horizontal | Corrigé (#566) |
 
 ## 3. Sécurité OWASP des routes ([détail](audit/01-securite-owasp.md))
 
