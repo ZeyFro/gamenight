@@ -11,6 +11,7 @@ import { Card } from "@/components/ui/Card";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { pageMetadata } from "@/lib/page-title";
 import { clearTonightAction, declareTonightAction } from "./actions";
+import { plural } from "@/lib/plural";
 
 export const metadata = pageMetadata("Qui joue ce soir ?");
 
@@ -94,7 +95,7 @@ export default async function TonightPage({
             {board.players.map((group) => (
               <li key={group.game}>
                 <Card className="flex flex-col gap-1">
-                  <p className="font-medium text-foreground">{group.game} · {group.players.length} joueur{group.players.length > 1 ? "s" : ""}</p>
+                  <p className="font-medium text-foreground">{group.game} · {group.players.length} {plural(group.players.length, "joueur")}</p>
                   <p className="text-sm text-muted">
                     {group.players.map((p) => (p.note ? `${p.discordName} (${p.note})` : p.discordName)).join(" · ")}
                   </p>
@@ -115,7 +116,7 @@ export default async function TonightPage({
             {board.instantSessions.map((s) => (
               <li key={s.id}>
                 <Link href={`/jouer-maintenant/${s.id}`}>
-                  <Card className="text-sm text-foreground">{s.game} · lancée par {s.createdBy} · {s.present} présent{s.present > 1 ? "s" : ""}</Card>
+                  <Card className="text-sm text-foreground">{s.game} · lancée par {s.createdBy} · {s.present} {plural(s.present, "présent")}</Card>
                 </Link>
               </li>
             ))}

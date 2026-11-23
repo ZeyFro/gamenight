@@ -20,6 +20,7 @@ import { Stagger, StaggerItem } from "@/components/motion";
 import { SegmentedControl } from "@/components/ui/SegmentedControl";
 import { pageMetadata } from "@/lib/page-title";
 import { formatDurationFr } from "@/lib/wallclock";
+import { plural } from "@/lib/plural";
 
 export const metadata = pageMetadata("Classement");
 
@@ -48,7 +49,7 @@ function PositionDelta({ delta }: { delta: number | null }) {
   return (
     <span
       className={`text-xs font-medium ${up ? "text-emerald-400" : "text-destructive"}`}
-      title={`${up ? "+" : ""}${delta} place${Math.abs(delta) > 1 ? "s" : ""} depuis 7 jours`}
+      title={`${up ? "+" : ""}${delta} ${plural(Math.abs(delta), "place")} depuis 7 jours`}
     >
       {up ? "↑" : "↓"}
       {Math.abs(delta)}
@@ -98,7 +99,7 @@ function ScoreboardRow({
         <div className="shrink-0 text-right">
           <p className="text-sm font-semibold tabular-nums text-foreground">{entry.periodXp} XP</p>
           <p className="text-xs tabular-nums text-muted">
-            {entry.sessionsPlayed} soirée{entry.sessionsPlayed === 1 ? "" : "s"}
+            {entry.sessionsPlayed} {plural(entry.sessionsPlayed, "soirée")}
           </p>
         </div>
       </div>
@@ -225,7 +226,7 @@ export default async function ClassementPage({
               {funLeaderboards.gamesByPlayCount.map((game, index) => (
                 <li key={game.gameId} className="flex justify-between gap-3">
                   <span className="truncate text-foreground">{index + 1}. {game.name}</span>
-                  <span className="shrink-0 tabular-nums text-muted">{game.playCount} soirée{game.playCount === 1 ? "" : "s"}</span>
+                  <span className="shrink-0 tabular-nums text-muted">{game.playCount} {plural(game.playCount, "soirée")}</span>
                 </li>
               ))}
             </ol>

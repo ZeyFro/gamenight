@@ -13,6 +13,7 @@ import { InstantSessionCreateForm } from "@/components/jouer-maintenant/InstantS
 import { gameWarningsSelect } from "@/lib/game-warnings";
 import type { NotifyRecipientCandidate } from "@/components/NotifyRecipientsField";
 import { pageMetadata } from "@/lib/page-title";
+import { plural } from "@/lib/plural";
 
 export const metadata = pageMetadata("Jouer maintenant");
 
@@ -106,7 +107,7 @@ export default async function JouerMaintenantPage({
                     <div className="min-w-0">
                       <p className="truncate text-sm font-medium text-foreground">{s.game.name}</p>
                       <p className="text-xs text-muted">
-                        {s.presence.length} participant{s.presence.length === 1 ? "" : "s"} · par{" "}
+                        {s.presence.length} {plural(s.presence.length, "participant")} · par{" "}
                         {s.createdBy.discordName}
                       </p>
                     </div>
