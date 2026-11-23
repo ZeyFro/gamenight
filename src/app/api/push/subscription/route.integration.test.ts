@@ -10,6 +10,8 @@ if (!TEST_DATABASE_URL) console.warn("[push-subscription] TEST_DATABASE_URL abse
 const { session, sendNotification } = vi.hoisted(() => ({ session: vi.fn(), sendNotification: vi.fn() }));
 vi.mock("@/lib/valid-session", () => ({ getValidSession: session }));
 vi.mock("web-push", () => ({ default: { sendNotification } }));
+// La limite de débit (testée dans route.test.ts) est neutralisée ici : ces scénarios enchaînent beaucoup d'appels du même membre.
+vi.mock("@/lib/rate-limit", async () => ({ ...(await vi.importActual<typeof import("@/lib/rate-limit")>("@/lib/rate-limit")), checkRateLimit: () => true }));
 vi.mock("@/lib/prisma", async () => {
   const { PrismaClient } = await import("@prisma/client");
   if (TEST_DATABASE_URL && new URL(TEST_DATABASE_URL).hostname !== "127.0.0.1") throw new Error("Postgres local 127.0.0.1 uniquement");
