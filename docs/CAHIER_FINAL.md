@@ -2,7 +2,7 @@
 
 > Relevé du 23 novembre 2026. **Un seul lancement, cahier entièrement terminé** (décision de Maxime du 23/11). Ce tableau et [LANCEMENT_GO.md](LANCEMENT_GO.md) forment la ligne d'arrivée : on lance quand **chaque ligne** est « ✅ Fait », ou « Reporté » avec la réponse de Maxime.
 >
-> **Source** : les 127 exigences de [COUVERTURE_CAHIER.md](COUVERTURE_CAHIER.md) et les 20 décisions du 17-18/11, avec le verdict testé de la traçabilité (`docs/preuves/tracabilite.json`, PR #514). Cela fait **147 éléments**. La demande en citait 148 : l'écart d'une ligne vient du découpage, et aucune exigence du cahier n'est omise. L'état des interrupteurs est celui lu dans Vercel le 22/11.
+> **Source** : les 127 exigences de [COUVERTURE_CAHIER.md](COUVERTURE_CAHIER.md) et les 20 décisions du 17-18/11, avec le verdict testé de la traçabilité (`docs/preuves/tracabilite.json`, PR #514). Cela fait **147 éléments**. La demande en citait 148 : l'écart d'une ligne vient du découpage, et aucune exigence du cahier n'est omise. **Ajout du 23/11** : C128 (Potes = amis), besoin nouveau de Maxime, soit 148 éléments. L'état des interrupteurs est celui lu dans Vercel le 22/11.
 >
 > **Plan d'allumage** : [ALLUMAGES.md](ALLUMAGES.md), lots A à H, faits par ChatGPT dans Vercel, un lot à la fois. **Questions** : [QUESTIONS_MAXIME.md](QUESTIONS_MAXIME.md). **Lots de code** : section « Lots de code » en fin de page.
 
@@ -117,15 +117,16 @@
 | C092 | 27.6 | Tous les interrupteurs sont OFF par défaut | `DISCORD_ROLE_SELF_CREATION_ENABLED` (éteint) | Codé, éteint | Allumer (lot G) + tester | ChatGPT (Vercel) + Maxime | Tests verts : `lib/discord-role-command.test.ts` ; capture après allumage |
 | C093 | 27.6 | Les écritures Discord passent par la file et l'executor, jamais en direct | `DISCORD_ROLE_COMMAND_ENABLED` (éteint) | Partiel (côté Discord) | Rendre vérifiable (procédure de capture dans Discord) | ChatGPT + Maxime | Capture Discord datée |
 | C094 | 27.6 | Aucune IA ne valide une preuve ; récompenses cosmétiques | aucun | Codé, non vérifié en réel | Rendre vérifiable (procédure de capture) | Maxime | Capture en Production |
-| C095 | 1.3 | Internationalisation (étapes à 10 000 puis 50 000 membres actifs) | aucun | Reporté | Décision de Maxime | Maxime | Réponse dans QUESTIONS_MAXIME.md |
-| C096 | 20.1 | Concierge IA | aucun | Reporté | Décision de Maxime | Maxime | Réponse dans QUESTIONS_MAXIME.md |
-| C097 | 20.2 | IA pour les contenus | aucun | Reporté | Décision de Maxime | Maxime | Réponse dans QUESTIONS_MAXIME.md |
-| C098 | 20.3 | Validation IA des preuves | aucun | Reporté | Décision de Maxime | Maxime | Réponse dans QUESTIONS_MAXIME.md |
-| C099 | 20.4 | Discord Activities | aucun | Reporté | Décision de Maxime | Maxime | Réponse dans QUESTIONS_MAXIME.md |
-| C100 | 20.5 | Améliorations visuelles Discord (tags, bannières, styles avancés) | aucun | Reporté | Décision de Maxime | Maxime | Réponse dans QUESTIONS_MAXIME.md |
-| C101 | 27.3 | Bot gateway permanent (activité Discord, temps en vocal, « 3 membres jouent à X ») | aucun | Reporté | Décision de Maxime | Maxime | Réponse dans QUESTIONS_MAXIME.md |
-| C102 | 27.3 | Rangs importés via API officielles (Riot, Hypixel) | aucun | Reporté | Décision de Maxime | Maxime | Réponse dans QUESTIONS_MAXIME.md |
-| C103 | 27.4 | VIP payant cosmétique et confort | aucun | Reporté | Décision de Maxime | Maxime | Réponse dans QUESTIONS_MAXIME.md |
+| C095 | 1.3 | Internationalisation (étapes à 10 000 puis 50 000 membres actifs) | aucun | Feuille de route, après le lancement (décision du 23/11) | Rien avant le lancement | Maxime | — |
+| C096 | 20.1 | Concierge IA | aucun | Feuille de route, après le lancement (décision du 23/11) | Rien avant le lancement | Maxime | — |
+| C097 | 20.2 | IA pour les contenus | aucun | Feuille de route, après le lancement (décision du 23/11) | Rien avant le lancement | Maxime | — |
+| C098 | 20.3 | Validation IA des preuves | aucun | Feuille de route, après le lancement (décision du 23/11) | Rien avant le lancement ; contradiction avec « aucune IA pour les preuves » à trancher (QUESTIONS_MAXIME.md) | Maxime | — |
+| C099 | 20.4 | Discord Activities | aucun | Feuille de route, après le lancement (décision du 23/11) | Rien avant le lancement | Maxime | — |
+| C100 | 20.5 | Améliorations visuelles Discord (tags, bannières, styles avancés) | aucun | Feuille de route, après le lancement (décision du 23/11) | Rien avant le lancement | Maxime | — |
+| C101 | 27.3 | Bot gateway permanent (activité Discord, temps en vocal, « 3 membres jouent à X ») | aucun | Feuille de route, après le lancement (décision du 23/11) | Rien avant le lancement | Maxime | — |
+| C102 | 27.3 | Rangs importés via API officielles (Riot, Hypixel) | aucun | Feuille de route, après le lancement (décision du 23/11) | Rien avant le lancement | Maxime | — |
+| C103 | 27.4 | VIP payant cosmétique et confort | aucun | Feuille de route, après le lancement (décision du 23/11) | Rien avant le lancement | Maxime | — |
+| C128 | 12.3 | Potes = amis GameNight : demande d'ami à accepter, recherche par pseudo, non-ami : voit si une soirée est publique (rejoindre) ou privée (sur invitation) | à créer | Non fait (besoin du 23/11) | Coder (lot Potes) | Claude Code | Tests Vitest et intégration + PR verte |
 | C104 | 1.1 | Vision : parcours complet du joueur (découvrir, partenaires, soirées, équipes, Tour, défis, grades, compétitio | aucun | Sans code (action humaine ou Discord) | Rendre vérifiable (procédure de capture) | Maxime + ChatGPT | Capture datée (procédure : PLAN_TESTS.md) |
 | C105 | 1.2 | Multigaming : aucun jeu imposé | aucun | Sans code (action humaine ou Discord) | Rendre vérifiable (procédure de capture) | Maxime + ChatGPT | Capture datée (procédure : PLAN_TESTS.md) |
 | C106 | 1.3 | Lancement prioritairement francophone | aucun | Sans code (action humaine ou Discord) | Rendre vérifiable (procédure de capture) | Maxime + ChatGPT | Capture datée (procédure : PLAN_TESTS.md) |
@@ -181,6 +182,10 @@
 | Code 4 | Bascule des anciens étages : test et procédure de retour arrière des migrations | C075, C061 |
 | Code 5 | Notifications : MP seulement pour ce qui vise le joueur (garde), ping de jeu en opt-in branché, annonces publiques réservées aux moments marquants | C044, C085, D08, D09, D10, C029 |
 | Code 6 | Journal des opérations sensibles | C055 |
+| Code 7 (23/11) | Potes = amis : demandes d'ami, recherche par pseudo, soirée publique ou privée vue par un non-ami | C128 |
+| Code 8 (23/11) | Petites décisions : lien vers 📸・photos-soirées sur la page d'une soirée (Q6), « Niveau d'XP » au lieu d'« étage XP » (Q10), lien mailto « ZeyFro » sur les pages légales (Q13) | décisions Q6, Q10, Q13 |
+| Code 9 (23/11) | Alerte avant saturation Neon et Vercel (Q11–Q12) | HEBERGEMENT.md |
+| Code 5 (débloqué le 23/11) | Notifications : MP personnels seulement, annonces des moments marquants, ping de rôle de jeu sur abonnement (Q17–Q19) | D08, D09, D10, C044, C085, C029 |
 | Sécurité | `npm audit`, CSP bloquante, HSTS, limitation de débit, garde du test de #501 puis les 5 Dependabot | — |
 
 Les éléments « côté Discord » (C005, C011, C053, C059, C093) n'ont pas de code à écrire. Ils se prouvent par des captures dans Discord, après le plan de [PERMISSIONS_BOTS.md](PERMISSIONS_BOTS.md).
