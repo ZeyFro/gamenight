@@ -10,6 +10,7 @@ import { answerAvailabilityPollAction, chooseAvailabilityPollSlotAction, closeAv
 import { formatDateTimeFr } from "@/lib/wallclock";
 import { Card } from "@/components/ui/Card";
 import { plural } from "@/lib/plural";
+import { SESSION_QUOTA_ERROR_KEY, SESSION_QUOTA_MESSAGE } from "@/lib/creation-quota";
 
 const answerLabel = { AVAILABLE: "Oui", MAYBE: "Peut-être", UNAVAILABLE: "Non" } as const;
 const answerClass = { AVAILABLE: "border-emerald-500/40 bg-emerald-500/10", MAYBE: "border-amber-500/40 bg-amber-500/10", UNAVAILABLE: "border-border bg-background" } as const;
@@ -18,6 +19,7 @@ const pageErrors: Record<string, string> = {
   save_failed: "Ta réponse n’a pas été enregistrée. Vérifie ton accès au sondage puis réessaie.",
   close_failed: "La clôture n’a pas été enregistrée. Vérifie ton accès au sondage puis réessaie.",
   rate_limited: "Trop d’actions rapprochées. Réessaie dans quelques secondes.",
+  [SESSION_QUOTA_ERROR_KEY]: SESSION_QUOTA_MESSAGE,
 };
 
 export default async function AvailabilityPollPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ error?: string }> }) {

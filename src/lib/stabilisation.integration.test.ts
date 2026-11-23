@@ -20,7 +20,7 @@ describe.skipIf(!process.env.TEST_DATABASE_URL)("stabilisation : concurrence et 
   afterAll(async () => { await db?.$disconnect(); });
   afterEach(() => { vi.unstubAllEnvs(); vi.unstubAllGlobals(); });
   beforeEach(async () => {
-    await db.$executeRawUnsafe('TRUNCATE "CreationIntent", "User", "Community", "Game", "NotificationEvent", "Badge" CASCADE');
+    await db.$executeRawUnsafe('TRUNCATE "CreationIntent", "RateLimitWindow", "User", "Community", "Game", "NotificationEvent", "Badge" CASCADE');
     (await import("@/lib/default-community")).resetDefaultCommunityIdCache();
     state.user = await db.user.create({ data: { id: "creator", discordId: "111111111111111111", discordName: "Créateur" } });
     await db.user.create({ data: { id: "guest", discordId: "222222222222222222", discordName: "Invité" } });
