@@ -512,7 +512,7 @@ export async function voteTowerChallenge(input: unknown) {
     const createdAt = now();
     const discordVotes = isTowerDiscordVotesEnabled();
     {
-      // Votants : compte GameNight actif depuis au moins 7 jours (Membership.joinedAt de la communauté), QUEL QUE SOIT l'interrupteur
+      // Votants : compte GameNight actif depuis au moins 3 jours (Membership.joinedAt de la communauté), QUEL QUE SOIT l'interrupteur
       // des votes Discord (audit du 23/11/2026, constat 1.3 : interrupteur éteint, un faux compte votait dès son arrivée).
       const voter = await scopedDb.membership.findUnique({ where: { communityId_userId: { communityId, userId } }, select: { status: true, joinedAt: true } });
       const eligibility = towerVoterEligibility({ status: voter?.status, joinedAt: voter?.joinedAt, now: createdAt });

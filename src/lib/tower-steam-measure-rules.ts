@@ -9,8 +9,8 @@ export const TOWER_MEASURE_DOUBT_WINDOW_MS = 6 * 60 * 60 * 1000;
 export const TOWER_MEASURE_CHECK_INTERVAL_MS = 10 * 60 * 1000;
 /** Nombre maximal de tentatives mesurées par passage du cron, donc d'appels Steam. */
 export const TOWER_MEASURE_BATCH_SIZE = 25;
-/** Même ancienneté minimale que les votants (≥ 7 jours de Membership). */
-export const TOWER_MEASURE_DOUBT_MIN_TENURE_MS = 7 * 24 * 60 * 60 * 1000;
+/** Même ancienneté minimale que les votants (≥ 3 jours de Membership). */
+export const TOWER_MEASURE_DOUBT_MIN_TENURE_MS = 3 * 24 * 60 * 60 * 1000;
 
 export type MeasureKind = "STEAM_PLAYTIME" | "STEAM_ACHIEVEMENT";
 
@@ -69,7 +69,7 @@ export function measureSummary(input: { kind: MeasureKind; value: number; target
 
 export type DoubtRefusal = "SELF_DOUBT" | "DOUBT_NOT_ACTIVE" | "DOUBT_TOO_RECENT" | "CLOSED";
 
-/** Qui peut signaler un doute, et quand : membre actif depuis 7 jours, jamais l'auteur, fenêtre ouverte, un seul doute. */
+/** Qui peut signaler un doute, et quand : membre actif depuis 3 jours, jamais l'auteur, fenêtre ouverte, un seul doute. */
 export function canReportDoubt(input: {
   authorId: string;
   reporterId: string;

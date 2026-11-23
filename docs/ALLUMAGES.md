@@ -76,7 +76,7 @@
 **Hors Vercel** : `TOWER_TEAM_DAILY_ENABLED` est aussi lu par le workflow GitHub `tower-team-daily.yml`. Dans GitHub → Settings → Secrets and variables → Actions → **Variables** : `TOWER_TEAM_DAILY_ENABLED` = `true` et `GAMENIGHT_CRON_BASE_URL` = adresse du site (le secret `CRON_SECRET` doit exister côté GitHub). Ajouter aussi sur cron-job.org un appel toutes les 10 min à `/api/cron/tower-steam-autovalidate` (en-tête `Authorization: Bearer <CRON_SECRET>`).
 
 **Vérifier**
-- Une preuve déposée arrive dans le salon des preuves avec les boutons ✅/❌ et un fil. Un vote d'un compte présent depuis au moins 7 jours compte.
+- Une preuve déposée arrive dans le salon des preuves avec les boutons ✅/❌ et un fil. Un vote d'un compte présent depuis au moins 3 jours compte.
 - `/tower/propositions` s'ouvre pour un Ranker et est refusée sous 30 étages. `/admin/tower-propositions` liste la proposition.
 - Sur `/tower`, le bouton « Remplacer » apparaît pour un défi dont le jeu n'est pas possédé.
 - `/admin/tower-irregular` permet de donner et retirer le grade.
