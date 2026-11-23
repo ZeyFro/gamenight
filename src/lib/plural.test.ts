@@ -35,11 +35,8 @@ describe("plural", () => {
 });
 
 // Garde : un suffixe de pluriel collé à une expression JSX (`mot{n === 1 ? "" : "s"}`) coupe le texte en plusieurs nœuds.
-// Fichiers encore concernés par une PR ouverte, à migrer ensuite : voir EN_ATTENTE.
-const EN_ATTENTE = new Set([
-  "src/app/potes/page.tsx", // PR #527 (recherche de joueurs)
-  "src/app/profil/parametres/page.tsx", // PR #527 (recherche de joueurs)
-]);
+// Fichiers encore concernés par une PR ouverte, à migrer ensuite (aucun aujourd’hui).
+const EN_ATTENTE = new Set<string>([]);
 const COUPE = /[\p{L}]\$?\{[^{}`]*\? *"(?:s|x)?" *: *"(?:s|x)?"\}|[\p{L}]\s*\n\s*\{[^{}]*\? *"(?:s|x)?" *: *"(?:s|x)?"\}/u;
 
 describe("pluriel : aucun suffixe collé à une expression", () => {

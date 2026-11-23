@@ -1,3 +1,4 @@
+import { plural } from "@/lib/plural";
 import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/current-user";
 import { steamPrivacySettingsUrl } from "@/lib/steam";
@@ -339,7 +340,7 @@ export default async function ProfilParametresPage({
           {steam === "importe" && (
             <p className="rounded-lg bg-accent/10 p-3 text-sm text-accent">
               Bibliothèque Steam importée
-              {count ? ` (${count} jeu${count === "1" ? "" : "x"})` : ""}.
+              {count ? ` (${count} ${plural(Number(count), "jeu", "jeux")})` : ""}.
             </p>
           )}
           {steam === "prive" && user.steamId64 && (
@@ -407,8 +408,7 @@ export default async function ProfilParametresPage({
           )}
           {family === "resync_ok" && (
             <p className="rounded-lg bg-accent/10 p-3 text-sm text-accent">
-              {newCount} nouveau{newCount === "1" ? "" : "x"} jeu
-              {newCount === "1" ? "" : "x"} importé{newCount === "1" ? "" : "s"}.
+              {newCount} {plural(Number(newCount), "nouveau", "nouveaux")} {plural(Number(newCount), "jeu", "jeux")} {plural(Number(newCount), "importé")}.
             </p>
           )}
 

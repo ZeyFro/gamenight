@@ -1,3 +1,7 @@
+import { plural } from "@/lib/plural";
+import { FriendsPanel } from "@/components/potes/FriendsPanel";
+import { isFriendsEnabled, normalizeFriendSearch } from "@/lib/friends-rules";
+import { listFriendIds, listFriendRequests, searchMembersByName } from "@/lib/friends";
 import Link from "next/link";
 import type { ReactNode } from "react";
 import { redirect } from "next/navigation";
@@ -59,11 +63,18 @@ export default async function PotesPage({ searchParams }: { searchParams?: Promi
   const levelFilterInvalid = levelFilterParse !== null && !levelFilterParse.success;
   const levelGames = levelsEnabled ? await prisma.game.findMany({ where: { userLevels: { some: {} } }, select: { id: true, name: true }, orderBy: [{ name: "asc" }, { id: "asc" }], take: 300 }) : [];
 
+  // Potes = amis (POTES_FRIENDS_ENABLED) : la liste ne montre que mes amis ; demandes et recherche par pseudo à côté.
+  const friendsEnabled = isFriendsEnabled();
+  const friendIds = friendsEnabled ? await listFriendIds(user.id) : [];
+  const friendRequests = friendsEnabled ? await listFriendRequests(user.id) : { incoming: [], outgoing: [] };
+  const searchQuery = friendsEnabled && typeof params.q === "string" ? params.q : "";
+  const searchHits = friendsEnabled && normalizeFriendSearch(searchQuery) ? await searchMembersByName(user.id, searchQuery) : null;
+
   const scopedDb = await getActiveScopedPrisma(user.id);
   const rawPotes = await prisma.user.findMany({
     // Multi-communautés (PR4) : uniquement les membres de mes communautés
     // (aucun filtre si l'isolation est éteinte).
-    where: { AND: [{ id: { not: user.id } }, await creationMemberUserWhere(user.id), profileVisibilityWhere(), levelFilterInvalid ? { id: { in: [] } } : gameLevelUserWhere(levelFilter), matchingFilterInvalid ? { id: { in: [] } } : playerMatchingUserWhere(matchingFilter)] },
+    where: { AND: [{ id: { not: user.id } }, friendsEnabled ? { id: { in: friendIds } } : {}, await creationMemberUserWhere(user.id), profileVisibilityWhere(), levelFilterInvalid ? { id: { in: [] } } : gameLevelUserWhere(levelFilter), matchingFilterInvalid ? { id: { in: [] } } : playerMatchingUserWhere(matchingFilter)] },
     orderBy: { discordName: "asc" },
     select: {
       id: true,
@@ -134,7 +145,7 @@ export default async function PotesPage({ searchParams }: { searchParams?: Promi
       <div>
         <h1 className="text-xl font-semibold text-foreground sm:text-2xl">Potes</h1>
         <p className="mt-1 text-sm text-muted">
-          {potes.length} membre{potes.length === 1 ? "" : "s"} dans le groupe.
+          {friendsEnabled ? `${potes.length} ${plural(potes.length, "ami")}.` : `${potes.length} ${plural(potes.length, "membre")} dans le groupe.`}
         </p>
       </div>
 
@@ -151,6 +162,8 @@ export default async function PotesPage({ searchParams }: { searchParams?: Promi
           </form>
         </Card>
       )}
+
+      {friendsEnabled && <FriendsPanel incoming={friendRequests.incoming} outgoing={friendRequests.outgoing} query={normalizeFriendSearch(searchQuery) ?? ""} hits={searchHits} />}
 
       {levelsEnabled && <Card>
         <form action="/potes" method="get" className="flex flex-wrap items-end gap-3">
@@ -202,7 +215,7 @@ export default async function PotesPage({ searchParams }: { searchParams?: Promi
 
       {potes.length === 0 ? (
         <Card>
-          <p className="text-sm text-muted">{matchingFiltered || levelFilter.gameId ? "Aucun membre ne correspond à ces filtres." : <>Personne d&apos;autre n&apos;a encore rejoint le groupe.</>}</p>
+          <p className="text-sm text-muted">{matchingFiltered || levelFilter.gameId ? "Aucun membre ne correspond à ces filtres." : friendsEnabled ? <>Tu n&apos;as pas encore d&apos;ami : cherche un joueur par pseudo ci-dessus et envoie-lui une demande.</> : <>Personne d&apos;autre n&apos;a encore rejoint le groupe.</>}</p>
         </Card>
       ) : (
         <Stagger className="grid grid-cols-1 gap-4 lg:grid-cols-2">
@@ -269,7 +282,7 @@ export default async function PotesPage({ searchParams }: { searchParams?: Promi
                       <div className="flex gap-2">
                         <QuickStat
                           value={sessionsPlayed}
-                          label={`soirée${sessionsPlayed === 1 ? "" : "s"}`}
+                          label={plural(sessionsPlayed, "soirée")}
                         />
                         <QuickStat value={pote.xpTotal} label="XP" />
                         <QuickStat

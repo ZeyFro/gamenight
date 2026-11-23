@@ -395,6 +395,8 @@ model User {
   gameStyleProfiles GameStyleProfile[]
 
   @@index([xpTotal])
+  friendshipsSent     Friendship[] @relation("FriendshipRequester")
+  friendshipsReceived Friendship[] @relation("FriendshipAddressee")
 }
 
 enum GameSource {
@@ -4400,4 +4402,29 @@ model SensitiveOperationLog {
 
   @@index([createdAt])
   @@index([action, createdAt])
+}
+
+// Potes = amis (cahier C128, décision du 23/11/2026) : demande d’ami à accepter. Une seule ligne par paire de
+// membres, quel que soit le sens de la demande (`pairKey` = identifiants triés). Donnée personnelle : supprimée
+// avec le compte. Lue seulement flag POTES_FRIENDS_ENABLED allumé.
+enum FriendshipStatus {
+  PENDING
+  ACCEPTED
+  DECLINED
+}
+
+model Friendship {
+  id          String           @id @default(cuid())
+  requesterId String
+  addresseeId String
+  pairKey     String           @unique @db.VarChar(128)
+  status      FriendshipStatus @default(PENDING)
+  createdAt   DateTime         @default(now())
+  respondedAt DateTime?
+
+  requester User @relation("FriendshipRequester", fields: [requesterId], references: [id], onDelete: Cascade)
+  addressee User @relation("FriendshipAddressee", fields: [addresseeId], references: [id], onDelete: Cascade)
+
+  @@index([addresseeId, status])
+  @@index([requesterId, status])
 }
