@@ -14,9 +14,9 @@ Les tests du contrat YAML sont multiplateformes. Les tests qui exécutent réell
 - Authentification : `Authorization: Bearer` avec le secret GitHub Actions `CRON_SECRET`, dont la valeur devra correspondre à celle déjà acceptée par l'endpoint.
 - Hôte : variable GitHub Actions `GAMENIGHT_CRON_BASE_URL`, origine HTTPS uniquement; aucun hôte n'est codé en dur.
 - Calendrier GitHub, en UTC : `0 16,17 * * *`.
-  - été (CEST) : 16:00 UTC correspond à 18:00 Paris; 17:00 UTC (19:00 Paris) est ignoré;
-  - hiver (CET) : 17:00 UTC correspond à 18:00 Paris; 16:00 UTC (17:00 Paris) est ignoré.
-- Le workflow vérifie l'heure Europe/Paris et appelle l'endpoint uniquement pendant l'heure locale 18 (décision du 17/11/2026 : 18:00 au lieu de 09:00).
+  - été (CEST) : 16:00 UTC correspond à 18:00 Paris; 17:00 UTC (19:00 Paris) appelle aussi la route (sans effet : déjà attribué le même jour);
+  - hiver (CET) : 17:00 UTC correspond à 18:00 Paris; 16:00 UTC (17:00 Paris) est ignoré (avant 18:00).
+- Le workflow vérifie l'heure Europe/Paris et appelle l'endpoint à partir de l'heure locale 18, jamais avant (décision du 17/11/2026 : 18:00 au lieu de 09:00). Depuis l'audit du 23/11/2026 la garde est « heure >= 18 » et non « heure == 18 » : GitHub peut retarder un créneau d'une heure ou plus, et l'ancienne garde faisait alors sauter la journée. Le second appel du soir est sans effet (clé `team-<jour de Paris>`).
 - Deux déclencheurs UTC couvrent les changements CET/CEST. La clé d'idempotence de l'endpoint est fondée sur la date Europe/Paris; elle évite une nouvelle attribution si un appel est rejoué ou si deux exécutions atteignent le même jour.
 - HTTP 503 signifie que le lot est incomplet ou qu’au moins une attribution a échoué : le workflow retente jusqu'à 3 appels au total, avec une attente croissante. Tout statut différent de 200 ou toute réponse non confirmée `enabled=true, failed=0, complete=true` fait échouer l'exécution.
 - Une route désactivée renvoie 200 avec `enabled=false`; le workflow traite ce cas comme un échec visible, sans le présenter comme une attribution réussie.

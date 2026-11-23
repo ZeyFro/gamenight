@@ -3,7 +3,9 @@ name: Tower team daily challenge
 on:
   schedule:
     # 16:00 UTC is 18:00 CEST; 17:00 UTC is 18:00 CET.
-    # The job calls the endpoint only during 18:00 Europe/Paris.
+    # The job calls the endpoint from 18:00 Europe/Paris onwards (never before). GitHub may delay a scheduled run by an
+    # hour or more: the old "hour == 18" guard then skipped the whole day. The endpoint is idempotent per Paris day
+    # (key team-<day>), so a second call the same evening assigns nothing more.
     - cron: "0 16,17 * * *"
 
 permissions:
@@ -43,8 +45,8 @@ jobs:
           fi
 
           paris_hour="$(TZ=Europe/Paris date +%H)"
-          if [[ "$paris_hour" != "18" ]]; then
-            echo "Skipping UTC schedule slot outside 18:00 Europe/Paris."
+          if (( 10#$paris_hour < 18 )); then
+            echo "Skipping UTC schedule slot before 18:00 Europe/Paris."
             exit 0
           fi
 
