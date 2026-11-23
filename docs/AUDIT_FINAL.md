@@ -34,7 +34,7 @@ Aucun constat 🔴 ni haute gravité. Crons et backfills (`verifyCronRequest`, 5
 
 | Gravité | Où | Correctif | État |
 |---|---|---|---|
-| 🟠 | `/api/cron/force-relogin` : un seul `CRON_SECRET` pour tous les crons | Secret dédié par route sensible, rotation documentée | Restant : exige une nouvelle variable d'environnement chez Vercel (à décider avec Maxime) |
+| 🟠 | `/api/admin/force-relogin` : `CRON_SECRET` partagé avec tous les crons | Secret dédié `FORCE_RELOGIN_SECRET` (503 sans lui, `CRON_SECRET` n'ouvre plus la route) ; étapes dans `ALLUMAGES.md` § « Pour ChatGPT » | Corrigé (code) ; **variable à créer chez Vercel** (ChatGPT) |
 | 🟠 | `/api/igdb/search` sans limite de débit | 30 recherches par minute et par membre (429 au-delà) | Corrigé (#573) |
 | 🟠 | `/api/push/subscription` sans limite ni plafond | 10 appels par minute et par membre en plus du plafond de 5 appareils | Corrigé (#573) |
 | 🟠 | `/api/discord/interactions` : corps lu en entier avant la signature | 413 au-delà de 64 Ko (Content-Length puis corps lu) | Corrigé (#573) |
@@ -63,7 +63,7 @@ Aucun constat 🔴 ni haute gravité. Crons et backfills (`verifyCronRequest`, 5
 | 🟠 | 1.9 XP de présence farmée par des soirées fantômes | Plafond sur 24 h glissantes dans le ledger ; participants distincts non exigés (à décider) | Corrigé (#569) : plafond de 3 gains par membre et par 24 h, valeur à valider par Maxime |
 | 🟠 | 1.4 Preuve Tower validée par 3 faux comptes | Quorum de votants actifs, votes décisifs visibles du staff | Restant (priorité 2) |
 | 🟠 | 1.5 Défi d'équipe : coéquipier fantôme récompensé | Participants confirmés par le capitaine, plafond par jour | Restant (priorité 2) |
-| 🟡 | 1.3 Ancienneté de 7 jours des votants selon le seul interrupteur | Ancienneté appliquée même interrupteur éteint | Corrigé (#570) |
+| 🟡 | 1.3 Ancienneté de 7 jours des votants selon le seul interrupteur | Ancienneté appliquée même interrupteur éteint | Corrigé (#570), puis 3 jours (décision de Maxime) |
 | 🟡 | 1.6, 1.10, 1.11, 1.14 (temps Steam AFK, XP de vote, tournoi complice, MP en masse) | Plafonds par jour, limite partagée | Restant |
 | 🟡 | 1.8, 1.15 plafonds sans test (soirée créée, demandes d'ami) | Tests d'intégration | Partiel : plafond « soirée créée » testé (#569) ; demandes d'ami restantes |
 | 🟠 | 2.4 Web Push : `getRegistration("/sw.js")` au lieu de `/service-worker.js` ; abonnement jamais détecté après rechargement | Chemin `/service-worker.js`, test jsdom : abonnement détecté après rechargement | Corrigé (#572) |
