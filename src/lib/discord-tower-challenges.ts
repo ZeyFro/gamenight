@@ -153,7 +153,7 @@ const feedback: Record<string, string> = {
   VOTED: "Ton vote est enregistré.",
   ALREADY_VOTED: "Tu as déjà voté pour cette preuve.",
   VOTE_CHANGED: "Ton vote est modifié. Tu peux encore le changer jusqu’à l’échéance.",
-  VOTER_TOO_RECENT: "Pour voter, ton compte GameNight doit être actif depuis au moins 7 jours.",
+  VOTER_TOO_RECENT: "Pour voter, ton compte GameNight doit être actif depuis au moins 3 jours.",
   VOTER_NOT_ACTIVE: "Seuls les comptes GameNight actifs peuvent voter.",
   SELF_VOTE: "Tu ne peux pas voter pour ta propre preuve.",
   OPEN: "Le vote est encore ouvert (24 heures, prolongées une fois de 24 heures sans quorum).",
@@ -171,7 +171,7 @@ const feedback: Record<string, string> = {
   DOUBT_RECORDED: "Ton doute est enregistré : la validation automatique est suspendue et le défi passe au vote communautaire.",
   SELF_DOUBT: "Tu ne peux pas signaler un doute sur ton propre défi.",
   DOUBT_NOT_ACTIVE: "Seuls les comptes GameNight actifs peuvent signaler un doute.",
-  DOUBT_TOO_RECENT: "Pour signaler un doute, ton compte GameNight doit être actif depuis au moins 7 jours.",
+  DOUBT_TOO_RECENT: "Pour signaler un doute, ton compte GameNight doit être actif depuis au moins 3 jours.",
   ARCHIVED: "Cette preuve est archivée et ne peut plus être modifiée.",
 };
 

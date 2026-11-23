@@ -4,7 +4,7 @@ import { isTowerDiscordVotesEnabled, TOWER_VOTER_MIN_TENURE_MS, towerVoterEligib
 const now = new Date("2026-12-10T12:00:00Z");
 
 describe("votants des preuves Tower", () => {
-  it("exige un compte actif depuis au moins 7 jours", () => {
+  it("exige un compte actif depuis au moins 3 jours", () => {
     expect(towerVoterEligibility({ status: "ACTIVE", joinedAt: new Date(now.getTime() - TOWER_VOTER_MIN_TENURE_MS), now })).toBe("ELIGIBLE");
     expect(towerVoterEligibility({ status: "ACTIVE", joinedAt: new Date(now.getTime() - TOWER_VOTER_MIN_TENURE_MS + 1), now })).toBe("TOO_RECENT");
     expect(towerVoterEligibility({ status: "ACTIVE", joinedAt: now, now })).toBe("TOO_RECENT");

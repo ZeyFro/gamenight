@@ -46,7 +46,7 @@ describe("signalement d'un doute", () => {
   const autoValidatedAt = new Date("2026-12-10T12:00:00Z");
   const base = { authorId: "author", reporterId: "voter", reporterStatus: "ACTIVE", reporterJoinedAt: joinedAt, autoValidatedAt, doubtReportedAt: null, now: new Date("2026-12-10T13:00:00Z") };
 
-  it("accepte un membre actif depuis 7 jours pendant la fenêtre", () => {
+  it("accepte un membre actif depuis 3 jours pendant la fenêtre", () => {
     expect(canReportDoubt(base)).toEqual({ ok: true });
   });
 

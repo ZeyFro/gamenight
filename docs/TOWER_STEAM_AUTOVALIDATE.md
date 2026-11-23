@@ -17,7 +17,7 @@ Seuls les défis **solo** sont mesurables. Un défi mesurable n'est proposé qu'
 2. Cron : au plus 25 lectures Steam par passage (budget 50 s), une tentative n'est pas relue avant 10 minutes, délai Steam de 6 s par appel. Les tentatives expirées (48 h) ne sont plus lues.
 3. Objectif atteint : message public « Validation automatique en attente » dans le salon des preuves (file de notifications) avec le bouton **Signaler un doute**. Les étages ne sont pas encore crédités.
 4. **Fenêtre de doute de 6 h** (`TOWER_MEASURE_DOUBT_WINDOW_MS`). Sans doute : le cron crédite les étages (même plafond de 2 réussites par jour que les autres défis ; si le plafond est atteint, le crédit est repris au passage suivant), édite le message (✅) et envoie un **MP au joueur** par la file.
-5. Doute : membre actif depuis au moins 7 jours, jamais l'auteur, un seul doute par défi. Le défi redevient une preuve classique : message « Preuve à juger », vote 24 h (3 votants minimum, majorité stricte, règles existantes). Aucun étage n'est retiré : le crédit n'a pas eu lieu.
+5. Doute : membre actif depuis au moins 3 jours, jamais l'auteur, un seul doute par défi. Le défi redevient une preuve classique : message « Preuve à juger », vote 24 h (3 votants minimum, majorité stricte, règles existantes). Aucun étage n'est retiré : le crédit n'a pas eu lieu.
 6. **Profil Steam privé ou compte non lié** : plus de lecture automatique, le joueur dépose une preuve et la communauté vote (le panneau « Mon défi » l'indique).
 
 ## Limites

@@ -106,7 +106,7 @@ export const towerSteamAnnounceResolver: DeliveryResolver = {
       if (attempt.status !== "ASSIGNED" || attempt.doubtReportedAt || now.getTime() >= endsAt) return refuse("expired");
       return { eligible: true, action: { kind: "send_channel_message_verified", guildId: config.guildId, channelId: config.channelId, message: {
         content: "🤖 **Validation automatique en attente : " + title + "**\n" + player + " a atteint l’objectif mesuré sur Steam. " + summary + "\n"
-          + "Validation définitive <t:" + Math.floor(endsAt / 1000) + ":R>, sauf doute : un membre actif depuis 7 jours peut le signaler, le défi passe alors au vote communautaire.",
+          + "Validation définitive <t:" + Math.floor(endsAt / 1000) + ":R>, sauf doute : un membre actif depuis 3 jours peut le signaler, le défi passe alors au vote communautaire.",
         components: [{ type: 1, components: [{ type: 2, style: 4, label: "Signaler un doute", custom_id: "gn:tower:doubt:" + attempt.id }] }],
         allowedMentions: { parse: [] },
       } } };

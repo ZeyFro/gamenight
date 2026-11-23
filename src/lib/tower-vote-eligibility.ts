@@ -1,6 +1,6 @@
-// Votants des preuves Tower (TOWER_DISCORD_VOTES_ENABLED) : compte GameNight actif depuis au moins 7 jours.
+// Votants des preuves Tower (TOWER_DISCORD_VOTES_ENABLED) : compte GameNight actif depuis au moins 3 jours.
 // L'ancienneté est celle de la Membership (joinedAt) de la communauté, pas la date d'arrivée sur Discord.
-export const TOWER_VOTER_MIN_TENURE_MS = 7 * 24 * 60 * 60 * 1000;
+export const TOWER_VOTER_MIN_TENURE_MS = 3 * 24 * 60 * 60 * 1000;
 
 export type TowerVoterEligibility = "ELIGIBLE" | "NOT_ACTIVE" | "TOO_RECENT";
 
