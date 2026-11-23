@@ -15,6 +15,7 @@ const { currentUserMock } = vi.hoisted(() => ({ currentUserMock: vi.fn() }));
 
 vi.mock("@/lib/current-user", () => ({ getCurrentUser: currentUserMock }));
 vi.mock("next/navigation", () => ({ redirect: vi.fn() }));
+vi.mock("@/auth", () => ({ signOut: vi.fn() })); // /profil rend « Se déconnecter » (server action important next-auth)
 vi.mock("@/lib/prisma", async () => {
   const { PrismaClient } = await import("@prisma/client");
   if (!TEST_DATABASE_URL) {

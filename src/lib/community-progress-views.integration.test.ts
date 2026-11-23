@@ -5,6 +5,7 @@ const TEST_DATABASE_URL = process.env.TEST_DATABASE_URL;
 const { currentUser, webhook } = vi.hoisted(() => ({ currentUser: vi.fn(), webhook: vi.fn() }));
 vi.mock("@/lib/current-user", () => ({ getCurrentUser: currentUser }));
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
+vi.mock("@/auth", () => ({ signOut: vi.fn() })); // /profil rend « Se déconnecter » (server action important next-auth)
 vi.mock("@/components/XpEvolutionChart", () => ({ XpEvolutionChart: () => null }));
 vi.mock("next/navigation", () => ({ redirect: (url: string) => { throw new Error(`REDIRECT:${url}`); }, notFound: () => { throw new Error("NOT_FOUND"); } }));
 vi.mock("@/lib/discord", async () => ({ ...(await vi.importActual<typeof import("./discord")>("./discord")), postToDiscord: webhook }));
