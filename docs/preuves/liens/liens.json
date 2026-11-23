@@ -1,0 +1,3237 @@
+{
+ "visiteur": {
+  "pages": [
+   {
+    "path": "/",
+    "status": 200,
+    "finalPath": "/",
+    "h1": "Le point de départde vos meilleures soirées.meilleures soirées.",
+    "notFound": false,
+    "error": null
+   },
+   {
+    "path": "/mentions-legales",
+    "status": 200,
+    "finalPath": "/mentions-legales",
+    "h1": "Mentions légales",
+    "notFound": false,
+    "error": null
+   },
+   {
+    "path": "/confidentialite",
+    "status": 200,
+    "finalPath": "/confidentialite",
+    "h1": "Politique de confidentialité",
+    "notFound": false,
+    "error": null
+   },
+   {
+    "path": "/conditions",
+    "status": 200,
+    "finalPath": "/conditions",
+    "h1": "Conditions d’utilisation",
+    "notFound": false,
+    "error": null
+   }
+  ],
+  "sources": {
+   "/": [
+    {
+     "from": "/",
+     "text": "Aller au contenu"
+    },
+    {
+     "from": "/",
+     "text": "GameNight"
+    },
+    {
+     "from": "/mentions-legales",
+     "text": "GameNight"
+    }
+   ],
+   "/mentions-legales": [
+    {
+     "from": "/",
+     "text": "Mentions légales"
+    },
+    {
+     "from": "/",
+     "text": "Mentions légales"
+    },
+    {
+     "from": "/mentions-legales",
+     "text": "Aller au contenu"
+    }
+   ],
+   "/confidentialite": [
+    {
+     "from": "/",
+     "text": "Politique de confidentialité"
+    },
+    {
+     "from": "/",
+     "text": "Politique de confidentialité"
+    },
+    {
+     "from": "/mentions-legales",
+     "text": "Politique de confidentialité"
+    }
+   ],
+   "/conditions": [
+    {
+     "from": "/",
+     "text": "Conditions d’utilisation"
+    },
+    {
+     "from": "/",
+     "text": "Conditions d’utilisation"
+    },
+    {
+     "from": "/mentions-legales",
+     "text": "Conditions d’utilisation"
+    }
+   ]
+  },
+  "skippedInQueue": 0
+ },
+ "p-1": {
+  "pages": [
+   {
+    "path": "/",
+    "status": 200,
+    "finalPath": "/",
+    "h1": "Ce soir, on joue à quoi ?Ce soir, on joue à quoi ?",
+    "notFound": false,
+    "error": null
+   },
+   {
+    "path": "/sessions",
+    "status": 200,
+    "finalPath": "/sessions",
+    "h1": "Soirées",
+    "notFound": false,
+    "error": null
+   },
+   {
+    "path": "/roulette",
+    "status": 200,
+    "finalPath": "/roulette",
+    "h1": "🎰 Roulette",
+    "notFound": false,
+    "error": null
+   },
+   {
+    "path": "/tournois",
+    "status": 200,
+    "finalPath": "/tournois",
+    "h1": "🏆 Tournois",
+    "notFound": false,
+    "error": null
+   },
+   {
+    "path": "/calendrier",
+    "status": 200,
+    "finalPath": "/calendrier",
+    "h1": "Le calendrierLe calendrier",
+    "notFound": false,
+    "error": null
+   },
+   {
+    "path": "/bibliotheque",
+    "status": 200,
+    "finalPath": "/bibliotheque",
+    "h1": "Ma bibliothèque",
+    "notFound": false,
+    "error": null
+   },
+   {
+    "path": "/bibliotheque/groupe",
+    "status": 200,
+    "finalPath": "/bibliotheque/groupe",
+    "h1": "Bibliothèque du groupe",
+    "notFound": false,
+    "error": null
+   },
+   {
+    "path": "/tierlist",
+    "status": 200,
+    "finalPath": "/tierlist",
+    "h1": "Ma tierlist",
+    "notFound": false,
+    "error": null
+   },
+   {
+    "path": "/wishlist",
+    "status": 200,
+    "finalPath": "/wishlist",
+    "h1": "🛒 À acheter",
+    "notFound": false,
+    "error": null
+   },
+   {
+    "path": "/bibliotheque/a-verifier",
+    "status": 200,
+    "finalPath": "/bibliotheque/a-verifier",
+    "h1": "Ma bibliothèque",
+    "notFound": false,
+    "error": null
+   },
+   {
+    "path": "/potes",
+    "status": 200,
+    "finalPath": "/potes",
+    "h1": "Potes",
+    "notFound": false,
+    "error": null
+   },
+   {
+    "path": "/tower",
+    "status": 200,
+    "finalPath": "/tower",
+    "h1": "The Tower",
+    "notFound": false,
+    "error": null
+   },
+   {
+    "path": "/classement",
+    "status": 200,
+    "finalPath": "/classement",
+    "h1": "🏆 Classement",
+    "notFound": false,
+    "error": null
+   },
+   {
+    "path": "/profil",
+    "status": 200,
+    "finalPath": "/profil",
+    "h1": "Bastien",
+    "notFound": false,
+    "error": null
+   },
+   {
+    "path": "/guide",
+    "status": 200,
+    "finalPath": "/guide",
+    "h1": "Comment ça marche",
+    "notFound": false,
+    "error": null
+   },
+   {
+    "path": "/tower/forums",
+    "status": 200,
+    "finalPath": "/tower/forums",
+    "h1": "Forums The Tower",
+    "notFound": false,
+    "error": null
+   },
+   {
+    "path": "/sessions/cmwqeh0lb003q7dwchxhs9our",
+    "status": 200,
+    "finalPath": "/sessions/cmwqeh0lb003q7dwchxhs9our",
+    "h1": "lundi 23 novembre à 12:44",
+    "notFound": false,
+    "error": null
+   },
+   {
+    "path": "/tournois/creer",
+    "status": 200,
+    "finalPath": "/tournois/creer",
+    "h1": "🏆 Créer un tournoi",
+    "notFound": false,
+    "error": null
+   },
+   {
+    "path": "/jouer-maintenant",
+    "status": 200,
+    "finalPath": "/jouer-maintenant",
+    "h1": "🎮 Jouer maintenant",
+    "notFound": false,
+    "error": null
+   },
+   {
+    "path": "/saisons",
+    "status": 200,
+    "finalPath": "/saisons",
+    "h1": "Saisons",
+    "notFound": false,
+    "error": null
+   },
+   {
+    "path": "/tournois/cmwqeh0nw00767dwcut7xs89f",
+    "status": 200,
+    "finalPath": "/tournois/cmwqeh0nw00767dwcut7xs89f",
+    "h1": "Tournoi des équipes",
+    "notFound": false,
+    "error": null
+   },
+   {
+    "path": "/disponibilites",
+    "status": 200,
+    "finalPath": "/disponibilites",
+    "h1": "Mes disponibilités",
+    "notFound": false,
+    "error": null
+   },
+   {
+    "path": "/mentions-legales",
+    "status": 200,
+    "finalPath": "/mentions-legales",
+    "h1": "Mentions légales",
+    "notFound": false,
+    "error": null
+   },
+   {
+    "path": "/confidentialite",
+    "status": 200,
+    "finalPath": "/confidentialite",
+    "h1": "Politique de confidentialité",
+    "notFound": false,
+    "error": null
+   },
+   {
+    "path": "/conditions",
+    "status": 200,
+    "finalPath": "/conditions",
+    "h1": "Conditions d’utilisation",
+    "notFound": false,
+    "error": null
+   },
+   {
+    "path": "/sessions/sondages",
+    "status": 200,
+    "finalPath": "/sessions/sondages",
+    "h1": "Préparer une soirée",
+    "notFound": false,
+    "error": null
+   },
+   {
+    "path": "/sessions/cmwqeh0ls004c7dwcxhixvm0l",
+    "status": 200,
+    "finalPath": "/sessions/cmwqeh0ls004c7dwcxhixvm0l",
+    "h1": "mercredi 25 novembre à 12:44",
+    "notFound": false,
+    "error": null
+   },
+   {
+    "path": "/sessions/cmwqeh0m8004y7dwcjratewwq",
+    "status": 200,
+    "finalPath": "/sessions/cmwqeh0m8004y7dwcjratewwq",
+    "h1": "samedi 28 novembre à 12:44",
+    "notFound": false,
+    "error": null
+   },
+   {
+    "path": "/tournois/equipes",
+    "status": 200,
+    "finalPath": "/tournois/equipes",
+    "h1": "🏆 Tournois d’équipes",
+    "notFound": false,
+    "error": null
+   },
+   {
+    "path": "/bibliotheque/ajouter",
+    "status": 200,
+    "finalPath": "/bibliotheque/ajouter",
+    "h1": "Ajouter un jeu",
+    "notFound": false,
+    "error": null
+   },
+   {
+    "path": "/bibliotheque/suggestions",
+    "status": 200,
+    "finalPath": "/bibliotheque/suggestions",
+    "h1": "Suggestions de jeux",
+    "notFound": false,
+    "error": null
+   },
+   {
+    "path": "/jeux/preuve-game-7",
+    "status": 200,
+    "finalPath": "/jeux/preuve-game-7",
+    "h1": "Fall Guys",
+    "notFound": false,
+    "error": null
+   },
+   {
+    "path": "/jeux/preuve-game-4",
+    "status": 200,
+    "finalPath": "/jeux/preuve-game-4",
+    "h1": "Mario Kart 8",
+    "notFound": false,
+    "error": null
+   },
+   {
+    "path": "/jeux/preuve-game-1",
+    "status": 200,
+    "finalPath": "/jeux/preuve-game-1",
+    "h1": "Rocket League",
+    "notFound": false,
+    "error": null
+   },
+   {
+    "path": "/jeux/preuve-game-10",
+    "status": 200,
+    "finalPath": "/jeux/preuve-game-10",
+    "h1": "Stardew Valley",
+    "notFound": false,
+    "error": null
+   },
+   {
+    "path": "/jeux/preuve-game-9",
+    "status": 200,
+    "finalPath": "/jeux/preuve-game-9",
+    "h1": "Deep Rock Galactic",
+    "notFound": false,
+    "error": null
+   },
+   {
+    "path": "/jeux/preuve-game-6",
+    "status": 200,
+    "finalPath": "/jeux/preuve-game-6",
+    "h1": "Minecraft",
+    "notFound": false,
+    "error": null
+   },
+   {
+    "path": "/jeux/preuve-game-0",
+    "status": 200,
+    "finalPath": "/jeux/preuve-game-0",
+    "h1": "Overcooked 2",
+    "notFound": false,
+    "error": null
+   },
+   {
+    "path": "/jeux/preuve-game-3",
+    "status": 200,
+    "finalPath": "/jeux/preuve-game-3",
+    "h1": "Valheim",
+    "notFound": false,
+    "error": null
+   },
+   {
+    "path": "/jeux/preuve-game-2",
+    "status": 200,
+    "finalPath": "/jeux/preuve-game-2",
+    "h1": "Among Us",
+    "notFound": false,
+    "error": null
+   },
+   {
+    "path": "/jeux/preuve-game-11",
+    "status": 200,
+    "finalPath": "/jeux/preuve-game-11",
+    "h1": "Gartic Phone",
+    "notFound": false,
+    "error": null
+   },
+   {
+    "path": "/jeux/preuve-game-8",
+    "status": 200,
+    "finalPath": "/jeux/preuve-game-8",
+    "h1": "Helldivers 2",
+    "notFound": false,
+    "error": null
+   },
+   {
+    "path": "/jeux/preuve-game-5",
+    "status": 200,
+    "finalPath": "/jeux/preuve-game-5",
+    "h1": "It Takes Two",
+    "notFound": false,
+    "error": null
+   },
+   {
+    "path": "/jeux-gratuits",
+    "status": 200,
+    "finalPath": "/jeux-gratuits",
+    "h1": "🎁 Jeux gratuits",
+    "notFound": false,
+    "error": null
+   },
+   {
+    "path": "/tower/propositions",
+    "status": 200,
+    "finalPath": "/tower/propositions",
+    "h1": "Proposer un défi",
+    "notFound": false,
+    "error": null
+   },
+   {
+    "path": "/ascension",
+    "status": 200,
+    "finalPath": "/ascension",
+    "h1": "Niveau d’XP 1",
+    "notFound": false,
+    "error": null
+   },
+   {
+    "path": "/equipes",
+    "status": 200,
+    "finalPath": "/equipes",
+    "h1": "🧭 Équipes et aventures",
+    "notFound": false,
+    "error": null
+   },
+   {
+    "path": "/profil/parametres",
+    "status": 200,
+    "finalPath": "/profil/parametres",
+    "h1": null,
+    "notFound": false,
+    "error": null
+   },
+   {
+    "path": "/tower/palmares",
+    "status": 200,
+    "finalPath": "/tower/palmares",
+    "h1": "Palmarès de la dernière saison",
+    "notFound": false,
+    "error": null
+   },
+   {
+    "path": "/profil/historique",
+    "status": 200,
+    "finalPath": "/profil/historique",
+    "h1": null,
+    "notFound": false,
+    "error": null
+   },
+   {
+    "path": "/profil/superlatifs",
+    "status": 200,
+    "finalPath": "/profil/superlatifs",
+    "h1": null,
+    "notFound": false,
+    "error": null
+   },
+   {
+    "path": "/profil/lore",
+    "status": 200,
+    "finalPath": "/profil/lore",
+    "h1": null,
+    "notFound": false,
+    "error": null
+   },
+   {
+    "path": "/profil/badges",
+    "status": 200,
+    "finalPath": "/profil/badges",
+    "h1": null,
+    "notFound": false,
+    "error": null
+   },
+   {
+    "path": "/profil/boutique",
+    "status": 200,
+    "finalPath": "/profil/boutique",
+    "h1": null,
+    "notFound": false,
+    "error": null
+   },
+   {
+    "path": "/profil/tierlist",
+    "status": 200,
+    "finalPath": "/profil/tierlist",
+    "h1": null,
+    "notFound": false,
+    "error": null
+   },
+   {
+    "path": "/profil/saisons",
+    "status": 200,
+    "finalPath": "/profil/saisons",
+    "h1": null,
+    "notFound": false,
+    "error": null
+   },
+   {
+    "path": "/profil/personnalisation",
+    "status": 200,
+    "finalPath": "/profil/personnalisation",
+    "h1": null,
+    "notFound": false,
+    "error": null
+   },
+   {
+    "path": "/bienvenue",
+    "status": 200,
+    "finalPath": "/bienvenue",
+    "h1": "Bienvenue sur GameNight",
+    "notFound": false,
+    "error": null
+   },
+   {
+    "path": "/charte",
+    "status": 200,
+    "finalPath": "/charte",
+    "h1": "Charte de fair-play",
+    "notFound": false,
+    "error": null
+   },
+   {
+    "path": "/joueurs",
+    "status": 200,
+    "finalPath": "/joueurs",
+    "h1": "🔎 Chercher un joueur",
+    "notFound": false,
+    "error": null
+   },
+   {
+    "path": "/tournois/equipes/cmwqeh0nw00767dwcut7xs89f",
+    "status": 200,
+    "finalPath": "/tournois/equipes/cmwqeh0nw00767dwcut7xs89f",
+    "h1": "Tournoi des équipes",
+    "notFound": false,
+    "error": null
+   },
+   {
+    "path": "/sessions/sondages/nouveau",
+    "status": 200,
+    "finalPath": "/sessions/sondages/nouveau",
+    "h1": "Nouveau sondage de créneaux",
+    "notFound": false,
+    "error": null
+   },
+   {
+    "path": "/sessions/cmwqeh0ls004c7dwcxhixvm0l/invites",
+    "status": 200,
+    "finalPath": "/sessions/cmwqeh0ls004c7dwcxhixvm0l/invites",
+    "h1": "👥 Invités — mercredi 25 novembre à 12:44",
+    "notFound": false,
+    "error": null
+   },
+   {
+    "path": "/equipes/candidatures",
+    "status": 200,
+    "finalPath": "/equipes/candidatures",
+    "h1": "📨 Candidatures d’équipe",
+    "notFound": false,
+    "error": null
+   },
+   {
+    "path": "/equipes/cmwqeh0l2003e7dwcq86pg8mf/rivalites",
+    "status": 200,
+    "finalPath": "/equipes/cmwqeh0l2003e7dwcq86pg8mf/rivalites",
+    "h1": "⚔️ Rivalités — Casual Club",
+    "notFound": false,
+    "error": null
+   },
+   {
+    "path": "/equipes/cmwqeh0ku00327dwcu5c57kpt/rivalites",
+    "status": 200,
+    "finalPath": "/equipes/cmwqeh0ku00327dwcu5c57kpt/rivalites",
+    "h1": "⚔️ Rivalités — Étage 42",
+    "notFound": false,
+    "error": null
+   },
+   {
+    "path": "/equipes/cmwqeh0kk002q7dwcx2otacgq/rivalites",
+    "status": 200,
+    "finalPath": "/equipes/cmwqeh0kk002q7dwcx2otacgq/rivalites",
+    "h1": "⚔️ Rivalités — Les Grimpeurs",
+    "notFound": false,
+    "error": null
+   },
+   {
+    "path": "/admin",
+    "status": 200,
+    "finalPath": "/admin",
+    "h1": "Ce soir, on joue à quoi ?Ce soir, on joue à quoi ?",
+    "notFound": false,
+    "error": null
+   },
+   {
+    "path": "/profil/compte",
+    "status": 200,
+    "finalPath": "/profil/compte",
+    "h1": null,
+    "notFound": false,
+    "error": null
+   },
+   {
+    "path": "/profil/lore/chroniques",
+    "status": 200,
+    "finalPath": "/profil/lore/chroniques",
+    "h1": "Chroniques · GameNight",
+    "notFound": false,
+    "error": null
+   },
+   {
+    "path": "/profil/lore/devine-jeu",
+    "status": 200,
+    "finalPath": "/profil/lore/devine-jeu",
+    "h1": null,
+    "notFound": false,
+    "error": null
+   },
+   {
+    "path": "/profil/lore/sondages",
+    "status": 200,
+    "finalPath": "/profil/lore/sondages",
+    "h1": null,
+    "notFound": false,
+    "error": null
+   },
+   {
+    "path": "/profil/lore/cimetiere",
+    "status": 200,
+    "finalPath": "/profil/lore/cimetiere",
+    "h1": null,
+    "notFound": false,
+    "error": null
+   },
+   {
+    "path": "/profil/lore/expressions",
+    "status": 200,
+    "finalPath": "/profil/lore/expressions",
+    "h1": null,
+    "notFound": false,
+    "error": null
+   },
+   {
+    "path": "/profil/lore/musee",
+    "status": 200,
+    "finalPath": "/profil/lore/musee",
+    "h1": "Exploits et fails · GameNight",
+    "notFound": false,
+    "error": null
+   },
+   {
+    "path": "/ce-soir",
+    "status": 200,
+    "finalPath": "/ce-soir",
+    "h1": "🌙 Qui joue ce soir ?",
+    "notFound": false,
+    "error": null
+   }
+  ],
+  "sources": {
+   "/": [
+    {
+     "from": "/",
+     "text": "Aller au contenu"
+    },
+    {
+     "from": "/",
+     "text": "GameNight"
+    },
+    {
+     "from": "/",
+     "text": "Accueil"
+    }
+   ],
+   "/sessions": [
+    {
+     "from": "/",
+     "text": "Soirées"
+    },
+    {
+     "from": "/",
+     "text": "+ Créer une soirée"
+    },
+    {
+     "from": "/",
+     "text": "Rejoindre une soirée"
+    }
+   ],
+   "/roulette": [
+    {
+     "from": "/",
+     "text": "Roulette"
+    },
+    {
+     "from": "/",
+     "text": "🎲 Roulette instantanée Choisir un jeu maintenant"
+    },
+    {
+     "from": "/sessions",
+     "text": "Roulette"
+    }
+   ],
+   "/tournois": [
+    {
+     "from": "/",
+     "text": "Tournois"
+    },
+    {
+     "from": "/sessions",
+     "text": "Tournois"
+    },
+    {
+     "from": "/sessions",
+     "text": "🏆 Tournois"
+    }
+   ],
+   "/calendrier": [
+    {
+     "from": "/",
+     "text": "Calendrier"
+    },
+    {
+     "from": "/",
+     "text": "▦ Trouver une date Calendrier & dispos ↗"
+    },
+    {
+     "from": "/",
+     "text": "LUN 0/32"
+    }
+   ],
+   "/bibliotheque": [
+    {
+     "from": "/",
+     "text": "Ma bibliothèque"
+    },
+    {
+     "from": "/",
+     "text": "Jeux, Bibliothèque"
+    },
+    {
+     "from": "/sessions",
+     "text": "Ma bibliothèque"
+    }
+   ],
+   "/bibliotheque/groupe": [
+    {
+     "from": "/",
+     "text": "Bibliothèque du groupe"
+    },
+    {
+     "from": "/",
+     "text": "🎮 Les jeux du groupe Votre bibliothèque ↗"
+    },
+    {
+     "from": "/sessions",
+     "text": "Bibliothèque du groupe"
+    }
+   ],
+   "/tierlist": [
+    {
+     "from": "/",
+     "text": "Tierlist"
+    },
+    {
+     "from": "/",
+     "text": "✦ Classer mes jeux Ma tierlist ↗"
+    },
+    {
+     "from": "/sessions",
+     "text": "Tierlist"
+    }
+   ],
+   "/wishlist": [
+    {
+     "from": "/",
+     "text": "À acheter"
+    },
+    {
+     "from": "/sessions",
+     "text": "À acheter"
+    },
+    {
+     "from": "/roulette",
+     "text": "À acheter"
+    }
+   ],
+   "/bibliotheque/a-verifier": [
+    {
+     "from": "/",
+     "text": "À vérifier"
+    },
+    {
+     "from": "/sessions",
+     "text": "À vérifier"
+    },
+    {
+     "from": "/roulette",
+     "text": "À vérifier"
+    }
+   ],
+   "/potes": [
+    {
+     "from": "/",
+     "text": "Potes"
+    },
+    {
+     "from": "/",
+     "text": "Potes"
+    },
+    {
+     "from": "/sessions",
+     "text": "Potes"
+    }
+   ],
+   "/tower": [
+    {
+     "from": "/",
+     "text": "The Tower"
+    },
+    {
+     "from": "/",
+     "text": "Commencer l'Ascension"
+    },
+    {
+     "from": "/sessions",
+     "text": "The Tower"
+    }
+   ],
+   "/classement": [
+    {
+     "from": "/",
+     "text": "Classement"
+    },
+    {
+     "from": "/",
+     "text": "Voir tout"
+    },
+    {
+     "from": "/sessions",
+     "text": "Classement"
+    }
+   ],
+   "/profil": [
+    {
+     "from": "/",
+     "text": "Mon profil"
+    },
+    {
+     "from": "/",
+     "text": "B Bastien Niveau 1 · 0 XP"
+    },
+    {
+     "from": "/",
+     "text": "✦ Niveau 1 · 0 XP"
+    }
+   ],
+   "/guide": [
+    {
+     "from": "/",
+     "text": "↗ Le guide GameNight"
+    },
+    {
+     "from": "/",
+     "text": "📖 Guide"
+    },
+    {
+     "from": "/",
+     "text": "?"
+    }
+   ],
+   "/tower/forums": [
+    {
+     "from": "/",
+     "text": "Trouver des joueurs"
+    },
+    {
+     "from": "/tower/forums",
+     "text": "Aller au contenu"
+    },
+    {
+     "from": "/admin",
+     "text": "Trouver des joueurs"
+    }
+   ],
+   "/sessions/cmwqeh0lb003q7dwchxhs9our": [
+    {
+     "from": "/",
+     "text": "Prochaine soirée Lundi 23 Novembre À 12:44 Overcoo"
+    },
+    {
+     "from": "/sessions",
+     "text": "Lundi 23 novembre à 12:44 Overcooked 2 Prévue"
+    },
+    {
+     "from": "/calendrier",
+     "text": "Overcooked 2 12:44"
+    }
+   ],
+   "/tournois/creer": [
+    {
+     "from": "/",
+     "text": "🏆 Lancer un tournoi Qui ira jusqu’au bout ?"
+    },
+    {
+     "from": "/tournois",
+     "text": "+ Créer"
+    },
+    {
+     "from": "/tournois",
+     "text": "+ Créer un tournoi"
+    }
+   ],
+   "/jouer-maintenant": [
+    {
+     "from": "/",
+     "text": "▷ Pas besoin d’attendre ce soir. Lance une partie "
+    },
+    {
+     "from": "/sessions",
+     "text": "🎮 Jouer maintenant"
+    },
+    {
+     "from": "/jouer-maintenant",
+     "text": "Aller au contenu"
+    }
+   ],
+   "/saisons": [
+    {
+     "from": "/",
+     "text": "🏆 Saison 1 — Jour 23/30"
+    },
+    {
+     "from": "/tower",
+     "text": "Toutes les saisons →"
+    },
+    {
+     "from": "/saisons",
+     "text": "Aller au contenu"
+    }
+   ],
+   "/tournois/cmwqeh0nw00767dwcut7xs89f": [
+    {
+     "from": "/",
+     "text": "🏆 Inscriptions ouvertes : Tournoi des équipes It "
+    },
+    {
+     "from": "/admin",
+     "text": "🏆 Inscriptions ouvertes : Tournoi des équipes It "
+    }
+   ],
+   "/disponibilites": [
+    {
+     "from": "/",
+     "text": "Mes dispos"
+    },
+    {
+     "from": "/sessions",
+     "text": "Renseigner mes disponibilités →"
+    },
+    {
+     "from": "/calendrier",
+     "text": "Configuration détaillée"
+    }
+   ],
+   "/mentions-legales": [
+    {
+     "from": "/",
+     "text": "Mentions légales"
+    },
+    {
+     "from": "/sessions",
+     "text": "Mentions légales"
+    },
+    {
+     "from": "/roulette",
+     "text": "Mentions légales"
+    }
+   ],
+   "/confidentialite": [
+    {
+     "from": "/",
+     "text": "Politique de confidentialité"
+    },
+    {
+     "from": "/sessions",
+     "text": "Politique de confidentialité"
+    },
+    {
+     "from": "/roulette",
+     "text": "Politique de confidentialité"
+    }
+   ],
+   "/conditions": [
+    {
+     "from": "/",
+     "text": "Conditions d’utilisation"
+    },
+    {
+     "from": "/sessions",
+     "text": "Conditions d’utilisation"
+    },
+    {
+     "from": "/roulette",
+     "text": "Conditions d’utilisation"
+    }
+   ],
+   "/sessions/sondages": [
+    {
+     "from": "/sessions",
+     "text": "Préparer une soirée"
+    },
+    {
+     "from": "/sessions/sondages",
+     "text": "Aller au contenu"
+    },
+    {
+     "from": "/sessions/sondages/nouveau",
+     "text": "← Tous les sondages"
+    }
+   ],
+   "/sessions/cmwqeh0ls004c7dwcxhixvm0l": [
+    {
+     "from": "/sessions",
+     "text": "Mercredi 25 novembre à 12:44 3 propositions Vote e"
+    },
+    {
+     "from": "/calendrier",
+     "text": "Soirée · Vote en cours 12:44"
+    },
+    {
+     "from": "/sessions/cmwqeh0ls004c7dwcxhixvm0l",
+     "text": "Aller au contenu"
+    }
+   ],
+   "/sessions/cmwqeh0m8004y7dwcjratewwq": [
+    {
+     "from": "/sessions",
+     "text": "Samedi 28 novembre à 12:44 Among Us Prévue"
+    },
+    {
+     "from": "/calendrier",
+     "text": "Among Us 12:44"
+    },
+    {
+     "from": "/sessions/cmwqeh0m8004y7dwcjratewwq",
+     "text": "Aller au contenu"
+    }
+   ],
+   "/tournois/equipes": [
+    {
+     "from": "/tournois",
+     "text": "Tournois d’équipes"
+    },
+    {
+     "from": "/tournois/cmwqeh0nw00767dwcut7xs89f",
+     "text": "← Tournois d’équipes"
+    },
+    {
+     "from": "/tournois/equipes",
+     "text": "Aller au contenu"
+    }
+   ],
+   "/sessions/cmwqeh0n800667dwcxko9qr0c": [
+    {
+     "from": "/calendrier",
+     "text": "Mario Kart 8 12:44"
+    }
+   ],
+   "/sessions/cmwqeh0mq005k7dwcvppiy9nq": [
+    {
+     "from": "/calendrier",
+     "text": "Valheim 12:44"
+    }
+   ],
+   "/bibliotheque/ajouter": [
+    {
+     "from": "/bibliotheque",
+     "text": "+ Ajouter un jeu"
+    },
+    {
+     "from": "/bibliotheque/groupe",
+     "text": "+ Ajouter un jeu"
+    },
+    {
+     "from": "/bibliotheque/ajouter",
+     "text": "Aller au contenu"
+    }
+   ],
+   "/bibliotheque/suggestions": [
+    {
+     "from": "/bibliotheque",
+     "text": "Suggestions"
+    },
+    {
+     "from": "/bibliotheque/groupe",
+     "text": "Suggestions"
+    },
+    {
+     "from": "/tierlist",
+     "text": "Suggestions"
+    }
+   ],
+   "/jeux/preuve-game-7": [
+    {
+     "from": "/bibliotheque",
+     "text": "Fall Guys Manuel 2–7 joueurs"
+    },
+    {
+     "from": "/bibliotheque/groupe",
+     "text": "B E H K +6 Fall Guys Manuel 2–7 joueurs 10 potes :"
+    },
+    {
+     "from": "/jeux/preuve-game-7",
+     "text": "Aller au contenu"
+    }
+   ],
+   "/jeux/preuve-game-4": [
+    {
+     "from": "/bibliotheque",
+     "text": "Mario Kart 8 Manuel 2–4 joueurs"
+    },
+    {
+     "from": "/bibliotheque/groupe",
+     "text": "B E H K +6 Mario Kart 8 Manuel 2–4 joueurs 10 pote"
+    },
+    {
+     "from": "/sessions/cmwqeh0m8004y7dwcjratewwq",
+     "text": "Mario Kart 8 Proposé par Eloïse · 2–4 joueurs"
+    }
+   ],
+   "/jeux/preuve-game-1": [
+    {
+     "from": "/bibliotheque",
+     "text": "Rocket League Manuel 2–5 joueurs"
+    },
+    {
+     "from": "/bibliotheque/groupe",
+     "text": "B E H K +6 Rocket League Manuel 2–5 joueurs 10 pot"
+    },
+    {
+     "from": "/sessions/cmwqeh0lb003q7dwchxhs9our",
+     "text": "Rocket League Proposé par Bastien · 2–5 joueurs"
+    }
+   ],
+   "/jeux/preuve-game-10": [
+    {
+     "from": "/bibliotheque",
+     "text": "Stardew Valley Manuel 2–6 joueurs"
+    },
+    {
+     "from": "/bibliotheque/groupe",
+     "text": "B E H K +6 Stardew Valley Manuel 2–6 joueurs 10 po"
+    },
+    {
+     "from": "/jeux/preuve-game-10",
+     "text": "Aller au contenu"
+    }
+   ],
+   "/jeux/preuve-game-9": [
+    {
+     "from": "/bibliotheque/groupe",
+     "text": "A D G J +7 Deep Rock Galactic Manuel 2–5 joueurs 1"
+    },
+    {
+     "from": "/jeux/preuve-game-9",
+     "text": "Aller au contenu"
+    }
+   ],
+   "/jeux/preuve-game-6": [
+    {
+     "from": "/bibliotheque/groupe",
+     "text": "A D G J +7 Minecraft Manuel 2–6 joueurs 11 potes :"
+    },
+    {
+     "from": "/jeux/preuve-game-6",
+     "text": "Aller au contenu"
+    }
+   ],
+   "/jeux/preuve-game-0": [
+    {
+     "from": "/bibliotheque/groupe",
+     "text": "A D G J +7 Overcooked 2 Manuel 2–4 joueurs 11 pote"
+    },
+    {
+     "from": "/sessions/cmwqeh0lb003q7dwchxhs9our",
+     "text": "Overcooked 2 Proposé par Alice · 2–4 joueurs"
+    },
+    {
+     "from": "/jeux/preuve-game-0",
+     "text": "Aller au contenu"
+    }
+   ],
+   "/jeux/preuve-game-3": [
+    {
+     "from": "/bibliotheque/groupe",
+     "text": "A D G J +7 Valheim Manuel 2–7 joueurs 11 potes : A"
+    },
+    {
+     "from": "/sessions/cmwqeh0ls004c7dwcxhixvm0l",
+     "text": "Valheim Proposé par Dorian · 2–7 joueurs"
+    },
+    {
+     "from": "/sessions/cmwqeh0m8004y7dwcjratewwq",
+     "text": "Valheim Proposé par Dorian · 2–7 joueurs"
+    }
+   ],
+   "/jeux/preuve-game-2": [
+    {
+     "from": "/bibliotheque/groupe",
+     "text": "C F I L +6 Among Us Manuel 2–6 joueurs 10 potes : "
+    },
+    {
+     "from": "/sessions/cmwqeh0lb003q7dwchxhs9our",
+     "text": "Among Us Proposé par Camille · 2–6 joueurs"
+    },
+    {
+     "from": "/sessions/cmwqeh0ls004c7dwcxhixvm0l",
+     "text": "Among Us Proposé par Camille · 2–6 joueurs"
+    }
+   ],
+   "/jeux/preuve-game-11": [
+    {
+     "from": "/bibliotheque/groupe",
+     "text": "C F I L +6 Gartic Phone Manuel 2–7 joueurs 10 pote"
+    },
+    {
+     "from": "/jeux/preuve-game-11",
+     "text": "Aller au contenu"
+    }
+   ],
+   "/jeux/preuve-game-8": [
+    {
+     "from": "/bibliotheque/groupe",
+     "text": "C F I L +6 Helldivers 2 Manuel 2–4 joueurs 10 pote"
+    },
+    {
+     "from": "/jeux/preuve-game-8",
+     "text": "Aller au contenu"
+    }
+   ],
+   "/jeux/preuve-game-5": [
+    {
+     "from": "/bibliotheque/groupe",
+     "text": "C F I L +6 It Takes Two Manuel 2–5 joueurs 10 pote"
+    },
+    {
+     "from": "/jeux/preuve-game-5",
+     "text": "Aller au contenu"
+    }
+   ],
+   "/jeux-gratuits": [
+    {
+     "from": "/wishlist",
+     "text": "Sélection Steam/Epic du groupe →"
+    },
+    {
+     "from": "/jeux-gratuits",
+     "text": "Aller au contenu"
+    }
+   ],
+   "/tower/propositions": [
+    {
+     "from": "/tower",
+     "text": "Proposer un défi (Ranker et plus)"
+    },
+    {
+     "from": "/tower/propositions",
+     "text": "Aller au contenu"
+    }
+   ],
+   "/ascension": [
+    {
+     "from": "/tower",
+     "text": "Voir le détail de l’ascension →"
+    },
+    {
+     "from": "/profil",
+     "text": "Ascension"
+    },
+    {
+     "from": "/ascension",
+     "text": "Aller au contenu"
+    }
+   ],
+   "/equipes": [
+    {
+     "from": "/tower",
+     "text": "Équipes"
+    },
+    {
+     "from": "/jouer-maintenant",
+     "text": "Créer un projet d’équipe durable →"
+    },
+    {
+     "from": "/equipes",
+     "text": "Aller au contenu"
+    }
+   ],
+   "/profil/parametres": [
+    {
+     "from": "/profil",
+     "text": "⚙️ Modifier"
+    },
+    {
+     "from": "/profil",
+     "text": "Rappels perso"
+    },
+    {
+     "from": "/bibliotheque/suggestions",
+     "text": "Renseigner mes préférences et refus"
+    }
+   ],
+   "/tower/palmares": [
+    {
+     "from": "/profil",
+     "text": "Palmarès Tower"
+    },
+    {
+     "from": "/profil/parametres",
+     "text": "Palmarès Tower"
+    },
+    {
+     "from": "/tower/palmares",
+     "text": "Aller au contenu"
+    }
+   ],
+   "/profil/historique": [
+    {
+     "from": "/profil",
+     "text": "Historique soirées"
+    },
+    {
+     "from": "/profil/parametres",
+     "text": "Historique soirées"
+    },
+    {
+     "from": "/profil/historique",
+     "text": "Aller au contenu"
+    }
+   ],
+   "/profil/superlatifs": [
+    {
+     "from": "/profil",
+     "text": "Récompenses gagnées"
+    },
+    {
+     "from": "/profil",
+     "text": "Voir tout →"
+    },
+    {
+     "from": "/profil/parametres",
+     "text": "Récompenses gagnées"
+    }
+   ],
+   "/profil/lore": [
+    {
+     "from": "/profil",
+     "text": "Lore du groupe"
+    },
+    {
+     "from": "/profil/parametres",
+     "text": "Lore du groupe"
+    },
+    {
+     "from": "/profil/historique",
+     "text": "Lore du groupe"
+    }
+   ],
+   "/profil/badges": [
+    {
+     "from": "/profil",
+     "text": "Badges"
+    },
+    {
+     "from": "/ascension",
+     "text": "Badges Tes distinctions gagnées et à débloquer. →"
+    },
+    {
+     "from": "/profil/parametres",
+     "text": "Badges"
+    }
+   ],
+   "/profil/boutique": [
+    {
+     "from": "/profil",
+     "text": "Boutique XP"
+    },
+    {
+     "from": "/profil/parametres",
+     "text": "Boutique XP"
+    },
+    {
+     "from": "/profil/historique",
+     "text": "Boutique XP"
+    }
+   ],
+   "/profil/tierlist": [
+    {
+     "from": "/profil",
+     "text": "Tierlist"
+    },
+    {
+     "from": "/profil/parametres",
+     "text": "Tierlist"
+    },
+    {
+     "from": "/profil/historique",
+     "text": "Tierlist"
+    }
+   ],
+   "/profil/saisons": [
+    {
+     "from": "/profil",
+     "text": "Saisons"
+    },
+    {
+     "from": "/profil/parametres",
+     "text": "Saisons"
+    },
+    {
+     "from": "/profil/historique",
+     "text": "Saisons"
+    }
+   ],
+   "/profil/personnalisation": [
+    {
+     "from": "/profil",
+     "text": "Personnalisation"
+    },
+    {
+     "from": "/profil/parametres",
+     "text": "Personnalisation"
+    },
+    {
+     "from": "/profil/historique",
+     "text": "Personnalisation"
+    }
+   ],
+   "/bienvenue": [
+    {
+     "from": "/guide",
+     "text": "Reprendre le guide pas à pas"
+    },
+    {
+     "from": "/disponibilites",
+     "text": "Reprendre le guide pas à pas"
+    },
+    {
+     "from": "/bienvenue",
+     "text": "Aller au contenu"
+    }
+   ],
+   "/charte": [
+    {
+     "from": "/guide",
+     "text": "Lire la charte de fair-play du serveur"
+    },
+    {
+     "from": "/charte",
+     "text": "Aller au contenu"
+    }
+   ],
+   "/joueurs": [
+    {
+     "from": "/tower/forums",
+     "text": "Voir les annonces GameNight"
+    },
+    {
+     "from": "/jouer-maintenant",
+     "text": "Il te manque un joueur ? Publie une annonce →"
+    },
+    {
+     "from": "/joueurs",
+     "text": "Aller au contenu"
+    }
+   ],
+   "/tournois/equipes/cmwqeh0nw00767dwcut7xs89f": [
+    {
+     "from": "/tournois/cmwqeh0nw00767dwcut7xs89f",
+     "text": "Aller au contenu"
+    },
+    {
+     "from": "/tournois/equipes",
+     "text": "Tournoi des équipes It Takes Two · Inscriptions ou"
+    },
+    {
+     "from": "/tournois/equipes/cmwqeh0nw00767dwcut7xs89f",
+     "text": "Aller au contenu"
+    }
+   ],
+   "/sessions/sondages/nouveau": [
+    {
+     "from": "/sessions/sondages",
+     "text": "Nouveau sondage"
+    },
+    {
+     "from": "/sessions/sondages/nouveau",
+     "text": "Aller au contenu"
+    }
+   ],
+   "/sessions/cmwqeh0ls004c7dwcxhixvm0l/invites": [
+    {
+     "from": "/sessions/cmwqeh0ls004c7dwcxhixvm0l",
+     "text": "👥 Gérer les invités"
+    },
+    {
+     "from": "/sessions/cmwqeh0ls004c7dwcxhixvm0l/invites",
+     "text": "Aller au contenu"
+    }
+   ],
+   "/equipes/candidatures": [
+    {
+     "from": "/equipes",
+     "text": "Candidatures d’équipe →"
+    },
+    {
+     "from": "/equipes/candidatures",
+     "text": "Aller au contenu"
+    }
+   ],
+   "/equipes/cmwqeh0l2003e7dwcq86pg8mf/rivalites": [
+    {
+     "from": "/equipes",
+     "text": "⚔️ Rivalités et historique"
+    },
+    {
+     "from": "/equipes/cmwqeh0l2003e7dwcq86pg8mf/rivalites",
+     "text": "Aller au contenu"
+    }
+   ],
+   "/equipes/cmwqeh0ku00327dwcu5c57kpt/rivalites": [
+    {
+     "from": "/equipes",
+     "text": "⚔️ Rivalités et historique"
+    },
+    {
+     "from": "/equipes/cmwqeh0ku00327dwcu5c57kpt/rivalites",
+     "text": "Aller au contenu"
+    }
+   ],
+   "/equipes/cmwqeh0kk002q7dwcx2otacgq/rivalites": [
+    {
+     "from": "/equipes",
+     "text": "⚔️ Rivalités et historique"
+    },
+    {
+     "from": "/equipes/cmwqeh0kk002q7dwcx2otacgq/rivalites",
+     "text": "Aller au contenu"
+    }
+   ],
+   "/admin": [
+    {
+     "from": "/profil/parametres",
+     "text": "Gérer les messages de rappel →"
+    },
+    {
+     "from": "/profil/parametres",
+     "text": "Gérer les récompenses →"
+    },
+    {
+     "from": "/profil/parametres",
+     "text": "Gérer les badges →"
+    }
+   ],
+   "/profil/compte": [
+    {
+     "from": "/profil/parametres",
+     "text": "Gérer mon compte"
+    },
+    {
+     "from": "/profil/compte",
+     "text": "Aller au contenu"
+    }
+   ],
+   "/profil/lore/chroniques": [
+    {
+     "from": "/profil/lore",
+     "text": "📖 Chroniques de mes soirées"
+    },
+    {
+     "from": "/profil/lore/chroniques",
+     "text": "Aller au contenu"
+    }
+   ],
+   "/profil/lore/devine-jeu": [
+    {
+     "from": "/profil/lore",
+     "text": "🕵️ Devine le jeu"
+    },
+    {
+     "from": "/profil/lore/devine-jeu",
+     "text": "Aller au contenu"
+    }
+   ],
+   "/profil/lore/sondages": [
+    {
+     "from": "/profil/lore",
+     "text": "Sondages éclair du serveur"
+    },
+    {
+     "from": "/profil/lore/sondages",
+     "text": "Aller au contenu"
+    }
+   ],
+   "/profil/lore/cimetiere": [
+    {
+     "from": "/profil/lore",
+     "text": "Cimetière des jeux du serveur"
+    },
+    {
+     "from": "/profil/lore/cimetiere",
+     "text": "Aller au contenu"
+    }
+   ],
+   "/profil/lore/expressions": [
+    {
+     "from": "/profil/lore",
+     "text": "Expressions et running gags du serveur"
+    },
+    {
+     "from": "/profil/lore/expressions",
+     "text": "Aller au contenu"
+    }
+   ],
+   "/profil/lore/musee": [
+    {
+     "from": "/profil/lore",
+     "text": "Exploits et fails du serveur →"
+    },
+    {
+     "from": "/profil/lore/musee",
+     "text": "Aller au contenu"
+    }
+   ],
+   "/ce-soir": [
+    {
+     "from": "/joueurs",
+     "text": "Qui joue ce soir ? →"
+    },
+    {
+     "from": "/ce-soir",
+     "text": "Aller au contenu"
+    }
+   ]
+  },
+  "skippedInQueue": 0
+ },
+ "p-admin": {
+  "pages": [
+   {
+    "path": "/admin",
+    "status": 200,
+    "finalPath": "/admin",
+    "h1": "Administration",
+    "notFound": false,
+    "error": null
+   },
+   {
+    "path": "/",
+    "status": 200,
+    "finalPath": "/",
+    "h1": "Ce soir, on joue à quoi ?Ce soir, on joue à quoi ?",
+    "notFound": false,
+    "error": null
+   },
+   {
+    "path": "/sessions",
+    "status": 200,
+    "finalPath": "/sessions",
+    "h1": "Soirées",
+    "notFound": false,
+    "error": null
+   },
+   {
+    "path": "/roulette",
+    "status": 200,
+    "finalPath": "/roulette",
+    "h1": "🎰 Roulette",
+    "notFound": false,
+    "error": null
+   },
+   {
+    "path": "/tournois",
+    "status": 200,
+    "finalPath": "/tournois",
+    "h1": "🏆 Tournois",
+    "notFound": false,
+    "error": null
+   },
+   {
+    "path": "/calendrier",
+    "status": 200,
+    "finalPath": "/calendrier",
+    "h1": "Le calendrierLe calendrier",
+    "notFound": false,
+    "error": null
+   },
+   {
+    "path": "/bibliotheque",
+    "status": 200,
+    "finalPath": "/bibliotheque",
+    "h1": "Ma bibliothèque",
+    "notFound": false,
+    "error": null
+   },
+   {
+    "path": "/bibliotheque/groupe",
+    "status": 200,
+    "finalPath": "/bibliotheque/groupe",
+    "h1": "Bibliothèque du groupe",
+    "notFound": false,
+    "error": null
+   },
+   {
+    "path": "/tierlist",
+    "status": 200,
+    "finalPath": "/tierlist",
+    "h1": "Ma tierlist",
+    "notFound": false,
+    "error": null
+   },
+   {
+    "path": "/wishlist",
+    "status": 200,
+    "finalPath": "/wishlist",
+    "h1": "🛒 À acheter",
+    "notFound": false,
+    "error": null
+   },
+   {
+    "path": "/bibliotheque/a-verifier",
+    "status": 200,
+    "finalPath": "/bibliotheque/a-verifier",
+    "h1": "Ma bibliothèque",
+    "notFound": false,
+    "error": null
+   },
+   {
+    "path": "/potes",
+    "status": 200,
+    "finalPath": "/potes",
+    "h1": "Potes",
+    "notFound": false,
+    "error": null
+   },
+   {
+    "path": "/tower",
+    "status": 200,
+    "finalPath": "/tower",
+    "h1": "The Tower",
+    "notFound": false,
+    "error": null
+   },
+   {
+    "path": "/classement",
+    "status": 200,
+    "finalPath": "/classement",
+    "h1": "🏆 Classement",
+    "notFound": false,
+    "error": null
+   },
+   {
+    "path": "/profil",
+    "status": 200,
+    "finalPath": "/profil",
+    "h1": "Admin Tour",
+    "notFound": false,
+    "error": null
+   },
+   {
+    "path": "/guide",
+    "status": 200,
+    "finalPath": "/guide",
+    "h1": "Comment ça marche",
+    "notFound": false,
+    "error": null
+   },
+   {
+    "path": "/admin/journal",
+    "status": 200,
+    "finalPath": "/admin/journal",
+    "h1": "Journal des opérations sensibles",
+    "notFound": false,
+    "error": null
+   },
+   {
+    "path": "/admin/tableau-de-bord",
+    "status": 200,
+    "finalPath": "/admin/tableau-de-bord",
+    "h1": "Tableau de bord staff",
+    "notFound": false,
+    "error": null
+   },
+   {
+    "path": "/admin/voice-presence",
+    "status": 200,
+    "finalPath": "/admin/voice-presence",
+    "h1": "Durées vocales",
+    "notFound": false,
+    "error": null
+   },
+   {
+    "path": "/mentions-legales",
+    "status": 200,
+    "finalPath": "/mentions-legales",
+    "h1": "Mentions légales",
+    "notFound": false,
+    "error": null
+   },
+   {
+    "path": "/confidentialite",
+    "status": 200,
+    "finalPath": "/confidentialite",
+    "h1": "Politique de confidentialité",
+    "notFound": false,
+    "error": null
+   },
+   {
+    "path": "/conditions",
+    "status": 200,
+    "finalPath": "/conditions",
+    "h1": "Conditions d’utilisation",
+    "notFound": false,
+    "error": null
+   },
+   {
+    "path": "/tower/forums",
+    "status": 200,
+    "finalPath": "/tower/forums",
+    "h1": "Forums The Tower",
+    "notFound": false,
+    "error": null
+   },
+   {
+    "path": "/tournois/creer",
+    "status": 200,
+    "finalPath": "/tournois/creer",
+    "h1": "🏆 Créer un tournoi",
+    "notFound": false,
+    "error": null
+   },
+   {
+    "path": "/jouer-maintenant",
+    "status": 200,
+    "finalPath": "/jouer-maintenant",
+    "h1": "🎮 Jouer maintenant",
+    "notFound": false,
+    "error": null
+   },
+   {
+    "path": "/saisons",
+    "status": 200,
+    "finalPath": "/saisons",
+    "h1": "Saisons",
+    "notFound": false,
+    "error": null
+   },
+   {
+    "path": "/tournois/cmwqeh0nw00767dwcut7xs89f",
+    "status": 200,
+    "finalPath": "/tournois/cmwqeh0nw00767dwcut7xs89f",
+    "h1": "Tournoi des équipes",
+    "notFound": false,
+    "error": null
+   },
+   {
+    "path": "/disponibilites",
+    "status": 200,
+    "finalPath": "/disponibilites",
+    "h1": "Mes disponibilités",
+    "notFound": false,
+    "error": null
+   },
+   {
+    "path": "/sessions/sondages",
+    "status": 200,
+    "finalPath": "/sessions/sondages",
+    "h1": "Préparer une soirée",
+    "notFound": false,
+    "error": null
+   },
+   {
+    "path": "/tournois/equipes",
+    "status": 200,
+    "finalPath": "/tournois/equipes",
+    "h1": "🏆 Tournois d’équipes",
+    "notFound": false,
+    "error": null
+   },
+   {
+    "path": "/bibliotheque/ajouter",
+    "status": 200,
+    "finalPath": "/bibliotheque/ajouter",
+    "h1": "Ajouter un jeu",
+    "notFound": false,
+    "error": null
+   },
+   {
+    "path": "/bibliotheque/suggestions",
+    "status": 200,
+    "finalPath": "/bibliotheque/suggestions",
+    "h1": "Suggestions de jeux",
+    "notFound": false,
+    "error": null
+   },
+   {
+    "path": "/jeux/preuve-game-9",
+    "status": 200,
+    "finalPath": "/jeux/preuve-game-9",
+    "h1": "Deep Rock Galactic",
+    "notFound": false,
+    "error": null
+   },
+   {
+    "path": "/jeux/preuve-game-6",
+    "status": 200,
+    "finalPath": "/jeux/preuve-game-6",
+    "h1": "Minecraft",
+    "notFound": false,
+    "error": null
+   },
+   {
+    "path": "/jeux/preuve-game-0",
+    "status": 200,
+    "finalPath": "/jeux/preuve-game-0",
+    "h1": "Overcooked 2",
+    "notFound": false,
+    "error": null
+   },
+   {
+    "path": "/jeux/preuve-game-3",
+    "status": 200,
+    "finalPath": "/jeux/preuve-game-3",
+    "h1": "Valheim",
+    "notFound": false,
+    "error": null
+   },
+   {
+    "path": "/jeux/preuve-game-2",
+    "status": 200,
+    "finalPath": "/jeux/preuve-game-2",
+    "h1": "Among Us",
+    "notFound": false,
+    "error": null
+   },
+   {
+    "path": "/jeux/preuve-game-7",
+    "status": 200,
+    "finalPath": "/jeux/preuve-game-7",
+    "h1": "Fall Guys",
+    "notFound": false,
+    "error": null
+   },
+   {
+    "path": "/jeux/preuve-game-11",
+    "status": 200,
+    "finalPath": "/jeux/preuve-game-11",
+    "h1": "Gartic Phone",
+    "notFound": false,
+    "error": null
+   },
+   {
+    "path": "/jeux/preuve-game-8",
+    "status": 200,
+    "finalPath": "/jeux/preuve-game-8",
+    "h1": "Helldivers 2",
+    "notFound": false,
+    "error": null
+   },
+   {
+    "path": "/jeux/preuve-game-5",
+    "status": 200,
+    "finalPath": "/jeux/preuve-game-5",
+    "h1": "It Takes Two",
+    "notFound": false,
+    "error": null
+   },
+   {
+    "path": "/jeux/preuve-game-4",
+    "status": 200,
+    "finalPath": "/jeux/preuve-game-4",
+    "h1": "Mario Kart 8",
+    "notFound": false,
+    "error": null
+   },
+   {
+    "path": "/jeux/preuve-game-1",
+    "status": 200,
+    "finalPath": "/jeux/preuve-game-1",
+    "h1": "Rocket League",
+    "notFound": false,
+    "error": null
+   },
+   {
+    "path": "/jeux/preuve-game-10",
+    "status": 200,
+    "finalPath": "/jeux/preuve-game-10",
+    "h1": "Stardew Valley",
+    "notFound": false,
+    "error": null
+   },
+   {
+    "path": "/jeux-gratuits",
+    "status": 200,
+    "finalPath": "/jeux-gratuits",
+    "h1": "🎁 Jeux gratuits",
+    "notFound": false,
+    "error": null
+   },
+   {
+    "path": "/tower/propositions",
+    "status": 200,
+    "finalPath": "/tower/propositions",
+    "h1": "Proposer un défi",
+    "notFound": false,
+    "error": null
+   },
+   {
+    "path": "/ascension",
+    "status": 200,
+    "finalPath": "/ascension",
+    "h1": "Niveau d’XP 1",
+    "notFound": false,
+    "error": null
+   },
+   {
+    "path": "/equipes",
+    "status": 200,
+    "finalPath": "/equipes",
+    "h1": "🧭 Équipes et aventures",
+    "notFound": false,
+    "error": null
+   },
+   {
+    "path": "/profil/parametres",
+    "status": 200,
+    "finalPath": "/profil/parametres",
+    "h1": null,
+    "notFound": false,
+    "error": null
+   },
+   {
+    "path": "/tower/palmares",
+    "status": 200,
+    "finalPath": "/tower/palmares",
+    "h1": "Palmarès de la dernière saison",
+    "notFound": false,
+    "error": null
+   },
+   {
+    "path": "/profil/historique",
+    "status": 200,
+    "finalPath": "/profil/historique",
+    "h1": null,
+    "notFound": false,
+    "error": null
+   },
+   {
+    "path": "/profil/superlatifs",
+    "status": 200,
+    "finalPath": "/profil/superlatifs",
+    "h1": null,
+    "notFound": false,
+    "error": null
+   },
+   {
+    "path": "/profil/lore",
+    "status": 200,
+    "finalPath": "/profil/lore",
+    "h1": null,
+    "notFound": false,
+    "error": null
+   },
+   {
+    "path": "/profil/badges",
+    "status": 200,
+    "finalPath": "/profil/badges",
+    "h1": null,
+    "notFound": false,
+    "error": null
+   },
+   {
+    "path": "/profil/boutique",
+    "status": 200,
+    "finalPath": "/profil/boutique",
+    "h1": null,
+    "notFound": false,
+    "error": null
+   },
+   {
+    "path": "/profil/tierlist",
+    "status": 200,
+    "finalPath": "/profil/tierlist",
+    "h1": null,
+    "notFound": false,
+    "error": null
+   },
+   {
+    "path": "/profil/saisons",
+    "status": 200,
+    "finalPath": "/profil/saisons",
+    "h1": null,
+    "notFound": false,
+    "error": null
+   },
+   {
+    "path": "/profil/personnalisation",
+    "status": 200,
+    "finalPath": "/profil/personnalisation",
+    "h1": null,
+    "notFound": false,
+    "error": null
+   },
+   {
+    "path": "/bienvenue",
+    "status": 200,
+    "finalPath": "/bienvenue",
+    "h1": "Bienvenue sur GameNight",
+    "notFound": false,
+    "error": null
+   },
+   {
+    "path": "/charte",
+    "status": 200,
+    "finalPath": "/charte",
+    "h1": "Charte de fair-play",
+    "notFound": false,
+    "error": null
+   },
+   {
+    "path": "/joueurs",
+    "status": 200,
+    "finalPath": "/joueurs",
+    "h1": "🔎 Chercher un joueur",
+    "notFound": false,
+    "error": null
+   },
+   {
+    "path": "/tournois/equipes/cmwqeh0nw00767dwcut7xs89f",
+    "status": 200,
+    "finalPath": "/tournois/equipes/cmwqeh0nw00767dwcut7xs89f",
+    "h1": "Tournoi des équipes",
+    "notFound": false,
+    "error": null
+   },
+   {
+    "path": "/sessions/sondages/nouveau",
+    "status": 200,
+    "finalPath": "/sessions/sondages/nouveau",
+    "h1": "Nouveau sondage de créneaux",
+    "notFound": false,
+    "error": null
+   },
+   {
+    "path": "/equipes/candidatures",
+    "status": 200,
+    "finalPath": "/equipes/candidatures",
+    "h1": "📨 Candidatures d’équipe",
+    "notFound": false,
+    "error": null
+   },
+   {
+    "path": "/equipes/cmwqeh0l2003e7dwcq86pg8mf/rivalites",
+    "status": 200,
+    "finalPath": "/equipes/cmwqeh0l2003e7dwcq86pg8mf/rivalites",
+    "h1": "⚔️ Rivalités — Casual Club",
+    "notFound": false,
+    "error": null
+   },
+   {
+    "path": "/equipes/cmwqeh0ku00327dwcu5c57kpt/rivalites",
+    "status": 200,
+    "finalPath": "/equipes/cmwqeh0ku00327dwcu5c57kpt/rivalites",
+    "h1": "⚔️ Rivalités — Étage 42",
+    "notFound": false,
+    "error": null
+   },
+   {
+    "path": "/equipes/cmwqeh0kk002q7dwcx2otacgq/rivalites",
+    "status": 200,
+    "finalPath": "/equipes/cmwqeh0kk002q7dwcx2otacgq/rivalites",
+    "h1": "⚔️ Rivalités — Les Grimpeurs",
+    "notFound": false,
+    "error": null
+   },
+   {
+    "path": "/profil/compte",
+    "status": 200,
+    "finalPath": "/profil/compte",
+    "h1": null,
+    "notFound": false,
+    "error": null
+   },
+   {
+    "path": "/profil/lore/chroniques",
+    "status": 200,
+    "finalPath": "/profil/lore/chroniques",
+    "h1": "Chroniques · GameNight",
+    "notFound": false,
+    "error": null
+   },
+   {
+    "path": "/profil/lore/devine-jeu",
+    "status": 200,
+    "finalPath": "/profil/lore/devine-jeu",
+    "h1": null,
+    "notFound": false,
+    "error": null
+   },
+   {
+    "path": "/profil/lore/sondages",
+    "status": 200,
+    "finalPath": "/profil/lore/sondages",
+    "h1": null,
+    "notFound": false,
+    "error": null
+   },
+   {
+    "path": "/profil/lore/cimetiere",
+    "status": 200,
+    "finalPath": "/profil/lore/cimetiere",
+    "h1": null,
+    "notFound": false,
+    "error": null
+   },
+   {
+    "path": "/profil/lore/expressions",
+    "status": 200,
+    "finalPath": "/profil/lore/expressions",
+    "h1": null,
+    "notFound": false,
+    "error": null
+   },
+   {
+    "path": "/profil/lore/musee",
+    "status": 200,
+    "finalPath": "/profil/lore/musee",
+    "h1": "Exploits et fails · GameNight",
+    "notFound": false,
+    "error": null
+   },
+   {
+    "path": "/ce-soir",
+    "status": 200,
+    "finalPath": "/ce-soir",
+    "h1": "🌙 Qui joue ce soir ?",
+    "notFound": false,
+    "error": null
+   }
+  ],
+  "sources": {
+   "/admin": [
+    {
+     "from": "/admin",
+     "text": "Aller au contenu"
+    },
+    {
+     "from": "/admin",
+     "text": "Messages Discord"
+    },
+    {
+     "from": "/admin",
+     "text": "Récompenses"
+    }
+   ],
+   "/": [
+    {
+     "from": "/admin",
+     "text": "GameNight"
+    },
+    {
+     "from": "/admin",
+     "text": "Accueil"
+    },
+    {
+     "from": "/admin",
+     "text": "GameNight"
+    }
+   ],
+   "/sessions": [
+    {
+     "from": "/admin",
+     "text": "Soirées"
+    },
+    {
+     "from": "/admin",
+     "text": "Soirées"
+    },
+    {
+     "from": "/",
+     "text": "Soirées"
+    }
+   ],
+   "/roulette": [
+    {
+     "from": "/admin",
+     "text": "Roulette"
+    },
+    {
+     "from": "/",
+     "text": "Roulette"
+    },
+    {
+     "from": "/",
+     "text": "🎲 Roulette instantanée Choisir un jeu maintenant"
+    }
+   ],
+   "/tournois": [
+    {
+     "from": "/admin",
+     "text": "Tournois"
+    },
+    {
+     "from": "/",
+     "text": "Tournois"
+    },
+    {
+     "from": "/sessions",
+     "text": "Tournois"
+    }
+   ],
+   "/calendrier": [
+    {
+     "from": "/admin",
+     "text": "Calendrier"
+    },
+    {
+     "from": "/admin",
+     "text": "Calendrier"
+    },
+    {
+     "from": "/",
+     "text": "Calendrier"
+    }
+   ],
+   "/bibliotheque": [
+    {
+     "from": "/admin",
+     "text": "Ma bibliothèque"
+    },
+    {
+     "from": "/admin",
+     "text": "Jeux, Bibliothèque"
+    },
+    {
+     "from": "/",
+     "text": "Ma bibliothèque"
+    }
+   ],
+   "/bibliotheque/groupe": [
+    {
+     "from": "/admin",
+     "text": "Bibliothèque du groupe"
+    },
+    {
+     "from": "/",
+     "text": "Bibliothèque du groupe"
+    },
+    {
+     "from": "/",
+     "text": "🎮 Les jeux du groupe Votre bibliothèque ↗"
+    }
+   ],
+   "/tierlist": [
+    {
+     "from": "/admin",
+     "text": "Tierlist"
+    },
+    {
+     "from": "/",
+     "text": "Tierlist"
+    },
+    {
+     "from": "/",
+     "text": "✦ Classer mes jeux Ma tierlist ↗"
+    }
+   ],
+   "/wishlist": [
+    {
+     "from": "/admin",
+     "text": "À acheter"
+    },
+    {
+     "from": "/",
+     "text": "À acheter"
+    },
+    {
+     "from": "/sessions",
+     "text": "À acheter"
+    }
+   ],
+   "/bibliotheque/a-verifier": [
+    {
+     "from": "/admin",
+     "text": "À vérifier"
+    },
+    {
+     "from": "/",
+     "text": "À vérifier"
+    },
+    {
+     "from": "/sessions",
+     "text": "À vérifier"
+    }
+   ],
+   "/potes": [
+    {
+     "from": "/admin",
+     "text": "Potes"
+    },
+    {
+     "from": "/admin",
+     "text": "Potes"
+    },
+    {
+     "from": "/",
+     "text": "Potes"
+    }
+   ],
+   "/tower": [
+    {
+     "from": "/admin",
+     "text": "The Tower"
+    },
+    {
+     "from": "/",
+     "text": "The Tower"
+    },
+    {
+     "from": "/",
+     "text": "Commencer l'Ascension"
+    }
+   ],
+   "/classement": [
+    {
+     "from": "/admin",
+     "text": "Classement"
+    },
+    {
+     "from": "/",
+     "text": "Classement"
+    },
+    {
+     "from": "/",
+     "text": "Voir tout"
+    }
+   ],
+   "/profil": [
+    {
+     "from": "/admin",
+     "text": "Mon profil"
+    },
+    {
+     "from": "/admin",
+     "text": "A Admin Tour Niveau 1 · 0 XP"
+    },
+    {
+     "from": "/admin",
+     "text": "✦ Niveau 1 · 0 XP"
+    }
+   ],
+   "/guide": [
+    {
+     "from": "/admin",
+     "text": "↗ Le guide GameNight"
+    },
+    {
+     "from": "/admin",
+     "text": "?"
+    },
+    {
+     "from": "/",
+     "text": "↗ Le guide GameNight"
+    }
+   ],
+   "/admin/journal": [
+    {
+     "from": "/admin",
+     "text": "Journal des opérations sensibles →"
+    },
+    {
+     "from": "/admin/journal",
+     "text": "Aller au contenu"
+    }
+   ],
+   "/admin/tableau-de-bord": [
+    {
+     "from": "/admin",
+     "text": "Tableau de bord staff →"
+    },
+    {
+     "from": "/admin/tableau-de-bord",
+     "text": "Aller au contenu"
+    }
+   ],
+   "/admin/voice-presence": [
+    {
+     "from": "/admin",
+     "text": "Consulter les durées vocales →"
+    },
+    {
+     "from": "/sessions",
+     "text": "Durées vocales"
+    },
+    {
+     "from": "/admin/voice-presence",
+     "text": "Aller au contenu"
+    }
+   ],
+   "/mentions-legales": [
+    {
+     "from": "/admin",
+     "text": "Mentions légales"
+    },
+    {
+     "from": "/",
+     "text": "Mentions légales"
+    },
+    {
+     "from": "/sessions",
+     "text": "Mentions légales"
+    }
+   ],
+   "/confidentialite": [
+    {
+     "from": "/admin",
+     "text": "Politique de confidentialité"
+    },
+    {
+     "from": "/",
+     "text": "Politique de confidentialité"
+    },
+    {
+     "from": "/sessions",
+     "text": "Politique de confidentialité"
+    }
+   ],
+   "/conditions": [
+    {
+     "from": "/admin",
+     "text": "Conditions d’utilisation"
+    },
+    {
+     "from": "/",
+     "text": "Conditions d’utilisation"
+    },
+    {
+     "from": "/sessions",
+     "text": "Conditions d’utilisation"
+    }
+   ],
+   "/tower/forums": [
+    {
+     "from": "/",
+     "text": "Trouver des joueurs"
+    },
+    {
+     "from": "/tower/forums",
+     "text": "Aller au contenu"
+    }
+   ],
+   "/tournois/creer": [
+    {
+     "from": "/",
+     "text": "🏆 Lancer un tournoi Qui ira jusqu’au bout ?"
+    },
+    {
+     "from": "/tournois",
+     "text": "+ Créer"
+    },
+    {
+     "from": "/tournois",
+     "text": "+ Créer un tournoi"
+    }
+   ],
+   "/jouer-maintenant": [
+    {
+     "from": "/",
+     "text": "▷ Pas besoin d’attendre ce soir. Lance une partie "
+    },
+    {
+     "from": "/sessions",
+     "text": "🎮 Jouer maintenant"
+    },
+    {
+     "from": "/jouer-maintenant",
+     "text": "Aller au contenu"
+    }
+   ],
+   "/saisons": [
+    {
+     "from": "/",
+     "text": "🏆 Saison 1 — Jour 23/30"
+    },
+    {
+     "from": "/tower",
+     "text": "Toutes les saisons →"
+    },
+    {
+     "from": "/saisons",
+     "text": "Aller au contenu"
+    }
+   ],
+   "/tournois/cmwqeh0nw00767dwcut7xs89f": [
+    {
+     "from": "/",
+     "text": "🏆 Inscriptions ouvertes : Tournoi des équipes It "
+    }
+   ],
+   "/disponibilites": [
+    {
+     "from": "/",
+     "text": "Mes dispos"
+    },
+    {
+     "from": "/sessions",
+     "text": "Renseigner mes disponibilités →"
+    },
+    {
+     "from": "/calendrier",
+     "text": "Configuration détaillée"
+    }
+   ],
+   "/sessions/sondages": [
+    {
+     "from": "/sessions",
+     "text": "Préparer une soirée"
+    },
+    {
+     "from": "/sessions/sondages",
+     "text": "Aller au contenu"
+    },
+    {
+     "from": "/sessions/sondages/nouveau",
+     "text": "← Tous les sondages"
+    }
+   ],
+   "/tournois/equipes": [
+    {
+     "from": "/tournois",
+     "text": "Tournois d’équipes"
+    },
+    {
+     "from": "/tournois/cmwqeh0nw00767dwcut7xs89f",
+     "text": "← Tournois d’équipes"
+    },
+    {
+     "from": "/tournois/equipes",
+     "text": "Aller au contenu"
+    }
+   ],
+   "/bibliotheque/ajouter": [
+    {
+     "from": "/bibliotheque",
+     "text": "+ Ajouter un jeu"
+    },
+    {
+     "from": "/bibliotheque/groupe",
+     "text": "+ Ajouter un jeu"
+    },
+    {
+     "from": "/bibliotheque/ajouter",
+     "text": "Aller au contenu"
+    }
+   ],
+   "/bibliotheque/suggestions": [
+    {
+     "from": "/bibliotheque",
+     "text": "Suggestions"
+    },
+    {
+     "from": "/bibliotheque/groupe",
+     "text": "Suggestions"
+    },
+    {
+     "from": "/tierlist",
+     "text": "Suggestions"
+    }
+   ],
+   "/jeux/preuve-game-9": [
+    {
+     "from": "/bibliotheque",
+     "text": "Deep Rock Galactic Manuel 2–5 joueurs"
+    },
+    {
+     "from": "/bibliotheque/groupe",
+     "text": "A D G J +7 Deep Rock Galactic Manuel 2–5 joueurs 1"
+    },
+    {
+     "from": "/jeux/preuve-game-9",
+     "text": "Aller au contenu"
+    }
+   ],
+   "/jeux/preuve-game-6": [
+    {
+     "from": "/bibliotheque",
+     "text": "Minecraft Manuel 2–6 joueurs"
+    },
+    {
+     "from": "/bibliotheque/groupe",
+     "text": "A D G J +7 Minecraft Manuel 2–6 joueurs 11 potes :"
+    },
+    {
+     "from": "/jeux/preuve-game-6",
+     "text": "Aller au contenu"
+    }
+   ],
+   "/jeux/preuve-game-0": [
+    {
+     "from": "/bibliotheque",
+     "text": "Overcooked 2 Manuel 2–4 joueurs"
+    },
+    {
+     "from": "/bibliotheque/groupe",
+     "text": "A D G J +7 Overcooked 2 Manuel 2–4 joueurs 11 pote"
+    },
+    {
+     "from": "/jeux/preuve-game-0",
+     "text": "Aller au contenu"
+    }
+   ],
+   "/jeux/preuve-game-3": [
+    {
+     "from": "/bibliotheque",
+     "text": "Valheim Manuel 2–7 joueurs"
+    },
+    {
+     "from": "/bibliotheque/groupe",
+     "text": "A D G J +7 Valheim Manuel 2–7 joueurs 11 potes : A"
+    },
+    {
+     "from": "/jeux/preuve-game-3",
+     "text": "Aller au contenu"
+    }
+   ],
+   "/jeux/preuve-game-2": [
+    {
+     "from": "/bibliotheque/groupe",
+     "text": "C F I L +6 Among Us Manuel 2–6 joueurs 10 potes : "
+    },
+    {
+     "from": "/jeux/preuve-game-2",
+     "text": "Aller au contenu"
+    }
+   ],
+   "/jeux/preuve-game-7": [
+    {
+     "from": "/bibliotheque/groupe",
+     "text": "B E H K +6 Fall Guys Manuel 2–7 joueurs 10 potes :"
+    },
+    {
+     "from": "/jeux/preuve-game-7",
+     "text": "Aller au contenu"
+    }
+   ],
+   "/jeux/preuve-game-11": [
+    {
+     "from": "/bibliotheque/groupe",
+     "text": "C F I L +6 Gartic Phone Manuel 2–7 joueurs 10 pote"
+    },
+    {
+     "from": "/jeux/preuve-game-11",
+     "text": "Aller au contenu"
+    }
+   ],
+   "/jeux/preuve-game-8": [
+    {
+     "from": "/bibliotheque/groupe",
+     "text": "C F I L +6 Helldivers 2 Manuel 2–4 joueurs 10 pote"
+    },
+    {
+     "from": "/jeux/preuve-game-8",
+     "text": "Aller au contenu"
+    }
+   ],
+   "/jeux/preuve-game-5": [
+    {
+     "from": "/bibliotheque/groupe",
+     "text": "C F I L +6 It Takes Two Manuel 2–5 joueurs 10 pote"
+    },
+    {
+     "from": "/jeux/preuve-game-5",
+     "text": "Aller au contenu"
+    }
+   ],
+   "/jeux/preuve-game-4": [
+    {
+     "from": "/bibliotheque/groupe",
+     "text": "B E H K +6 Mario Kart 8 Manuel 2–4 joueurs 10 pote"
+    },
+    {
+     "from": "/jeux/preuve-game-4",
+     "text": "Aller au contenu"
+    }
+   ],
+   "/jeux/preuve-game-1": [
+    {
+     "from": "/bibliotheque/groupe",
+     "text": "B E H K +6 Rocket League Manuel 2–5 joueurs 10 pot"
+    },
+    {
+     "from": "/jeux/preuve-game-1",
+     "text": "Aller au contenu"
+    }
+   ],
+   "/jeux/preuve-game-10": [
+    {
+     "from": "/bibliotheque/groupe",
+     "text": "B E H K +6 Stardew Valley Manuel 2–6 joueurs 10 po"
+    },
+    {
+     "from": "/jeux/preuve-game-10",
+     "text": "Aller au contenu"
+    }
+   ],
+   "/jeux-gratuits": [
+    {
+     "from": "/wishlist",
+     "text": "Sélection Steam/Epic du groupe →"
+    },
+    {
+     "from": "/jeux-gratuits",
+     "text": "Aller au contenu"
+    }
+   ],
+   "/tower/propositions": [
+    {
+     "from": "/tower",
+     "text": "Proposer un défi (Ranker et plus)"
+    },
+    {
+     "from": "/tower/propositions",
+     "text": "Aller au contenu"
+    }
+   ],
+   "/ascension": [
+    {
+     "from": "/tower",
+     "text": "Voir le détail de l’ascension →"
+    },
+    {
+     "from": "/profil",
+     "text": "Ascension"
+    },
+    {
+     "from": "/ascension",
+     "text": "Aller au contenu"
+    }
+   ],
+   "/equipes": [
+    {
+     "from": "/tower",
+     "text": "Équipes"
+    },
+    {
+     "from": "/jouer-maintenant",
+     "text": "Créer un projet d’équipe durable →"
+    },
+    {
+     "from": "/equipes",
+     "text": "Aller au contenu"
+    }
+   ],
+   "/profil/parametres": [
+    {
+     "from": "/profil",
+     "text": "⚙️ Modifier"
+    },
+    {
+     "from": "/profil",
+     "text": "Rappels perso"
+    },
+    {
+     "from": "/bibliotheque/suggestions",
+     "text": "Renseigner mes préférences et refus"
+    }
+   ],
+   "/tower/palmares": [
+    {
+     "from": "/profil",
+     "text": "Palmarès Tower"
+    },
+    {
+     "from": "/profil/parametres",
+     "text": "Palmarès Tower"
+    },
+    {
+     "from": "/tower/palmares",
+     "text": "Aller au contenu"
+    }
+   ],
+   "/profil/historique": [
+    {
+     "from": "/profil",
+     "text": "Historique soirées"
+    },
+    {
+     "from": "/profil/parametres",
+     "text": "Historique soirées"
+    },
+    {
+     "from": "/profil/historique",
+     "text": "Aller au contenu"
+    }
+   ],
+   "/profil/superlatifs": [
+    {
+     "from": "/profil",
+     "text": "Récompenses gagnées"
+    },
+    {
+     "from": "/profil",
+     "text": "Voir tout →"
+    },
+    {
+     "from": "/profil/parametres",
+     "text": "Récompenses gagnées"
+    }
+   ],
+   "/profil/lore": [
+    {
+     "from": "/profil",
+     "text": "Lore du groupe"
+    },
+    {
+     "from": "/profil/parametres",
+     "text": "Lore du groupe"
+    },
+    {
+     "from": "/profil/historique",
+     "text": "Lore du groupe"
+    }
+   ],
+   "/profil/badges": [
+    {
+     "from": "/profil",
+     "text": "Badges"
+    },
+    {
+     "from": "/ascension",
+     "text": "Badges Tes distinctions gagnées et à débloquer. →"
+    },
+    {
+     "from": "/profil/parametres",
+     "text": "Badges"
+    }
+   ],
+   "/profil/boutique": [
+    {
+     "from": "/profil",
+     "text": "Boutique XP"
+    },
+    {
+     "from": "/profil/parametres",
+     "text": "Boutique XP"
+    },
+    {
+     "from": "/profil/historique",
+     "text": "Boutique XP"
+    }
+   ],
+   "/profil/tierlist": [
+    {
+     "from": "/profil",
+     "text": "Tierlist"
+    },
+    {
+     "from": "/profil/parametres",
+     "text": "Tierlist"
+    },
+    {
+     "from": "/profil/historique",
+     "text": "Tierlist"
+    }
+   ],
+   "/profil/saisons": [
+    {
+     "from": "/profil",
+     "text": "Saisons"
+    },
+    {
+     "from": "/profil/parametres",
+     "text": "Saisons"
+    },
+    {
+     "from": "/profil/historique",
+     "text": "Saisons"
+    }
+   ],
+   "/profil/personnalisation": [
+    {
+     "from": "/profil",
+     "text": "Personnalisation"
+    },
+    {
+     "from": "/profil/parametres",
+     "text": "Personnalisation"
+    },
+    {
+     "from": "/profil/historique",
+     "text": "Personnalisation"
+    }
+   ],
+   "/bienvenue": [
+    {
+     "from": "/guide",
+     "text": "Reprendre le guide pas à pas"
+    },
+    {
+     "from": "/disponibilites",
+     "text": "Reprendre le guide pas à pas"
+    },
+    {
+     "from": "/bienvenue",
+     "text": "Aller au contenu"
+    }
+   ],
+   "/charte": [
+    {
+     "from": "/guide",
+     "text": "Lire la charte de fair-play du serveur"
+    },
+    {
+     "from": "/charte",
+     "text": "Aller au contenu"
+    }
+   ],
+   "/joueurs": [
+    {
+     "from": "/tower/forums",
+     "text": "Voir les annonces GameNight"
+    },
+    {
+     "from": "/jouer-maintenant",
+     "text": "Il te manque un joueur ? Publie une annonce →"
+    },
+    {
+     "from": "/joueurs",
+     "text": "Aller au contenu"
+    }
+   ],
+   "/tournois/equipes/cmwqeh0nw00767dwcut7xs89f": [
+    {
+     "from": "/tournois/cmwqeh0nw00767dwcut7xs89f",
+     "text": "Aller au contenu"
+    },
+    {
+     "from": "/tournois/equipes",
+     "text": "Tournoi des équipes It Takes Two · Inscriptions ou"
+    },
+    {
+     "from": "/tournois/equipes/cmwqeh0nw00767dwcut7xs89f",
+     "text": "Aller au contenu"
+    }
+   ],
+   "/sessions/sondages/nouveau": [
+    {
+     "from": "/sessions/sondages",
+     "text": "Nouveau sondage"
+    },
+    {
+     "from": "/sessions/sondages/nouveau",
+     "text": "Aller au contenu"
+    }
+   ],
+   "/equipes/candidatures": [
+    {
+     "from": "/equipes",
+     "text": "Candidatures d’équipe →"
+    },
+    {
+     "from": "/equipes/candidatures",
+     "text": "Aller au contenu"
+    }
+   ],
+   "/equipes/cmwqeh0l2003e7dwcq86pg8mf/rivalites": [
+    {
+     "from": "/equipes",
+     "text": "⚔️ Rivalités et historique"
+    },
+    {
+     "from": "/equipes/cmwqeh0l2003e7dwcq86pg8mf/rivalites",
+     "text": "Aller au contenu"
+    }
+   ],
+   "/equipes/cmwqeh0ku00327dwcu5c57kpt/rivalites": [
+    {
+     "from": "/equipes",
+     "text": "⚔️ Rivalités et historique"
+    },
+    {
+     "from": "/equipes/cmwqeh0ku00327dwcu5c57kpt/rivalites",
+     "text": "Aller au contenu"
+    }
+   ],
+   "/equipes/cmwqeh0kk002q7dwcx2otacgq/rivalites": [
+    {
+     "from": "/equipes",
+     "text": "⚔️ Rivalités et historique"
+    },
+    {
+     "from": "/equipes/cmwqeh0kk002q7dwcx2otacgq/rivalites",
+     "text": "Aller au contenu"
+    }
+   ],
+   "/profil/compte": [
+    {
+     "from": "/profil/parametres",
+     "text": "Gérer mon compte"
+    },
+    {
+     "from": "/profil/compte",
+     "text": "Aller au contenu"
+    }
+   ],
+   "/profil/lore/chroniques": [
+    {
+     "from": "/profil/lore",
+     "text": "📖 Chroniques de mes soirées"
+    },
+    {
+     "from": "/profil/lore/chroniques",
+     "text": "Aller au contenu"
+    }
+   ],
+   "/profil/lore/devine-jeu": [
+    {
+     "from": "/profil/lore",
+     "text": "🕵️ Devine le jeu"
+    },
+    {
+     "from": "/profil/lore/devine-jeu",
+     "text": "Aller au contenu"
+    }
+   ],
+   "/profil/lore/sondages": [
+    {
+     "from": "/profil/lore",
+     "text": "Sondages éclair du serveur"
+    },
+    {
+     "from": "/profil/lore/sondages",
+     "text": "Aller au contenu"
+    }
+   ],
+   "/profil/lore/cimetiere": [
+    {
+     "from": "/profil/lore",
+     "text": "Cimetière des jeux du serveur"
+    },
+    {
+     "from": "/profil/lore/cimetiere",
+     "text": "Aller au contenu"
+    }
+   ],
+   "/profil/lore/expressions": [
+    {
+     "from": "/profil/lore",
+     "text": "Expressions et running gags du serveur"
+    },
+    {
+     "from": "/profil/lore/expressions",
+     "text": "Aller au contenu"
+    }
+   ],
+   "/profil/lore/musee": [
+    {
+     "from": "/profil/lore",
+     "text": "Exploits et fails du serveur →"
+    },
+    {
+     "from": "/profil/lore/musee",
+     "text": "Aller au contenu"
+    }
+   ],
+   "/ce-soir": [
+    {
+     "from": "/joueurs",
+     "text": "Qui joue ce soir ? →"
+    },
+    {
+     "from": "/ce-soir",
+     "text": "Aller au contenu"
+    }
+   ]
+  },
+  "skippedInQueue": 0
+ }
+}

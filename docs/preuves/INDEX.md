@@ -21,6 +21,7 @@ Aucun FONCTIONNE sans preuve exécutée (test réussi ou scénario). 57 fichiers
 | [NOTIFICATIONS.md](NOTIFICATIONS.md) | Pings, MP, limites de fréquence, 100 joueurs, tous les cas de mention |
 | [GALERIE.md](GALERIE.md) | Toutes les captures par page, mobile et bureau |
 | [LOT_A1.md](LOT_A1.md) | Contrôles du lot d'interrupteurs A1 après l'allumage (production sans compte + local), 0 KO |
+| [MOBILE.md](MOBILE.md) | Audit téléphone (iPhone 13, Pixel 7, 191 mesures) et crawl des liens (155 pages), corrections et restant |
 | [outils/](outils) | Scripts de peuplement, de capture, de tests et de traçabilité |
 
 ## Aperçu
