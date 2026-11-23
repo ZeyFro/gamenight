@@ -64,7 +64,7 @@ Aucun constat 🔴 ni haute gravité. Crons et backfills (`verifyCronRequest`, 5
 | 🟠 | 1.4 Preuve Tower validée par 3 faux comptes | Quorum de votants actifs, votes décisifs visibles du staff | Restant (priorité 2) |
 | 🟠 | 1.5 Défi d'équipe : coéquipier fantôme récompensé | Participants confirmés par le capitaine, plafond par jour | Restant (priorité 2) |
 | 🟡 | 1.3 Ancienneté de 7 jours des votants selon le seul interrupteur | Ancienneté appliquée même interrupteur éteint | Corrigé (#570), puis 3 jours (décision de Maxime) |
-| 🟡 | 1.6 Temps de jeu Steam farmé en AFK (validation automatique des défis `temps`) | Temps compté plafonné à 2 h par jour (décision de Maxime), « Signaler un doute » inchangé | Corrigé (PR) : `TOWER_STEAM_DAILY_CAP_MINUTES = 120`, tests purs ; un défi `temps` de plus de 240 min retombe sur la preuve et le vote (`TOWER_STEAM_AUTOVALIDATE.md`) |
+| 🟡 | 1.6 Temps de jeu Steam farmé en AFK (validation automatique des défis `temps`) | Temps compté plafonné à 2 h par jour (décision de Maxime), « Signaler un doute » inchangé | Corrigé (#583) : `TOWER_STEAM_DAILY_CAP_MINUTES = 120`, tests purs ; un défi `temps` de plus de 240 min retombe sur la preuve et le vote (`TOWER_STEAM_AUTOVALIDATE.md`) |
 | 🟡 | 1.10, 1.11, 1.14 (XP de vote, tournoi complice, MP en masse) | Plafonds par jour, limite partagée | Restant |
 | 🟡 | 1.8, 1.15 plafonds sans test (soirée créée, demandes d'ami) | Tests d'intégration | Partiel : plafond « soirée créée » testé (#569) ; demandes d'ami restantes |
 | 🟠 | 2.4 Web Push : `getRegistration("/sw.js")` au lieu de `/service-worker.js` ; abonnement jamais détecté après rechargement | Chemin `/service-worker.js`, test jsdom : abonnement détecté après rechargement | Corrigé (#572) |
