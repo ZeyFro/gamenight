@@ -4,7 +4,7 @@ import {
   type PostToDiscordResult,
 } from "@/lib/discord";
 import { pickMessageTemplate } from "@/lib/message-templates";
-import { rankForLevel, titleForLevel } from "@/lib/xp";
+import { rankForLevel, titleForLevel, xpLevelLabel } from "@/lib/xp";
 import type { User } from "@prisma/client";
 import { postToCommunity } from "@/lib/community-announce";
 
@@ -41,7 +41,7 @@ export async function announceLevelUp(
 
   const embed: DiscordEmbed = {
     title: rankChanged ? "🎖️ Nouveau rang !" : "🎉 Level up !",
-    description: `Niveau ${beforeLevel} → ${afterLevel}`,
+    description: `${xpLevelLabel(beforeLevel)} → ${xpLevelLabel(afterLevel)}`,
     color: ACCENT_COLOR,
     fields: [
       { name: "Titre", value: vars.titre, inline: true },

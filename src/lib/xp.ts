@@ -67,26 +67,28 @@ export function levelForXp(xp: number): number {
 }
 
 /**
- * Titres FR par palier de niveau (humour "auto-dérision groupe de potes"
- * demandé) — paliers 1/5/10/20/50/100 fournis, paliers intermédiaires
- * ajoutés pour garder une progression qui "raconte quelque chose" entre
- * deux paliers fournis.
+ * Titres FR par palier de niveau (ton « groupe de potes », auto-dérision en milieu de parcours seulement).
  *
- * Palier 1 : « Recrue » (et non « Victime », jugé peu engageant pour un nouveau qui le lit en premier sur
- * l'accueil, le profil et le classement) ; l'auto-dérision commence à « Noob ».
+ * Progression logique, du débutant au sommet, SANS régression de ton : un nouveau ne se fait jamais appeler « Noob » ni
+ * « Victime » (audit de la production du 23/11/2026 : « Recrue » aux niveaux 1 à 4 puis « Noob » au niveau 5 sonnait
+ * comme une rétrogradation, et « PAPED » ne voulait rien dire pour un nouveau). L’auto-dérision (« Try-hard », « No-life »)
+ * arrive quand le joueur est déjà très investi et peut en rire.
+ *
+ * 1 Recrue → 5 Apprenti → 10 Habitué → 15 Confirmé → 20 Try-hard → 30 Vétéran → 40 Acharné → 50 No-life →
+ * 70 Maître du jeu → 85 Légende vivante → 100 Immortel.
  */
-const LEVEL_TITLES: { level: number; title: string }[] = [
+export const LEVEL_TITLES: { level: number; title: string }[] = [
   { level: 1, title: "Recrue" },
-  { level: 5, title: "Noob" },
-  { level: 10, title: "PAPED" },
-  { level: 15, title: "Habitué" },
+  { level: 5, title: "Apprenti" },
+  { level: 10, title: "Habitué" },
+  { level: 15, title: "Confirmé" },
   { level: 20, title: "Try-hard" },
   { level: 30, title: "Vétéran" },
   { level: 40, title: "Acharné" },
   { level: 50, title: "No-life" },
-  { level: 70, title: "Possédé" },
+  { level: 70, title: "Maître du jeu" },
   { level: 85, title: "Légende vivante" },
-  { level: 100, title: "Sans-vie" },
+  { level: 100, title: "Immortel" },
 ];
 
 export function titleForLevel(level: number): string {
@@ -148,6 +150,37 @@ export const RANKS: Rank[] = [
     glowing: true,
   },
 ];
+
+/**
+ * Vocabulaire UNIQUE de la progression XP (audit de la production du 23/11/2026 : l'accueil affichait « Niveau 4, 92 % » et
+ * /tower « Niveau d'XP 1, 15 % », deux nombres pour la même personne). Le NIVEAU gagné avec l'XP s'appelle « Niveau d'XP »
+ * partout ; le RANG (Bronze, Argent, Or, Platine, Diamant, Légende) regroupe des niveaux ; « Étage » est réservé à la Tour.
+ */
+export function xpLevelLabel(level: number): string {
+  return `Niveau d’XP ${level}`;
+}
+
+/** Progression vers le niveau d'XP suivant : XP gagnée dans le niveau, XP nécessaire pour le franchir, fraction (0 à 1). */
+export function levelProgress(xp: number) {
+  const safe = Math.max(0, Math.floor(xp));
+  const level = levelForXp(safe);
+  const start = xpForLevel(level);
+  const needed = xpForLevel(level + 1) - start;
+  const earned = safe - start;
+  return { level, earned, needed, remaining: needed - earned, fraction: needed > 0 ? Math.min(1, earned / needed) : 1 };
+}
+
+/** Rang suivant et XP restante pour l'atteindre ; `null` au rang maximal. */
+export function rankProgress(xp: number) {
+  const safe = Math.max(0, Math.floor(xp));
+  const level = levelForXp(safe);
+  const current = rankForLevel(level);
+  const next = RANKS.find((rank) => rank.minLevel > current.minLevel) ?? null;
+  if (!next) return { current, next: null, remaining: null, fraction: 1 };
+  const start = xpForLevel(current.minLevel);
+  const target = xpForLevel(next.minLevel);
+  return { current, next, remaining: Math.max(0, target - safe), fraction: Math.min(1, Math.max(0, (safe - start) / (target - start))) };
+}
 
 export function rankForLevel(level: number): Rank {
   let current = RANKS[0];

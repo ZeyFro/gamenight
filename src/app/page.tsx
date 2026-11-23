@@ -13,7 +13,7 @@ import { formatDateTimeFr, formatDurationFr, nowMs, wallClockNow } from "@/lib/w
 import { getRecentActivity, getGroupStats, getWeekAvailability, getRecentGameNews } from "@/lib/home";
 import { getScoreboard } from "@/lib/scoreboard";
 import { getScoreboardCommunityId } from "@/lib/community-access";
-import { levelForXp, rankForLevel, titleForLevel } from "@/lib/xp";
+import { levelForXp, rankForLevel, titleForLevel, xpLevelLabel } from "@/lib/xp";
 import { getCurrentWeeklyChallengeForViewer } from "@/lib/weekly-challenges";
 import { getEquippedShopItemsForViewer } from "@/lib/xp-shop";
 import { getActiveDebts, getActiveDebtorIds } from "@/lib/debts";
@@ -295,7 +295,7 @@ async function HomeContent({
             )}
           </h2>
           <p className="mt-0.5 text-xs text-muted">
-            Niveau {level} · {title} · {rank.name}
+            {xpLevelLabel(level)} · {title} · {rank.name}
           </p>
         </div>
         {/* FIX1 (retours visuels post-Sprint2) : le bouton "?" flottant
