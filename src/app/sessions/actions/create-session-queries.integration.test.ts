@@ -26,10 +26,12 @@ if (!TEST_DATABASE_URL) {
   console.warn("[create-session-queries] TEST_DATABASE_URL absente — suite SKIPPÉE, aucun compte de requêtes validé.");
 }
 
-// Budgets Neon requis par la revue : bot=33, webhook=32. Les contrôles
-// relatifs ci-dessous détectent aussi une croissance liée aux invités/badges.
-const MAX_QUERIES_BOT = 33;
-const MAX_QUERIES_WEBHOOK = 32;
+// Budgets Neon fixés par la revue : bot=33, webhook=32, puis +2 pour le plafond de 10 soirées par jour
+// (audit 1.14 : le compteur partagé coûte un INSERT … ON CONFLICT et un nettoyage, dans la transaction de création).
+// Valeurs relevées en CI : 35 (bot) et 34 (webhook). Les contrôles relatifs ci-dessous détectent aussi une
+// croissance liée aux invités/badges.
+const MAX_QUERIES_BOT = 35;
+const MAX_QUERIES_WEBHOOK = 34;
 const MAX_QUERIES_ISOLATION = 38;
 const QUERY_EVENT_BOUNDARY = "/* create-session-query-boundary */";
 

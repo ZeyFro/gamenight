@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { editSetupResponse } from "@/lib/discord-rest";
 import { accessibleSessionWhereFor, getSessionAccessRole, inviteToSession, revokeSessionInvite } from "@/lib/session-access";
 import { createVotingSessionInTransaction } from "@/lib/session-creation";
+import { assertDailyCreationQuota, DailyCreationLimitError, SESSION_QUOTA_MESSAGE } from "@/lib/creation-quota";
 import { resolveSessionSchedule } from "@/lib/session-schedule";
 import { SESSION_STATUS_LABELS } from "@/lib/session-status";
 import { formatDateTimeFr, parseDateAndTime } from "@/lib/wallclock";
@@ -299,6 +300,7 @@ export async function createSessionFromDiscord(input: {
   | { status: "INVALID_DATE" }
   | { status: "TOO_CLOSE" }
   | { status: "INVALID_PLACES" }
+  | { status: "DAILY_LIMIT" }
   | { status: "UNAVAILABLE" }
 > {
   if (input.places !== null && (!Number.isInteger(input.places) || input.places < 2 || input.places > 20)) {
@@ -318,6 +320,8 @@ export async function createSessionFromDiscord(input: {
 
   try {
     const created = await prisma.$transaction(async (tx) => {
+      // Plafond de soirées par jour (audit 1.14), le même compteur que le formulaire du site ; refus avant toute écriture.
+      await assertDailyCreationQuota("SESSION", input.userId, tx);
       const session = await createVotingSessionInTransaction(tx, {
         createdById: input.userId,
         communityId: input.communityId,
@@ -340,6 +344,7 @@ export async function createSessionFromDiscord(input: {
     });
     return { status: "CREATED", sessionId: created.id, date: created.date, game: game.name };
   } catch (error) {
+    if (error instanceof DailyCreationLimitError) return { status: "DAILY_LIMIT" };
     logger.warn("discord-session", "Création de soirée refusée.", {
       errorType: error instanceof Error ? error.name : "unknown",
     });
@@ -451,6 +456,8 @@ function describeCreation(result: Awaited<ReturnType<typeof createSessionFromDis
       return "Le nombre de places doit être un entier entre 2 et 20.";
     case "INVALID_DATE":
       return "Date ou heure invalide : utilise `date:2026-12-05` et `heure:21:00`.";
+    case "DAILY_LIMIT":
+      return SESSION_QUOTA_MESSAGE;
     default:
       return "La soirée n’a pas pu être créée. Réessaie dans un instant.";
   }
