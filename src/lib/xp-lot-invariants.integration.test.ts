@@ -79,8 +79,11 @@ describe.skipIf(!TEST_DATABASE_URL)("xp-lot-invariants : base neuve, état main 
     db = new PrismaClient({ datasourceUrl: url() });
     // Données synthétiques : deux membres, objets, ancien achat SHOP_PURCHASE.
     const c = await db.community.create({ data: { slug: "inv", name: "Inv", status: "ACTIVE" } });
-    const u1 = await db.user.create({ data: { discordId: "inv-1", discordName: "Inv1" }, select: { id: true } });
-    const u2 = await db.user.create({ data: { discordId: "inv-2", discordName: "Inv2" }, select: { id: true } });
+    // SQL direct : la base n'a que les migrations antérieures au lot, alors que le client Prisma écrit toutes les colonnes
+    // à défaut du schéma actuel (ex. listes ajoutées à User après le lot) ; seules les colonnes de la base de départ sont nommées.
+    const u1 = { id: "inv-u1" };
+    const u2 = { id: "inv-u2" };
+    await db.$executeRawUnsafe(`INSERT INTO "User" ("id","discordId","discordName") VALUES ($1,'inv-1','Inv1'), ($2,'inv-2','Inv2')`, u1.id, u2.id);
     await db.$executeRawUnsafe(`INSERT INTO "CommunityMemberStats" ("communityId","userId","xpTotal","equippedTitleId") VALUES ($1,$2,799,'title-strategist'), ($1,$3,0,NULL)`, c.id, u1.id, u2.id);
     await db.$executeRawUnsafe(`INSERT INTO "CommunityMemberCosmetic" ("communityId","userId","itemId") VALUES ($1,$2,'title-strategist')`, c.id, u1.id);
     await db.$executeRawUnsafe(`INSERT INTO "XpEvent" ("id","communityId","userId","reason","sourceId","amount") VALUES ('inv-e1',$1,$2,'SHOP_PURCHASE','title-strategist',-250)`, c.id, u1.id);
