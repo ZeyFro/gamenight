@@ -8,6 +8,9 @@ import { getTowerSeasonPodium } from "@/lib/tower-season-podium";
 import { getTowerPersonalProgress } from "@/lib/tower-personal-progress";
 import type { TowerRankStep } from "@/lib/tower-ranks";
 import { TowerRankBadge } from "@/components/TowerRankBadge";
+import { getTowerTeamStandings } from "@/lib/tower-team-standings";
+import type { TowerTeamStanding } from "@/lib/tower-team-standings-rules";
+import { TeamBadge } from "@/app/equipes/TeamBadge";
 
 export const metadata = pageMetadata("Palmarès The Tower");
 
@@ -23,6 +26,7 @@ export default async function TowerSeasonPodiumPage() {
   const communityId = await resolveActiveCommunityId(user.id);
   const result = communityId ? await getTowerSeasonPodium({ userId: user.id, communityId }) : null;
   const progress = communityId ? await getTowerPersonalProgress({ viewerId: user.id, memberId: user.id, communityId }) : null;
+  const teams = communityId ? await getTowerTeamStandings({ userId: user.id, communityId }) : null;
   const date = new Intl.DateTimeFormat("fr-FR", { dateStyle: "long", timeZone: "Europe/Paris" });
   return <main className="mx-auto flex w-full max-w-3xl flex-col gap-6 px-4 py-8 sm:px-6 sm:py-12">
     <Link href="/tower" className="text-sm text-accent underline-offset-4 hover:underline">← The Tower</Link>
@@ -55,5 +59,23 @@ export default async function TowerSeasonPodiumPage() {
         </li>)}
       </ol> : <Card><p className="text-muted">Aucune récompense créditée aux membres actifs pendant cette saison.</p></Card>}
     </> : <Card><p className="text-muted">Le palmarès n’est pas disponible pour la communauté sélectionnée.</p></Card>}
+    {teams?.status === "STANDINGS" ? <Card>
+      <h2 className="text-xl font-semibold text-foreground">Classement des équipes</h2>
+      <p className="mt-2 text-sm text-muted">Étages remportés avec les défis d’équipe validés. Départage : défis validés, puis première équipe arrivée à ce total. Seules les équipes qui ont encore un membre actif sont classées.</p>
+      <TeamStandingList title={teams.season.name} teams={teams.seasonTeams} />
+      <TeamStandingList title="Depuis toujours" teams={teams.allTimeTeams} />
+    </Card> : null}
   </main>;
+}
+
+function TeamStandingList({ title, teams }: { title: string; teams: readonly TowerTeamStanding[] }) {
+  return <section className="mt-4" aria-label={`Classement des équipes : ${title}`}>
+    <h3 className="font-semibold text-foreground">{title}</h3>
+    {teams.length ? <ol className="mt-2 flex flex-col gap-1">
+      {teams.map(team => <li key={team.teamId} className="flex justify-between gap-3 text-sm">
+        <span className="text-foreground">{team.rank}. <TeamBadge color={team.color} emblem={team.emblem} />{team.name}{team.exAequo ? <span className="text-muted"> (ex æquo)</span> : null}</span>
+        <span className="whitespace-nowrap text-muted">{team.floors} étage(s) · {team.wins} défi(s)</span>
+      </li>)}
+    </ol> : <p className="mt-2 text-sm text-muted">Aucun défi d’équipe validé.</p>}
+  </section>;
 }

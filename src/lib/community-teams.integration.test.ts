@@ -113,6 +113,20 @@ describe.skipIf(!TEST_DATABASE_URL)("équipes communautaires : PostgreSQL isolé
     expect((await db.communityTeam.findUniqueOrThrow({ where: { id: team.id } })).createdById).toBe(ids.leader);
   });
 
+  it("identité visuelle (§11.2) : le capitaine choisit couleur et emblème, un autre membre est refusé", async () => {
+    await teams.createCommunityTeam({ userId: ids.leader, communityId: ids.community, gameId: ids.game, name: "Les Dragons", description: "Une équipe aux couleurs vives.", platform: "PC", maxMembers: 4 });
+    const [team] = await db.communityTeam.findMany({ where: { communityId: ids.community } });
+    expect(await teams.joinCommunityTeam(ids.member, ids.community, team.id)).toBe("joined");
+    expect(await teams.setCommunityTeamIdentity(ids.member, ids.community, team.id, { color: "#00ff00", emblem: "🐺" })).toBe("missing");
+    expect(await teams.setCommunityTeamIdentity(ids.otherMember, ids.community, team.id, { color: "#00ff00", emblem: "🐺" })).toBe("unavailable");
+    expect(await teams.setCommunityTeamIdentity(ids.leader, ids.community, team.id, { color: "#ff0000", emblem: "🐉" })).toBe("saved");
+    let [listed] = await teams.listCommunityTeams(ids.member, ids.community);
+    expect([listed.color, listed.emblem]).toEqual(["#ff0000", "🐉"]);
+    expect(await teams.setCommunityTeamIdentity(ids.leader, ids.community, team.id, { color: null, emblem: null })).toBe("saved");
+    [listed] = await teams.listCommunityTeams(ids.member, ids.community);
+    expect([listed.color, listed.emblem]).toEqual([null, null]);
+  });
+
   it("does not list or mutate a project from another community scope", async () => {
     await teams.createCommunityTeam({ userId: ids.leader, communityId: ids.community, gameId: ids.game, name: "Projet Tower", description: "Expédition réservée à The Tower.", platform: "PC", maxMembers: 4 });
     await expect(teams.listCommunityTeams(ids.otherMember, ids.community)).resolves.toHaveLength(0);

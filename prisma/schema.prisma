@@ -3301,6 +3301,9 @@ model CommunityTeam {
   platform    String   @db.VarChar(40)
   maxMembers  Int
   isRecruiting Boolean @default(true)
+  // §11.2 : identité visuelle choisie par le capitaine (couleur #RRGGBB, emblème parmi TEAM_EMBLEMS).
+  color String? @db.VarChar(7)
+  emblem String? @db.VarChar(16)
   captainLastActivityAt DateTime @default(now())
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
