@@ -7,6 +7,9 @@ import {
   streakMultiplier,
   computeAwardedAmount,
   didLevelUp,
+  xpLevelLabel,
+  levelProgress,
+  rankProgress,
 } from "@/lib/xp";
 
 describe("xpForLevel / levelForXp (courbe 50 × (niveau-1)²)", () => {
@@ -124,5 +127,32 @@ describe("didLevelUp (extrait de awardXp, PR atomicité XP)", () => {
 
   it("détecte le franchissement pile sur le seuil suivant", () => {
     expect(didLevelUp(xpForLevel(2) - 1, xpForLevel(2))).toBe(true);
+  });
+});
+
+describe("vocabulaire unique de la progression XP (audit du 23/11/2026)", () => {
+  it("« Niveau d'XP » est le seul nom du niveau gagné avec l'XP", () => {
+    expect(xpLevelLabel(1)).toBe("Niveau d’XP 1");
+    expect(xpLevelLabel(4)).toBe("Niveau d’XP 4");
+  });
+  it("progression vers le niveau suivant : 771 XP = niveau 4, 321 / 350, 92 %", () => {
+    const p = levelProgress(771);
+    expect(p).toMatchObject({ level: 4, earned: 321, needed: 350, remaining: 29 });
+    expect(Math.floor(p.fraction * 100)).toBe(91);
+    expect(levelProgress(0)).toMatchObject({ level: 1, earned: 0, needed: 50, remaining: 50, fraction: 0 });
+    expect(levelProgress(-5).level).toBe(1);
+  });
+  it("progression vers le rang suivant : même XP, 4 229 XP avant Argent (niveau 11)", () => {
+    const r = rankProgress(771);
+    expect(r.current.name).toBe("Bronze");
+    expect(r.next?.name).toBe("Argent");
+    expect(r.remaining).toBe(4229);
+    expect(Math.floor(r.fraction * 100)).toBe(15);
+  });
+  it("rang maximal : pas de rang suivant", () => {
+    const r = rankProgress(xpForLevel(120));
+    expect(r.current.name).toBe("Légende");
+    expect(r.next).toBeNull();
+    expect(r.remaining).toBeNull();
   });
 });
