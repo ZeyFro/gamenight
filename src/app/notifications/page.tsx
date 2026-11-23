@@ -13,7 +13,13 @@ import { pageMetadata } from "@/lib/page-title";
 import { markAllNotificationsReadAction } from "@/app/notifications-actions";
 import { markNotificationReadAction, toggleGamePingAction } from "./actions";
 
-export const metadata = pageMetadata("Notifications");
+/**
+ * Titre d’onglet honnête : tant que le centre de notifications est éteint (`NOTIFICATION_CENTER_ENABLED`), la page répond 404 ;
+ * un titre « Notifications » au-dessus d’un contenu introuvable (audit de la production du 23/11/2026) trompait. Éteint : titre « Introuvable ».
+ */
+export function generateMetadata() {
+  return pageMetadata(isNotificationCenterEnabled() ? "Notifications" : "Introuvable");
+}
 
 const PAGE_SIZE = 30;
 
