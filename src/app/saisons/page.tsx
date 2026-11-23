@@ -1,3 +1,4 @@
+import { plural } from "@/lib/plural";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/current-user";
@@ -24,7 +25,7 @@ export default async function SaisonsPage() {
 
   const scopedDb = await getActiveScopedPrisma(user.id);
   const [progress, pastSeasons] = await Promise.all([
-    getSeasonProgress(user.id),
+    getSeasonProgress(),
     scopedDb.season.findMany({
       where: { isActive: false },
       orderBy: { number: "desc" },
@@ -42,17 +43,15 @@ export default async function SaisonsPage() {
     <div className="mx-auto flex w-full max-w-2xl flex-col gap-6 px-4 py-8 sm:px-6 sm:py-12">
       <div>
         <h1 className="text-xl font-semibold text-foreground sm:text-2xl">Saisons</h1>
-        {progress && (
-          <p className="mt-1 text-sm text-muted">
-            {progress.name} en cours — jour {progress.dayOfMonth}/{progress.totalDays}
-          </p>
-        )}
+        <p className="mt-1 text-sm text-muted">
+          Saison {progress.name} en cours — jour {progress.day}/{progress.totalDays} (encore {progress.daysLeft} {plural(progress.daysLeft, "jour")})
+        </p>
       </div>
 
       {pastSeasons.length === 0 ? (
         <Card>
           <p className="text-sm text-muted">
-            Aucune saison terminée pour l&apos;instant — reviens à la fin du mois.
+            Aucun ancien classement mensuel d&apos;XP à afficher pour l&apos;instant.
           </p>
         </Card>
       ) : (

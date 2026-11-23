@@ -37,3 +37,21 @@ export function daysLeftInTowerSeason(now = new Date()): number {
   const { endAt } = getTowerSchoolSeason(now);
   return Math.max(0, Math.ceil((endAt.getTime() - now.getTime()) / 86400000));
 }
+
+/**
+ * Progression dans la saison Tower courante, jours comptés en JOURS CIVILS Europe/Paris (jamais par division de millisecondes :
+ * le changement d'heure raccourcit ou allonge une journée). `day` va de 1 à `totalDays` ; `daysLeft` inclut aujourd'hui
+ * (1 le dernier jour). C'est l'UNIQUE saison affichée aux joueurs (accueil, /saisons, /tower) : audit du 23/11/2026, l'accueil
+ * montrait « Saison 2 — Jour 23/30 » (saison mensuelle d'XP) pendant que /tower montrait « S3 · 2026 ».
+ */
+export function getTowerSeasonProgress(now = new Date()): { name: string; day: number; totalDays: number; daysLeft: number } {
+  const current = getTowerSchoolSeason(now);
+  const today = parts(parisDay, now);
+  const start = parts(parisDay, current.startAt);
+  const end = parts(parisDay, current.endAt);
+  const dayMs = 86_400_000;
+  const civil = (p: Record<string, number>) => Date.UTC(p.year, p.month - 1, p.day);
+  const totalDays = Math.round((civil(end) - civil(start)) / dayMs);
+  const day = Math.round((civil(today) - civil(start)) / dayMs) + 1;
+  return { name: current.name, day, totalDays, daysLeft: totalDays - day + 1 };
+}
