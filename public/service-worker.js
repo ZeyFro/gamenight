@@ -104,6 +104,7 @@ self.addEventListener("push", (event) => {
   const destination = new URL(path, self.location.origin);
   event.waitUntil(self.registration.showNotification(title || "GameNight", {
     body: body || "Nouvelle notification",
+    icon: "/icon-192.png",
     data: { url: destination.origin === self.location.origin ? destination.pathname + destination.search + destination.hash : "/" },
   }));
 });
