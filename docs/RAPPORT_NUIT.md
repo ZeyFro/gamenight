@@ -31,7 +31,7 @@ Avant la nuit, dans la même journée : #552 à #576 (bugs de l'audit visuel, s�
 ## 2. État des migrations et de la production
 
 - **159 dossiers de migration**, **35 runs « Migrations Production », tous verts**. Dernier run : n° 35, commit `4685ceb2` (migration `20261124120000_server_error_log`). Migrations de la nuit : `tower_participant_confirmation` et `server_error_log`, toutes deux vertes. Aucun arrêt total déclenché.
-- **Déploiement de production** : dernier vu `5b494446` (#590, 00:44 UTC). Le commit de #579 (`21fbd3ef`) a reçu « Deployment rate limited — retry in 24 hours » : c'est le quota gratuit de 100 déploiements par jour, le même refus que sur les commits précédents, pas une erreur du code. **Je n'ai pas annulé #579** (voir les décisions). Test à refaire : le prochain commit de `main` doit produire un déploiement « Production » ; sinon revert de #579.
+- **Déploiement de production** : vérifié le 24/11 à 06:12 UTC. Les commits de #579 et #595 avaient été refusés par le quota gratuit de Vercel (100 déploiements par jour, « retry in 24 hours »), pas par le code. Après remise à zéro du quota, le commit `94b9bce6` (#596) s'est déployé en Production avec la configuration de #579 : **#579 est confirmée, aucun revert nécessaire**.
 
 ## 3. Ce qui reste, par catégorie
 
@@ -66,6 +66,6 @@ Avant la nuit, dans la même journée : #552 à #576 (bugs de l'audit visuel, s�
 4. **Lot 5** : trois types techniques ajoutés aux listes fermées (mise à jour publique, contexte de fil, action système) ; une combinaison inconnue est refusée avant l'envoi.
 5. **Plafonds** : valeurs validées par Maxime ; participants distincts non exigés pour la présence (le plafond de 3 par jour suffit) ; seuil de 3 jours appliqué avec `>=`.
 6. **Journal d'erreurs** : aucun interrupteur, première apparition / dernière apparition par empreinte, purge à 30 jours par la tâche mensuelle, non-admins renvoyés à l'accueil, Prisma chargé à l'écriture seulement (pour le workflow « Tower challenge rules »).
-7. **#579 gardée malgré le quota Vercel** : un revert ne prouverait rien tant que le quota est atteint ; à revérifier au prochain commit de `main`.
+7. **#579 gardée malgré le quota Vercel** : le refus venait du quota ; confirmé le 24/11 par le déploiement réussi de `94b9bce6`.
 8. **Icônes** : icône Apple et maskable générées ; `badge` monochrome non fait (rien pour le contrôler visuellement).
 9. **Regroupement des allumages** en 6 redéploiements (R0 à R5) pour limiter les codes 2FA.
