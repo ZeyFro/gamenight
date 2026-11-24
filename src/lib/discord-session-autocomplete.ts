@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { resolveSessionContext, loadUpcomingSessions, type SessionView } from "@/lib/discord-session-commands";
+import { gameLabel } from "@/lib/discord-session-game-label";
 
 /**
  * Autocomplétion de `/soiree voir|rejoindre|quitter`.
@@ -70,7 +71,7 @@ export function filterSessionCandidates(sessions: SessionView[], query: string):
   const needle = normalize(query);
   if (!needle) return sessions;
   return sessions.filter((session) =>
-    normalize(`${session.game ?? "jeu a definir"} ${session.creatorName}`).includes(needle)
+    normalize(`${session.game ?? (session.proposedGames.join(" ") || "jeu a definir")} ${session.creatorName}`).includes(needle)
   );
 }
 
@@ -83,7 +84,7 @@ export function toSessionChoices(sessions: SessionView[], mode: SessionAutocompl
       const seats = remainingSeats(session);
       const places = seats === null ? `${session.invitees.length + 1} participant(s)` : `${seats} place(s) libre(s)`;
       return {
-        name: `${session.game ?? "jeu à définir"} · ${dateFormatter.format(session.date)} · ${places}`.slice(0, 100),
+        name: `${gameLabel(session)} · ${dateFormatter.format(session.date)} · ${places}`.slice(0, 100),
         value: session.id,
       };
     });

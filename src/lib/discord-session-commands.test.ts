@@ -68,6 +68,7 @@ const view = (over: Partial<SessionView> = {}): SessionView => ({
   status: "VOTING",
   statusLabel: "Vote ouvert",
   game: "Valheim",
+  proposedGames: [],
   proposals: 1,
   creatorName: "Maxime",
   invitees: ["Sarah"],
@@ -213,6 +214,22 @@ describe("/soiree — lecture", () => {
     expect(detail?.isInvited).toBe(true);
     await loadUpcomingSessions({ userId: USER, communityId: "community-1" });
     expect(mocks.accessibleWhere).toHaveBeenCalledWith(USER);
+  });
+
+  it("affiche le jeu proposé au vote tant qu'aucun jeu n'est décidé (production : « jeu à définir » après /soiree creer)", () => {
+    const one = renderSessionList([view({ game: null, proposedGames: ["Deadlock"] })], "The Tower");
+    expect(one).toContain("Deadlock (proposé)");
+    expect(one).not.toContain("jeu à définir");
+    expect(renderSessionList([view({ game: null, proposedGames: ["Deadlock", "Valheim"] })], "The Tower")).toContain("Deadlock, Valheim (proposés)");
+    expect(renderSessionList([view({ game: null, proposedGames: [] })], "The Tower")).toContain("jeu à définir");
+    expect(renderSessionList([view({ game: "Valheim", proposedGames: ["Deadlock"] })], "The Tower")).toContain("**Valheim**");
+    expect(renderSessionDetail(view({ game: null, proposedGames: ["Deadlock"] }))).toContain("Deadlock (proposé)");
+  });
+
+  it("lit les jeux proposés de la soirée dans la requête de liste", async () => {
+    await loadUpcomingSessions({ userId: USER, communityId: "community-1" });
+    const select = mocks.sessionFindMany.mock.calls.at(-1)?.[0].select;
+    expect(select.proposals).toMatchObject({ take: 3, orderBy: { createdAt: "asc" } });
   });
 
   it("ne promet rien quand aucune soirée n’est visible", () => {
@@ -410,5 +427,8 @@ describe("/soiree — création par le service existant", () => {
     );
     expect(content).toContain("Soirée créée");
     expect(content).toContain("visible dans GameNight");
+    // L'état du jeu est dit clairement : proposé au vote, pas décidé.
+    expect(content).toContain("proposé au vote");
+    expect(content).toContain("pas encore décidé");
   });
 });
