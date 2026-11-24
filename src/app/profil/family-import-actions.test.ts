@@ -1,8 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const { getCurrentUser, matchGameName } = vi.hoisted(() => ({
+const { getCurrentUser, matchGameName, checkSharedRateLimit } = vi.hoisted(() => ({
   getCurrentUser: vi.fn(),
   matchGameName: vi.fn(),
+  checkSharedRateLimit: vi.fn(),
 }));
 
 vi.mock("next/navigation", () => ({ redirect: vi.fn() }));
@@ -10,7 +11,8 @@ vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
 vi.mock("@/lib/prisma", () => ({ prisma: {} }));
 vi.mock("@/lib/current-user", () => ({ getCurrentUser }));
 vi.mock("@/lib/badges", () => ({ checkLibraryBadges: vi.fn() }));
-vi.mock("@/lib/rate-limit", () => ({ checkRateLimit: vi.fn() }));
+vi.mock("@/lib/rate-limit", () => ({ checkRateLimit: vi.fn(), RATE_LIMIT_MESSAGE: "limite" }));
+vi.mock("@/lib/shared-rate-limit", () => ({ checkSharedRateLimit }));
 vi.mock("@/lib/steam", () => ({ importSteamLibrary: vi.fn() }));
 vi.mock("@/lib/family-import", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/lib/family-import")>()),
@@ -24,6 +26,7 @@ describe("matchFamilyImportBatch — plafonds côté serveur", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     getCurrentUser.mockResolvedValue({ id: "u1" });
+    checkSharedRateLimit.mockResolvedValue(true);
     matchGameName.mockResolvedValue({ status: "needsConfirmation", candidate: null, confidence: 0 });
   });
 
@@ -57,5 +60,13 @@ describe("matchFamilyImportBatch — plafonds côté serveur", () => {
     await expect(matchFamilyImportBatch("Portal" as unknown as string[])).rejects.toThrow();
     await expect(matchFamilyImportBatch([42 as unknown as string])).rejects.toThrow();
     expect(matchGameName).not.toHaveBeenCalled();
+  });
+
+  it("limite partagée atteinte (60 lots par 10 minutes) → refusé avant toute recherche IGDB", async () => {
+    checkSharedRateLimit.mockResolvedValue(false);
+
+    await expect(matchFamilyImportBatch(["Portal"])).rejects.toThrow("limite");
+    expect(matchGameName).not.toHaveBeenCalled();
+    expect(checkSharedRateLimit).toHaveBeenCalledWith("u1", "familyImportBatch", { limit: 60, windowMs: 600_000 });
   });
 });

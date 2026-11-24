@@ -6,7 +6,16 @@ import { getCurrentUser } from "@/lib/current-user";
 import { getActiveScopedPrisma } from "@/lib/community-scoped-client";
 import { resolveActiveCommunityId } from "@/lib/community-isolation";
 import { prisma } from "@/lib/prisma";
+import { checkSharedRateLimit } from "@/lib/shared-rate-limit";
 import { parseDateOnly, toDateInputValue } from "@/lib/wallclock";
+
+/** Écritures du calendrier : 30 par minute et par personne, compteur partagé entre les instances (audit : écritures sans limite). */
+const COMMUNITY_DATE_WRITES_PER_MINUTE = 30;
+
+/** Vrai si l'écriture est permise ; sinon l'action revient au calendrier avec `?error=rate` (message affiché par la page). */
+async function allowWrite(userId: string): Promise<boolean> {
+  return checkSharedRateLimit(userId, "communityDateWrite", { limit: COMMUNITY_DATE_WRITES_PER_MINUTE, windowMs: 60_000 });
+}
 
 function dateInput(value: FormDataEntryValue | null): Date | null {
   if (typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return null;
@@ -25,9 +34,12 @@ async function activeMembership(userId: string, communityId: string) {
   });
 }
 
-async function returnToCalendar(date?: Date) {
+async function returnToCalendar(date?: Date, error?: "rate") {
   revalidatePath("/calendrier");
-  const query = date ? `?date=${toDateInputValue(date)}` : "";
+  const params = new URLSearchParams();
+  if (date) params.set("date", toDateInputValue(date));
+  if (error) params.set("error", error);
+  const query = params.size ? `?${params}` : "";
   redirect(`/calendrier${query}`);
 }
 
@@ -39,6 +51,7 @@ export async function saveCommunityBirthdayAction(formData: FormData): Promise<v
   if (!communityId || !date) return;
   const membership = await activeMembership(user.id, communityId);
   if (membership?.status !== "ACTIVE" || membership.community.status !== "ACTIVE") return;
+  if (!(await allowWrite(user.id))) await returnToCalendar(undefined, "rate");
 
   const scopedDb = await getActiveScopedPrisma(user.id);
   await scopedDb.communityDate.upsert({
@@ -60,6 +73,7 @@ export async function createCommunityDateAction(formData: FormData): Promise<voi
   if (!communityId || !date || !title || title.length > 100) return;
   const membership = await activeMembership(user.id, communityId);
   if (membership?.status !== "ACTIVE" || membership.community.status !== "ACTIVE" || (membership.role !== "OWNER" && membership.role !== "ADMIN")) return;
+  if (!(await allowWrite(user.id))) await returnToCalendar(date, "rate");
 
   const scopedDb = await getActiveScopedPrisma(user.id);
   await scopedDb.communityDate.create({
@@ -83,6 +97,7 @@ export async function deleteCommunityDateAction(formData: FormData): Promise<voi
   const ownsBirthday = event.kind === "BIRTHDAY" && event.memberId === user.id;
   const managesImportant = event.kind === "IMPORTANT" && (event.createdById === user.id || membership.role === "OWNER" || membership.role === "ADMIN");
   if (!ownsBirthday && !managesImportant) return;
+  if (!(await allowWrite(user.id))) await returnToCalendar(event.date, "rate");
   await scopedDb.communityDate.delete({ where: { id } });
   await returnToCalendar(event.date);
 }
