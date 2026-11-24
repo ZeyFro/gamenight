@@ -70,7 +70,16 @@ export function FamilyImportForm() {
 
     for (let i = 0; i < names.length; i += FAMILY_IMPORT_BATCH_SIZE) {
       const batch = names.slice(i, i + FAMILY_IMPORT_BATCH_SIZE);
-      const results = await matchFamilyImportBatch(batch);
+      let results: Awaited<ReturnType<typeof matchFamilyImportBatch>>;
+      try {
+        results = await matchFamilyImportBatch(batch);
+      } catch {
+        // Limite de débit ou lot refusé (le texte d'une erreur d'action serveur est masqué en production, donc message fixe) :
+        // on garde ce qui est déjà importé et on le dit, sans laisser « Analyse en cours… ».
+        toast.error("Import interrompu : trop de lots d'un coup ou erreur du serveur. Réessaie dans quelques minutes.");
+        setPhase("done");
+        return;
+      }
 
       for (const r of results) {
         if (r.outcome === "imported" && r.game) {

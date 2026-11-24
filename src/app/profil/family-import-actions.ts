@@ -6,7 +6,8 @@ import { GameSource } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { getCurrentUser } from "@/lib/current-user";
 import { checkLibraryBadgesForActiveCommunity } from "@/lib/badges";
-import { checkRateLimit } from "@/lib/rate-limit";
+import { checkRateLimit, RATE_LIMIT_MESSAGE } from "@/lib/rate-limit";
+import { checkSharedRateLimit } from "@/lib/shared-rate-limit";
 import {
   FAMILY_IMPORT_BATCH_SIZE,
   FAMILY_IMPORT_MAX_NAME_LENGTH,
@@ -64,6 +65,9 @@ export async function matchFamilyImportBatch(
 ): Promise<FamilyImportItemResult[]> {
   const user = await getCurrentUser();
   if (!user) return [];
+  // Chaque lot coûte jusqu'à 15 recherches IGDB et des écritures : 60 lots par 10 minutes et par personne (900 noms), compteur
+  // partagé entre les instances. Le formulaire affiche ce message et garde les jeux déjà importés.
+  if (!(await checkSharedRateLimit(user.id, "familyImportBatch", { limit: 60, windowMs: 600_000 }))) throw new Error(RATE_LIMIT_MESSAGE);
 
   // Plafonds serveur : le client batch déjà, mais une action serveur est
   // appelable directement — chaque nom coûte une recherche IGDB.
