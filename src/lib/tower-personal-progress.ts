@@ -16,6 +16,10 @@ const inputSchema = z.object({ viewerId: id, memberId: id, communityId: id });
  *
  * Accès revérifié ici, isolation allumée ou non : le lecteur ET le membre doivent avoir une
  * Membership ACTIVE dans cette communauté ACTIVE dont les défis Tower sont activés.
+ *
+ * Aucun verrou de ligne (`FOR SHARE`) : la page `/tower/palmares` est en lecture seule, et un
+ * écrivain qui tient la ligne `Membership`/`Community` la bloquait sans limite (la page restait
+ * sur « Chargement… » jusqu'à la fin de l'écriture). Un simple SELECT relit l'état validé.
  */
 export async function getTowerPersonalProgress(input: unknown, current = new Date()) {
   const parsed = inputSchema.safeParse(input);
@@ -28,7 +32,6 @@ export async function getTowerPersonalProgress(input: unknown, current = new Dat
       JOIN "Community" c ON c.id = m."communityId"
       WHERE m."communityId" = ${communityId} AND m."userId" IN (${viewerId}, ${memberId})
         AND m.status = 'ACTIVE' AND c.status = 'ACTIVE' AND c."towerChallengesEnabled" = true
-      FOR SHARE OF m, c
     `;
     const allowed = new Set(access.map(row => row.userId));
     if (!allowed.has(viewerId) || !allowed.has(memberId)) return { status: "UNAVAILABLE" } as const;

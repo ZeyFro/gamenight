@@ -146,6 +146,35 @@ describe.skipIf(!url)("podium saisonnier, crédits réels et accès communautair
     await db.community.update({ where: { id: communityId }, data: { status: "SUSPENDED" } });
     expect(await read()).toEqual({ status: "UNAVAILABLE" });
   });
+  it("reste lisible pendant qu'une écriture tient la ligne Membership du lecteur", async () => {
+    await credit("first", 3, "2027-04-02T10:00:00Z");
+    let release!: () => void;
+    let locked!: () => void;
+    const gate = new Promise<void>(resolve => { release = resolve; });
+    const lockHeld = new Promise<void>(resolve => { locked = resolve; });
+    const writer = db.$transaction(async tx => {
+      await tx.membership.update({
+        where: { communityId_userId: { communityId, userId: id("reader") } },
+        data: { status: "ACTIVE" },
+      });
+      locked();
+      await gate;
+    }, { timeout: 20_000 });
+    await lockHeld;
+    try {
+      // Régression : le palmarès prenait un FOR SHARE sur cette ligne et attendait l'écrivain
+      // sans limite (page /tower/palmares figée sur « Chargement… »).
+      const outcome = await Promise.race([
+        read().then(result => ({ state: "lu" as const, result })),
+        new Promise<{ state: "bloqué" }>(resolve => setTimeout(() => resolve({ state: "bloqué" as const }), 3_000)),
+      ]);
+      expect(outcome.state).toBe("lu");
+      if (outcome.state === "lu") expect(outcome.result).toMatchObject({ status: "PODIUM" });
+    } finally {
+      release();
+      await writer;
+    }
+  });
   it("refuse un non-membre même isolation OFF et vérifie les drapeaux", async () => {
     vi.stubEnv("COMMUNITY_ISOLATION_ENABLED", "false");
     expect(await podium.getTowerSeasonPodium({ communityId, userId: id("outsider") }, current)).toEqual({ status: "UNAVAILABLE" });
