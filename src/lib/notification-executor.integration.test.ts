@@ -393,9 +393,57 @@ describe.skipIf(!TEST_DATABASE_URL)("notification-executor (intégration Postgre
     });
   });
 
+  describe("politique de notification (lot 5) : refus AVANT tout envoi", () => {
+    function neverResolver(): { resolver: DeliveryResolver; calls: () => number } {
+      let calls = 0;
+      return { resolver: { async resolve() { calls += 1; return sendResolver("chan-1").resolve({} as never); } }, calls: () => calls };
+    }
+
+    it("un MP personnel détourné vers un salon est refusé : FAILED terminal, résolveur et Discord jamais appelés", async () => {
+      const event = await makeEvent({ eventType: "SESSION_DM" });
+      const delivery = await makeDelivery(event.id, { channel: "DISCORD_CHANNEL" });
+      const { resolver, calls } = neverResolver();
+      const outcome = await executorLib.processNextDelivery({ resolver, owner: "w1" });
+      expect(outcome).toEqual({ deliveryId: delivery.id, outcome: "failed", errorClass: "policy:channel_not_allowed_for_kind" });
+      expect(calls()).toBe(0);
+      expect(fetchMock).not.toHaveBeenCalled();
+      const row = await db.notificationDelivery.findUniqueOrThrow({ where: { id: delivery.id } });
+      expect(row.status).toBe("FAILED");
+      expect(row.errorClass).toBe("policy:channel_not_allowed_for_kind");
+      expect(row.lastError).toContain("SESSION_DM");
+      expect(row.nextAttemptAt).toBeNull();
+    });
+
+    it("un événement qui n'est pas un moment marquant ne peut pas être envoyé en MP", async () => {
+      const event = await makeEvent({ eventType: "SESSION_CREATED" });
+      const delivery = await makeDelivery(event.id, { channel: "DISCORD_DM", recipientKey: "user:u1" });
+      const { resolver, calls } = neverResolver();
+      expect(await executorLib.processNextDelivery({ resolver, owner: "w1" })).toEqual({ deliveryId: delivery.id, outcome: "failed", errorClass: "policy:channel_not_allowed_for_kind" });
+      expect(calls()).toBe(0);
+      expect(fetchMock).not.toHaveBeenCalled();
+    });
+
+    it("un type d'événement inconnu est refusé (échec fermé), jamais envoyé", async () => {
+      const event = await makeEvent({ eventType: "NOUVEL_EVENEMENT_NON_CLASSE" });
+      const delivery = await makeDelivery(event.id);
+      const { resolver, calls } = neverResolver();
+      expect(await executorLib.processNextDelivery({ resolver, owner: "w1" })).toEqual({ deliveryId: delivery.id, outcome: "failed", errorClass: "policy:unknown_event_type" });
+      expect(calls()).toBe(0);
+      expect(fetchMock).not.toHaveBeenCalled();
+    });
+
+    it("un moment marquant sur son canal autorisé passe la politique et part normalement", async () => {
+      const event = await makeEvent({ eventType: "TOURNAMENT_RESULT", category: "TOURNAMENT" });
+      const delivery = await makeDelivery(event.id);
+      fetchMock.mockResolvedValueOnce(jsonResponse(200, { id: "msg-2", channel_id: "chan-1" }));
+      expect(await executorLib.processNextDelivery({ resolver: sendResolver("chan-1"), owner: "w1" })).toEqual({ deliveryId: delivery.id, outcome: "sent" });
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    });
+  });
+
   describe("MP — deadline partagé entre ouverture et envoi", () => {
     it("sendDirectMessage : les deux appels dérivent le même budget de timeout, un seul échec bloquerait les deux", async () => {
-      const event = await makeEvent();
+      const event = await makeEvent({ eventType: "SESSION_DM" });
       const delivery = await makeDelivery(event.id, {
         channel: "DISCORD_DM",
         targetSlot: "default-guild:SESSION:session-1:dm:user-1",
