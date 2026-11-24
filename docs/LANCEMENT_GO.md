@@ -133,3 +133,7 @@ Le triage de l'audit marque 15 constats « corrigé ». **Mais 5 d'entre eux ne 
 - **PWA / iPhone** : icône Apple 180×180 opaque, icône maskable dédiée, aide à l'installation avant les notifications.
 - **Vocabulaire** : plus de « Level up » ni de « deadline », « Qui prévenir ? » vide par défaut (garde `vocabulaire-visible.test.ts`).
 - **Vercel** : seul `main` déploie (#577, #579), vérifié en production le 24/11 (voir A2).
+- **Historique et accueil (production du 24/11)** : une soirée terminée reste dans l'historique 365 jours (la fenêtre de 7 jours ne vaut plus que pour la rétention et les annulées) ; le total de soirées de l'accueil n'est jamais inférieur au nombre de soirées terminées du serveur affiché (PR #600). **À vérifier par une lecture seule** si l'historique reste vide pour un compte : `SELECT "communityId", status, count(*) FROM "Session" GROUP BY 1, 2;` (sur quel serveur sont les 28 soirées ?) et si ce compte est créateur ou invité (l'historique n'affiche que les soirées dont on est créateur ou invité).
+- **Ping du rôle de jeu (Q19)** : branché sur la création d'une soirée publique ou sur candidature (#601), opt-in seulement ; voir CAHIER_FINAL D09.
+- **Mot « soirée »** : « session » remplacé partout où un joueur peut le lire (#598), avec garde de test.
+- **Audit** : test d'accès d'un tiers non membre sur les délégations et limite d'écriture partagée sur calendrier, charte et import familial (#599).
