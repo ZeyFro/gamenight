@@ -2,6 +2,7 @@ import { z } from "zod";
 import { logger } from "@/lib/logger";
 import { prisma } from "@/lib/prisma";
 import { editSetupResponse } from "@/lib/discord-rest";
+import { gameLabel } from "@/lib/discord-session-game-label";
 import { accessibleSessionWhereFor, getSessionAccessRole, inviteToSession, revokeSessionInvite } from "@/lib/session-access";
 import { createVotingSessionInTransaction } from "@/lib/session-creation";
 import { assertDailyCreationQuota, DailyCreationLimitError, SESSION_QUOTA_MESSAGE } from "@/lib/creation-quota";
@@ -104,6 +105,8 @@ export interface SessionView {
   status: string;
   statusLabel: string;
   game: string | null;
+  /** Jeux proposés au vote (3 au plus, par ordre de proposition), tant qu'aucun jeu n'est décidé. */
+  proposedGames: string[];
   proposals: number;
   creatorName: string;
   invitees: string[];
@@ -147,6 +150,7 @@ const sessionSelect = {
   createdById: true,
   createdBy: { select: { discordName: true } },
   decidedGame: { select: { name: true } },
+  proposals: { select: { game: { select: { name: true } } }, orderBy: { createdAt: "asc" as const }, take: 3 },
   _count: { select: { proposals: true, invites: { where: { status: "ACTIVE" as const } } } },
   invites: { where: { status: "ACTIVE" as const }, select: { userId: true, user: { select: { discordName: true } } } },
 } as const;
@@ -159,6 +163,7 @@ type SessionRow = {
   createdById: string;
   createdBy: { discordName: string };
   decidedGame: { name: string } | null;
+  proposals?: Array<{ game: { name: string } }>;
   _count: { proposals: number; invites: number };
   invites: Array<{ userId: string; user: { discordName: string } }>;
 };
@@ -170,6 +175,7 @@ function toView(row: SessionRow, userId: string): SessionView {
     status: row.status,
     statusLabel: SESSION_STATUS_LABELS[row.status as keyof typeof SESSION_STATUS_LABELS]?.label ?? row.status,
     game: row.decidedGame?.name ?? null,
+    proposedGames: (row.proposals ?? []).map((proposal) => proposal.game.name),
     proposals: row._count.proposals,
     creatorName: row.createdBy.discordName,
     invitees: row.invites.map((invite) => invite.user.discordName),
@@ -218,7 +224,7 @@ export function renderSessionList(sessions: SessionView[], communityName: string
     ...sessions.map((session) => {
       const places = session.capacity ? ` · ${session.invitees.length + 1}/${session.capacity}` : ` · ${session.invitees.length + 1} participant(s)`;
       const mine = session.isCreator ? " · tu organises" : session.isInvited ? " · inscrit" : "";
-      return `• **${session.game ?? "jeu à définir"}** — ${formatDateTimeFr(session.date)}${places}${mine} · \`${session.id}\``;
+      return `• **${gameLabel(session)}** — ${formatDateTimeFr(session.date)}${places}${mine} · \`${session.id}\``;
     }),
     "Utilise `/soiree voir` ou `/soiree rejoindre` avec l’identifiant affiché.",
   ].join("\n").slice(0, MAX_CONTENT);
@@ -228,7 +234,7 @@ export function renderSessionDetail(session: SessionView): string {
   const participants = [session.creatorName, ...session.invitees].slice(0, 15);
   const places = session.capacity ? `${participants.length}/${session.capacity} places` : `${participants.length} participant(s)`;
   return [
-    `🎲 **Soirée ${session.game ? `· ${session.game}` : ""}**`,
+    `🎲 **Soirée${session.game || session.proposedGames.length ? ` · ${gameLabel(session)}` : ""}**`,
     `${formatDateTimeFr(session.date)} · ${session.statusLabel} · ${places}`,
     `Organisateur : ${session.creatorName}${session.isCreator ? " (toi)" : ""}`,
     `Participants : ${participants.join(", ")}`,
@@ -442,7 +448,7 @@ function describeCreation(result: Awaited<ReturnType<typeof createSessionFromDis
     case "CREATED":
       return [
         "✅ **Soirée créée**",
-        `${formatDateTimeFr(result.date)} · jeu proposé : **${result.game}**`,
+        `${formatDateTimeFr(result.date)} · **${result.game}** est proposé au vote (le jeu n’est pas encore décidé)`,
         "Elle est déjà visible dans GameNight (`/sessions`), où le vote et la gestion se font comme d’habitude.",
         "Fenêtre de vote ouverte : les participants peuvent voter sur place jusqu’à 2 h avant.",
       ].join("\n");

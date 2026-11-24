@@ -72,10 +72,36 @@ describe("/aide", () => {
       DISCORD_SESSION_COMMAND_ENABLED: "true",
       DISCORD_TOURNAMENT_COMMAND_ENABLED: "true",
       DISCORD_PLAYER_COMMAND_ENABLED: "true",
+      DISCORD_PROJECT_COMMAND_ENABLED: "true",
+      DISCORD_PROJECT_WRITE_ENABLED: "true",
     } as unknown as NodeJS.ProcessEnv);
     expect(on).toContain("actif");
     expect(on).not.toContain("en attente d’activation");
     expect(on).toContain("Aucune commande ne donne de permission administrative");
+  });
+
+  it("liste /projet avec ses sous-commandes selon les interrupteurs (production du 24/11 : absente de /aide)", () => {
+    const sub = ["liste", "voir", "rejoindre", "quitter", "creer", "recrutement", "espace"];
+    const off = buildHelpContent({} as NodeJS.ProcessEnv);
+    expect(off).toContain("/projet");
+    expect(off).toContain("en attente d’activation");
+    const read = buildHelpContent({ DISCORD_PROJECT_COMMAND_ENABLED: "true" } as unknown as NodeJS.ProcessEnv);
+    const readLine = read.split("\n").find((line) => line.includes("/projet")) ?? "";
+    expect(readLine).toContain("`liste`");
+    expect(readLine).toContain("`voir`");
+    expect(readLine).not.toContain("`creer`");
+    expect(readLine).toContain("lecture seule");
+    const writeOnly = buildHelpContent({ DISCORD_PROJECT_WRITE_ENABLED: "true" } as unknown as NodeJS.ProcessEnv);
+    expect(writeOnly.split("\n").find((line) => line.includes("/projet"))).not.toContain("`creer`");
+    const full = buildHelpContent({ DISCORD_PROJECT_COMMAND_ENABLED: "true", DISCORD_PROJECT_WRITE_ENABLED: "true" } as unknown as NodeJS.ProcessEnv);
+    const fullLine = full.split("\n").find((line) => line.includes("/projet")) ?? "";
+    for (const name of sub) expect(fullLine).toContain(`\`${name}\``);
+  });
+
+  it("les sous-commandes annoncées pour /projet sont celles du manifeste", async () => {
+    const manifest = (await import("../../scripts/discord-commands.json")).default as Array<{ name: string; options?: Array<{ name: string }> }>;
+    const names = manifest.find((command) => command.name === "projet")?.options?.map((option) => option.name);
+    expect(names).toEqual(["liste", "voir", "rejoindre", "quitter", "creer", "recrutement", "espace"]);
   });
 
   it("répond en privé et ne dépend d'aucune activation", () => {

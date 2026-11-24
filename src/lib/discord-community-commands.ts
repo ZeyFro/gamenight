@@ -57,6 +57,8 @@ export function commandStates(env: NodeJS.ProcessEnv = process.env) {
     sessions: env.DISCORD_SESSION_COMMAND_ENABLED === "true",
     tournaments: env.DISCORD_TOURNAMENT_COMMAND_ENABLED === "true",
     players: env.DISCORD_PLAYER_COMMAND_ENABLED === "true",
+    project: env.DISCORD_PROJECT_COMMAND_ENABLED === "true",
+    projectWrite: env.DISCORD_PROJECT_COMMAND_ENABLED === "true" && env.DISCORD_PROJECT_WRITE_ENABLED === "true",
   };
 }
 
@@ -74,6 +76,7 @@ export function buildHelpContent(env: NodeJS.ProcessEnv = process.env): string {
     `• \`/boost\` — tes avantages Booster Discord (${state(flags.boost)}).`,
     `• \`/tower\` — \`defi\`, \`progression\`, \`classement\`, \`vote\`, \`equipe\` (${state(flags.tower)}).`,
     "• `/equipe` — `liste`, `moi`, `rejoindre` (selon l’activation des équipes sur ton serveur).",
+    `• \`/projet\` — projets d’équipe : \`liste\`, \`voir\`${flags.projectWrite ? ", `rejoindre`, `quitter`, `creer`, `recrutement`, `espace`" : ""} (${flags.project ? (flags.projectWrite ? "actif" : "lecture seule, écriture en attente d’activation") : "en attente d’activation"}).`,
     `• \`/soiree\` — soirées : \`liste\`, \`voir\`, \`creer\`, \`rejoindre\`, \`quitter\` (${state(flags.sessions)}).`,
     `• \`/tournoi\` — tournois : \`liste\`, \`voir\`, \`inscription\`, \`desinscription\`, \`mes-inscriptions\` (${state(flags.tournaments)}).`,
     `• \`/joueurs\` — recherche de partenaires : \`chercher\`, \`annonces\`, \`mes-annonces\`, \`publier\`, \`retirer\` (${state(flags.players)}).`,

@@ -70,6 +70,14 @@ describe("autocomplétion /soiree", () => {
     expect(body.data.choices[0].name).toContain("4 place(s) libre(s)"); // 6 − (1 invité + organisateur)
   });
 
+  it("affiche le jeu proposé quand aucun jeu n'est décidé, et le retrouve à la recherche", () => {
+    const pending = [session({ game: null, proposedGames: ["Deadlock"] })] as never;
+    expect(toSessionChoices(pending, "voir")[0].name).toContain("Deadlock (proposé)");
+    expect(toSessionChoices(pending, "voir")[0].name).not.toContain("jeu à définir");
+    expect(filterSessionCandidates(pending, "deadlock")).toHaveLength(1);
+    expect(toSessionChoices([session({ game: null, proposedGames: [] })] as never, "voir")[0].name).toContain("jeu à définir");
+  });
+
   it("calcule les places et gère la capacité illimitée", () => {
     expect(remainingSeats(session({ invitees: [], capacity: 5 }) as never)).toBe(4);
     expect(remainingSeats(session({ capacity: null }) as never)).toBeNull();
