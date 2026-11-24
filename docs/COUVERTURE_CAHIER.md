@@ -137,7 +137,7 @@ Aucune autre PR de code n'a été ouverte : le point 2 ne touche rien tant que `
 | 6.4 — Examen distinct des rôles techniques et historiques (admins, modéra… | partielle | Seul l'inventaire des rôles Étage est outillé ; la revue des 145 rôles « review » et des 13 rôles ADMINISTRATOR reste une décision humaine | 1–2 j (humain) |
 | 8.5 — Variété des défis (gaming, créatifs, absurdes, coopération, hors jeu…) | partielle | Catalogue de 116 défis codé et contrôlé sur les règles, mais sa variété n'est pas vérifiée par le code et `TOWER_SAISON1_CATALOGUE_30.md` décrit encore 30 défis | 0,5 j (relecture humaine) |
 | 9.1 — Les défis qui autorisent des preuves anciennes doivent l'indiquer e… | non | Aucun champ ni règle dans la définition d'un défi : le code refuse toute preuve antérieure à l'attribution | 0,5–1 j |
-| 10.3 — Animation : réussites marquantes, exploits insolites, distinctions … | partielle | Pas de récapitulatif hebdomadaire Tower automatique ni de mise en avant des joueurs actifs (le récap existant est annuel) | 2–3 j |
+| 10.3 — Animation : réussites marquantes, exploits insolites, distinctions … | codée | Récapitulatif hebdomadaire et joueurs actifs faits (carte sur `/tower/palmares`, 24/11) ; reste l’allumage de `COMMUNITY_HIGHLIGHTS_ENABLED` | — |
 | 11.2 — Identité visuelle d'une équipe | non | Aucun champ logo, bannière ou couleur sur `CommunityTeam` (prisma/schema.prisma) | 1–2 j (migration additive + interface) |
 | 12.2 — Critères de recherche : langue, préférences communautaires, habitud… | partielle | Pas de champ langue ni habitudes de jeu ; seuls les tags d'intérêt (`Tag`, `UserTag`) existent | 1–2 j |
 | 12.3 — Proposition de partenaires compatibles | non | Aucune suggestion automatique : filtres manuels seulement | 3–5 j |

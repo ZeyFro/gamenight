@@ -9,6 +9,7 @@ import { getTowerPersonalProgress } from "@/lib/tower-personal-progress";
 import type { TowerRankStep } from "@/lib/tower-ranks";
 import { TowerRankBadge } from "@/components/TowerRankBadge";
 import { getTowerTeamStandings } from "@/lib/tower-team-standings";
+import { getTowerWeeklyRecap } from "@/lib/tower-weekly-recap";
 import type { TowerTeamStanding } from "@/lib/tower-team-standings-rules";
 import { TeamBadge } from "@/app/equipes/TeamBadge";
 
@@ -27,6 +28,7 @@ export default async function TowerSeasonPodiumPage() {
   const result = communityId ? await getTowerSeasonPodium({ userId: user.id, communityId }) : null;
   const progress = communityId ? await getTowerPersonalProgress({ viewerId: user.id, memberId: user.id, communityId }) : null;
   const teams = communityId ? await getTowerTeamStandings({ userId: user.id, communityId }) : null;
+  const weekly = communityId ? await getTowerWeeklyRecap({ userId: user.id, communityId }) : null;
   const date = new Intl.DateTimeFormat("fr-FR", { dateStyle: "long", timeZone: "Europe/Paris" });
   return <main className="mx-auto flex w-full max-w-3xl flex-col gap-6 px-4 py-8 sm:px-6 sm:py-12">
     <Link href="/tower" className="text-sm text-accent underline-offset-4 hover:underline">← The Tower</Link>
@@ -34,6 +36,20 @@ export default async function TowerSeasonPodiumPage() {
       <h1 className="text-3xl font-bold text-foreground">Palmarès de la dernière saison</h1>
       <p className="mt-2 text-muted">Les trois premières places parmi les membres actifs de ton serveur. Les joueurs strictement à égalité partagent la même place.</p>
     </header>
+    {weekly?.status === "RECAP" ? <Card>
+      <h2 className="text-xl font-semibold text-foreground">La semaine à The Tower</h2>
+      <p className="mt-2 text-sm text-muted">Les 7 derniers jours, parmi les membres actifs de ton serveur.</p>
+      {weekly.recap.totalWins ? <>
+        <p className="mt-2 text-muted">{weekly.recap.totalWins} défi(s) validé(s) · {weekly.recap.totalFloors} étage(s) remporté(s)</p>
+        <h3 className="mt-4 font-semibold text-foreground">Joueurs les plus actifs</h3>
+        <ol className="mt-2 flex flex-col gap-1" aria-label="Joueurs les plus actifs de la semaine">
+          {weekly.recap.activePlayers.map((player, index) => <li key={player.userId} className="flex justify-between gap-3 text-sm">
+            <span className="text-foreground">{index + 1}. {player.displayName}</span>
+            <span className="whitespace-nowrap text-muted">{player.wins} défi(s) · {player.floors} étage(s)</span>
+          </li>)}
+        </ol>
+      </> : <p className="mt-2 text-muted">Aucun défi validé cette semaine : le prochain est peut-être le tien.</p>}
+    </Card> : null}
     {progress?.status === "PROGRESS" ? <Card>
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h2 className="text-xl font-semibold text-foreground">Ta progression</h2>

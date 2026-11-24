@@ -1,7 +1,8 @@
 // @vitest-environment jsdom
 import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
-const mocks = vi.hoisted(() => ({ user: vi.fn(), community: vi.fn(), podium: vi.fn(), progress: vi.fn(), teams: vi.fn(), redirect: vi.fn() }));
+const mocks = vi.hoisted(() => ({ user: vi.fn(), community: vi.fn(), podium: vi.fn(), progress: vi.fn(), teams: vi.fn(), weekly: vi.fn(), redirect: vi.fn() }));
+vi.mock("@/lib/tower-weekly-recap", () => ({ getTowerWeeklyRecap: mocks.weekly }));
 vi.mock("@/lib/tower-team-standings", () => ({ getTowerTeamStandings: mocks.teams }));
 vi.mock("@/lib/current-user", () => ({ getCurrentUser: mocks.user }));
 vi.mock("@/lib/community-isolation", () => ({ resolveActiveCommunityId: mocks.community }));
@@ -16,6 +17,7 @@ beforeEach(() => {
   mocks.redirect.mockImplementation(() => { throw new Error("REDIRECT"); });
   mocks.progress.mockResolvedValue({ status: "DISABLED" });
   mocks.teams.mockResolvedValue({ status: "DISABLED" });
+  mocks.weekly.mockResolvedValue({ status: "DISABLED" });
   mocks.podium.mockResolvedValue({ status: "PODIUM", season: { name: "S1 · 2026-2027", startAt: new Date("2026-11-30T23:00:00Z"), endAt: new Date("2027-03-31T22:00:00Z") }, entries: [] });
 });
 afterEach(cleanup);
@@ -105,4 +107,18 @@ it("classement des équipes : saison et depuis toujours, ex æquo signalé, embl
   expect(season.textContent).toContain("1. 🐉Les Dragons (ex æquo)");
   expect(season.textContent).toContain("6 étage(s) · 2 défi(s)");
   expect(screen.getByRole("region", { name: "Classement des équipes : Depuis toujours" }).textContent).toContain("Aucun défi d’équipe validé.");
+});
+it("présente le récapitulatif de la semaine et les joueurs les plus actifs, en échappant les noms", async () => {
+  mocks.weekly.mockResolvedValueOnce({ status: "RECAP", recap: { since: new Date(), until: new Date(), totalWins: 3, totalFloors: 7, activePlayers: [{ userId: "u1", displayName: "<b>Zoé</b>", wins: 2, floors: 4 }] } });
+  const { container } = render(await Page());
+  expect(screen.getByRole("heading", { name: "La semaine à The Tower" })).toBeTruthy();
+  expect(screen.getByText(/3 défi\(s\) validé\(s\) · 7 étage\(s\) remporté\(s\)/)).toBeTruthy();
+  expect(screen.getByRole("list", { name: "Joueurs les plus actifs de la semaine" })).toBeTruthy();
+  expect(container.querySelector("b")).toBeNull();
+});
+it("sans défi validé cette semaine, affiche un message et aucune liste", async () => {
+  mocks.weekly.mockResolvedValueOnce({ status: "RECAP", recap: { since: new Date(), until: new Date(), totalWins: 0, totalFloors: 0, activePlayers: [] } });
+  render(await Page());
+  expect(screen.getByText(/Aucun défi validé cette semaine/)).toBeTruthy();
+  expect(screen.queryByRole("list", { name: "Joueurs les plus actifs de la semaine" })).toBeNull();
 });
