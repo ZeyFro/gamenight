@@ -155,7 +155,7 @@ export async function enqueueInstantSessionInvites(
   await scopedDb.notification.createMany({ data: allowed.map((user) => ({
     userId: user.id, communityId: session.communityId, relatedSessionId: instantSessionId,
     type: "INSTANT_SESSION_INVITE" as const, title: "🎮 Jouer maintenant",
-    message: `Une session instantanée démarre sur ${session.game.name} — rejoins-la si tu es dispo.`,
+    message: `Une soirée instantanée démarre sur ${session.game.name} — rejoins-la si tu es dispo.`,
   })) });
 }
 
@@ -228,15 +228,15 @@ async function buildInviteMessage(session: InstantSessionForMessage) {
   const linkLine = url ? `\n${url}` : "";
   if (session.status === "ENDED") {
     const embed: DiscordRestEmbed = {
-      title: "🎮 Session terminée",
-      description: `La session sur **${session.game.name}** est terminée.${linkLine}`,
+      title: "🎮 Soirée terminée",
+      description: `La soirée sur **${session.game.name}** est terminée.${linkLine}`,
       color: ACCENT_COLOR,
     };
     return { embeds: [embed], allowedMentions: NO_MENTIONS_PARSE };
   }
   const embed: DiscordRestEmbed = {
     title: "🎮 Jouer maintenant",
-    description: `Une session instantanée est en cours sur **${session.game.name}** — rejoins-la si tu es dispo.${linkLine}`,
+    description: `Une soirée instantanée est en cours sur **${session.game.name}** — rejoins-la si tu es dispo.${linkLine}`,
     color: ACCENT_COLOR,
   };
   return { embeds: [embed], allowedMentions: NO_MENTIONS_PARSE };

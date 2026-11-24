@@ -21,7 +21,7 @@ export const metadata = pageMetadata("Jouer maintenant");
 const ERROR_MESSAGES: Record<string, string> = {
   rate_limited: RATE_LIMIT_MESSAGE,
   [VALIDATION_ERROR_KEY]: VALIDATION_ERROR_MESSAGE,
-  already_in_another_session: "Tu es déjà dans une autre session instantanée active — quitte-la d'abord.",
+  already_in_another_session: "Tu es déjà dans une autre soirée instantanée active — quitte-la d'abord.",
 };
 
 /**
@@ -59,7 +59,7 @@ export default async function JouerMaintenantPage({
     <div className="mx-auto flex w-full max-w-2xl flex-col gap-6 px-4 py-8 sm:px-6 sm:py-12 lg:max-w-4xl">
       <h1 className="text-xl font-semibold text-foreground sm:text-2xl">🎮 Jouer maintenant</h1>
       <p className="text-sm text-muted">
-        Une session spontanée, sans planification — démarre un jeu, tes potes rejoignent librement
+        Une soirée spontanée, sans planification — démarre un jeu, tes potes rejoignent librement
         tant qu&apos;elle est active (3h maximum). Distinct des soirées planifiées et de la roulette.
       </p>
       <div className="flex flex-wrap gap-3">
@@ -73,7 +73,7 @@ export default async function JouerMaintenantPage({
 
       {myActiveSession ? (
         <Card className="flex items-center justify-between gap-3">
-          <p className="text-sm text-foreground">Tu es déjà dans une session instantanée active.</p>
+          <p className="text-sm text-foreground">Tu es déjà dans une soirée instantanée active.</p>
           <Link href={`/jouer-maintenant/${myActiveSession.id}`} className="text-sm font-medium text-accent">
             Y retourner →
           </Link>
@@ -86,10 +86,10 @@ export default async function JouerMaintenantPage({
 
       <div className="flex flex-col gap-3">
         <h2 className="text-sm font-medium text-foreground">
-          Sessions actives ({activeSessions.length})
+          Soirées actives ({activeSessions.length})
         </h2>
         {activeSessions.length === 0 ? (
-          <EmptyState icon="🎮" title="Aucune session instantanée en cours." />
+          <EmptyState icon="🎮" title="Aucune soirée instantanée en cours." />
         ) : (
           <ul className="flex flex-col gap-2">
             {activeSessions.map((s) => (

@@ -36,7 +36,7 @@ export async function markInstantSessionInterest(instantSessionId: string, userI
   const existing = await scopedDb.instantSessionInterest.findUnique({ where: { instantSessionId_userId: { instantSessionId, userId } }, select: { id: true } });
   if (existing) return { ok: true };
   await scopedDb.instantSessionInterest.create({ data: { instantSessionId, userId } });
-  await createNotification({ communityId: session.communityId, userId: session.createdById, type: "REMINDER", title: "Quelqu'un est intéressé", message: "Un joueur est intéressé par ta session « Jouer maintenant »." });
+  await createNotification({ communityId: session.communityId, userId: session.createdById, type: "REMINDER", title: "Quelqu'un est intéressé", message: "Un joueur est intéressé par ta soirée « Jouer maintenant »." });
   return { ok: true };
 }
 

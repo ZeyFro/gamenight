@@ -22,7 +22,7 @@ export const TOWER_S1_SOLO_CHALLENGES = [
   {
     title: "Le décor du jour",
     instructions:
-      "Choisis le plus beau décor que tu croises pendant une session, partage une capture et décris-le en une phrase. Preuve postérieure à l’attribution, jamais réutilisée d’un autre défi. Aucun achat requis : un jeu gratuit convient.",
+      "Choisis le plus beau décor que tu croises pendant une partie, partage une capture et décris-le en une phrase. Preuve postérieure à l’attribution, jamais réutilisée d’un autre défi. Aucun achat requis : un jeu gratuit convient.",
     rewardFloors: 1,
   },
   {
@@ -58,7 +58,7 @@ export const TOWER_S1_SOLO_CHALLENGES = [
   {
     title: "La playlist de la partie",
     instructions:
-      "Joue une session avec une musique du jeu ou une ambiance sonore que tu aimes. Partage une capture et cite le morceau ou l’ambiance. Preuve postérieure à l’attribution, jamais réutilisée d’un autre défi. Aucun achat requis : un jeu gratuit convient.",
+      "Joue une partie avec une musique du jeu ou une ambiance sonore que tu aimes. Partage une capture et cite le morceau ou l’ambiance. Preuve postérieure à l’attribution, jamais réutilisée d’un autre défi. Aucun achat requis : un jeu gratuit convient.",
     rewardFloors: 1,
   },
   {
@@ -190,7 +190,7 @@ export const TOWER_S1_SOLO_CHALLENGES = [
   {
     title: "Deux heures, une histoire",
     instructions:
-      "Pendant une session de deux heures environ, vis une aventure de ton choix et raconte-la en cinq phrases avec deux captures datées de l’écran. Preuve postérieure à l’attribution, jamais réutilisée d’un autre défi. Aucun achat requis : un jeu gratuit convient.",
+      "Pendant une partie de deux heures environ, vis une aventure de ton choix et raconte-la en cinq phrases avec deux captures datées de l’écran. Preuve postérieure à l’attribution, jamais réutilisée d’un autre défi. Aucun achat requis : un jeu gratuit convient.",
     rewardFloors: 2,
   },
   {
@@ -208,7 +208,7 @@ export const TOWER_S1_SOLO_CHALLENGES = [
   {
     title: "La route la plus longue",
     instructions:
-      "Parcours à pied, en monture ou en véhicule la plus grande distance possible en une session. Partage une capture de départ et d’arrivée et estime la distance. Preuve postérieure à l’attribution, jamais réutilisée d’un autre défi. Aucun achat requis : un jeu gratuit convient.",
+      "Parcours à pied, en monture ou en véhicule la plus grande distance possible en une partie. Partage une capture de départ et d’arrivée et estime la distance. Preuve postérieure à l’attribution, jamais réutilisée d’un autre défi. Aucun achat requis : un jeu gratuit convient.",
     rewardFloors: 2,
   },
   {
@@ -232,7 +232,7 @@ export const TOWER_S1_SOLO_CHALLENGES = [
   {
     title: "Le défi des trois ennemis",
     instructions:
-      "Bats trois types d’ennemis différents dans une même session. Partage une capture de chacun ou une capture de ton journal d’exploits. Preuve postérieure à l’attribution, jamais réutilisée d’un autre défi. Aucun achat requis : un jeu gratuit convient.",
+      "Bats trois types d’ennemis différents dans une même partie. Partage une capture de chacun ou une capture de ton journal d’exploits. Preuve postérieure à l’attribution, jamais réutilisée d’un autre défi. Aucun achat requis : un jeu gratuit convient.",
     rewardFloors: 2,
   },
   {
@@ -280,7 +280,7 @@ export const TOWER_S1_SOLO_CHALLENGES = [
   {
     title: "Le marathon de l’exploration",
     instructions:
-      "Explore au moins cinq zones distinctes d’un jeu en une même session. Partage une capture par zone et un carnet de bord en cinq phrases. Preuve postérieure à l’attribution, jamais réutilisée d’un autre défi. Aucun achat requis : un jeu gratuit convient.",
+      "Explore au moins cinq zones distinctes d’un jeu en une même partie. Partage une capture par zone et un carnet de bord en cinq phrases. Preuve postérieure à l’attribution, jamais réutilisée d’un autre défi. Aucun achat requis : un jeu gratuit convient.",
     rewardFloors: 3,
   },
   {
@@ -308,9 +308,9 @@ export const TOWER_S1_SOLO_CHALLENGES = [
     rewardFloors: 3,
   },
   {
-    title: "La session sans HUD",
+    title: "La partie sans HUD",
     instructions:
-      "Joue une session complète avec l’interface de jeu masquée ou réduite et termine un objectif. Partage une capture avant et après, plus un bilan en trois phrases. Preuve postérieure à l’attribution, jamais réutilisée d’un autre défi. Aucun achat requis : un jeu gratuit convient.",
+      "Joue une partie complète avec l’interface de jeu masquée ou réduite et termine un objectif. Partage une capture avant et après, plus un bilan en trois phrases. Preuve postérieure à l’attribution, jamais réutilisée d’un autre défi. Aucun achat requis : un jeu gratuit convient.",
     rewardFloors: 3,
   },
   {
@@ -352,13 +352,13 @@ export const TOWER_S1_SOLO_CHALLENGES = [
   {
     title: "Le jeu compétitif en progression",
     instructions:
-      "Améliore une statistique mesurable (rang, score, temps) dans un jeu compétitif lors de la même session. Partage une capture avant et une après avec la différence. Preuve postérieure à l’attribution, jamais réutilisée d’un autre défi. Aucun achat requis : un jeu gratuit convient.",
+      "Améliore une statistique mesurable (rang, score, temps) dans un jeu compétitif lors de la même partie. Partage une capture avant et une après avec la différence. Preuve postérieure à l’attribution, jamais réutilisée d’un autre défi. Aucun achat requis : un jeu gratuit convient.",
     rewardFloors: 3,
   },
   {
     title: "La nuit de l’inattendu",
     instructions:
-      "Pendant une session, accepte trois détours imprévus au lieu de suivre ton plan initial. Partage une capture par détour et raconte l’aventure en cinq phrases. Preuve postérieure à l’attribution, jamais réutilisée d’un autre défi. Aucun achat requis : un jeu gratuit convient.",
+      "Pendant une partie, accepte trois détours imprévus au lieu de suivre ton plan initial. Partage une capture par détour et raconte l’aventure en cinq phrases. Preuve postérieure à l’attribution, jamais réutilisée d’un autre défi. Aucun achat requis : un jeu gratuit convient.",
     rewardFloors: 3,
   },
 ] as const satisfies ReadonlyArray<{ title: string; instructions: string; rewardFloors: number }>;

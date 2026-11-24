@@ -36,7 +36,7 @@ export const TOWER_TEAM_STARTER_CHALLENGES = [
   },
   {
     title: "La cérémonie de la victoire modeste",
-    instructions: "Enchaînez ensemble trois objectifs distincts au cours de la même session, avec une contribution identifiable de chaque participant. Fournissez au moins deux captures montrant la progression et le résultat final, puis présentez la réussite comme une cérémonie officielle en résumant le rôle de chacun.",
+    instructions: "Enchaînez ensemble trois objectifs distincts au cours de la même partie, avec une contribution identifiable de chaque participant. Fournissez au moins deux captures montrant la progression et le résultat final, puis présentez la réussite comme une cérémonie officielle en résumant le rôle de chacun.",
     rewardFloors: 3,
   },
   {
@@ -46,7 +46,7 @@ export const TOWER_TEAM_STARTER_CHALLENGES = [
   },
   {
     title: "Le mini-objectif collectif",
-    instructions: "Choisissez ensemble un petit objectif réalisable en une session courte, terminez-le puis partagez une capture du résultat. Une phrase suffit pour expliquer qui a fait quoi.",
+    instructions: "Choisissez ensemble un petit objectif réalisable en une partie courte, terminez-le puis partagez une capture du résultat. Une phrase suffit pour expliquer qui a fait quoi.",
     rewardFloors: 1,
   },
 ] as const satisfies ReadonlyArray<{ title: string; instructions: string; rewardFloors: number }>;
