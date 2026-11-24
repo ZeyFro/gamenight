@@ -13,7 +13,7 @@ Décision du propriétaire du 17 novembre 2026. Elle remplace « un interrupteur
 ## Le soir de l'activation
 
 1. Vercel : `TOWER_CHALLENGES_ENABLED=true` et `TOWER_DISCORD_ANNOUNCE_ENABLED=true`, avec **un seul redéploiement**.
-2. Base de Production, drapeau communautaire :
+2. Drapeau communautaire : dans `/admin` → Communautés → carte du serveur → « The Tower (défis) » → « Activer » (depuis le 24/11/2026) ; l'ancien chemin SQL reste valable, en dernier recours :
    ```sql
    UPDATE "Community" SET "towerChallengesEnabled" = true WHERE "discordGuildId" = '553922938101825536';
    ```

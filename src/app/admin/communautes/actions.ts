@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { requireAdmin } from "@/lib/admin";
 import { checkRateLimit } from "@/lib/rate-limit";
-import { activateCommunity, isCommunityAdminEnabled, parseChannelCategory, setCommunityAttendanceXp, setCommunityChannel, setCommunityGuide, setCommunityFreeGames, setCommunitySteamPriceAlerts, setCommunityGroupPurchasePlans, setCommunityPlayerClassifieds, setCommunityTeams, setCommunityTowerLevelsPerFloor } from "@/lib/community-admin";
+import { activateCommunity, isCommunityAdminEnabled, parseChannelCategory, setCommunityAttendanceXp, setCommunityChannel, setCommunityGuide, setCommunityFreeGames, setCommunitySteamPriceAlerts, setCommunityGroupPurchasePlans, setCommunityPlayerClassifieds, setCommunityTeams, setCommunityTowerChallenges, setCommunityTowerLevelsPerFloor } from "@/lib/community-admin";
 import { setCommunitySessionGallery } from "@/lib/community-admin";
 import { recordSensitiveOperation, type SensitiveOperation } from "@/lib/sensitive-operation-log";
 
@@ -144,6 +144,16 @@ export async function setCommunityTeamsAction(formData: FormData): Promise<void>
   const enabled = formData.get("enabled");
   const result = await setCommunityTeams({ communityId: formData.get("communityId"), enabled: enabled === "true" ? true : enabled === "false" ? false : null });
   await logged(admin.id, "community.teams", formData.get("communityId"), result === "saved" ? "teams-ok" : `teams-${result}`);
+}
+
+export async function setCommunityTowerChallengesAction(formData: FormData): Promise<void> {
+  if (!isCommunityAdminEnabled()) redirect("/admin");
+  const admin = await requireAdmin();
+  if (!admin) redirect("/");
+  if (!checkRateLimit(admin.id, "setCommunityTowerChallenges")) done("rate");
+  const enabled = formData.get("enabled");
+  const result = await setCommunityTowerChallenges({ communityId: formData.get("communityId"), enabled: enabled === "true" ? true : enabled === "false" ? false : null });
+  await logged(admin.id, "community.tower_challenges", formData.get("communityId"), result === "saved" ? "tower-challenges-ok" : `tower-challenges-${result}`);
 }
 
 export async function setCommunityTowerLevelsPerFloorAction(formData: FormData): Promise<void> {

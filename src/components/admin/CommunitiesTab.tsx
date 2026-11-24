@@ -4,7 +4,7 @@ import { listAdminCommunities, ADMIN_CHANNEL_CATEGORIES, type AdminCommunityRow 
 import { Card } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
-import { activateCommunityAction, setCommunityAttendanceXpAction, setCommunityChannelAction, setCommunityGuideAction, setCommunityFreeGamesAction, setCommunitySteamPriceAlertsAction, setCommunityGroupPurchasePlansAction, setCommunityPlayerClassifiedsAction, setCommunityTeamsAction, setCommunityTowerLevelsPerFloorAction } from "@/app/admin/communautes/actions";
+import { activateCommunityAction, setCommunityAttendanceXpAction, setCommunityChannelAction, setCommunityGuideAction, setCommunityFreeGamesAction, setCommunitySteamPriceAlertsAction, setCommunityGroupPurchasePlansAction, setCommunityPlayerClassifiedsAction, setCommunityTeamsAction, setCommunityTowerChallengesAction, setCommunityTowerLevelsPerFloorAction } from "@/app/admin/communautes/actions";
 import { setCommunitySessionGalleryAction } from "@/app/admin/communautes/actions";
 import { THREAD_CAPABLE_CHANNEL_TYPES, VOICE_CHANNEL_TYPES } from "@/lib/discord-rest";
 import { plural } from "@/lib/plural";
@@ -47,6 +47,9 @@ const RESULT_MESSAGES: Record<string, { ok: boolean; text: string }> = {
   "teams-ok": { ok: true, text: "Réglage des équipes enregistré." },
   "teams-invalid": { ok: false, text: "Demande invalide." },
   "teams-unavailable": { ok: false, text: "Seule une communauté active peut activer les équipes." },
+  "tower-challenges-ok": { ok: true, text: "Réglage « The Tower (défis) » enregistré." },
+  "tower-challenges-invalid": { ok: false, text: "Demande invalide." },
+  "tower-challenges-unavailable": { ok: false, text: "Seule une communauté active peut activer The Tower." },
   "tower-floor-ok": { ok: true, text: "Règle d’étage enregistrée." },
   "tower-floor-invalid": { ok: false, text: "Choisis entre 5 et 20 niveaux par étage." },
   "tower-floor-unavailable": { ok: false, text: "Cette communauté ne peut plus être modifiée." },
@@ -193,6 +196,15 @@ function CommunityCard({ community: c }: { community: AdminCommunityRow }) {
           <input type="hidden" name="enabled" value={String(!c.communityTeamsEnabled)} />
           <p className="text-sm text-muted">Équipes et projets durables : {c.communityTeamsEnabled ? "activés" : "désactivés"}. Aucun message Discord n’est envoyé.</p>
           <Button type="submit" size="sm">{c.communityTeamsEnabled ? "Désactiver" : "Activer"}</Button>
+        </form>
+      )}
+
+      {c.status === "ACTIVE" && (
+        <form action={setCommunityTowerChallengesAction} className="flex items-center justify-between gap-3 border-t border-border pt-4">
+          <input type="hidden" name="communityId" value={c.id} />
+          <input type="hidden" name="enabled" value={String(!c.towerChallengesEnabled)} />
+          <p className="text-sm text-muted">The Tower (défis) : {c.towerChallengesEnabled ? "activé" : "désactivé"}. Sans ce réglage, les défis, <span className="whitespace-nowrap">/admin/tower-propositions</span> et <span className="whitespace-nowrap">/admin/tower-irregular</span> restent introuvables pour ce serveur. Aucun message Discord n’est envoyé.</p>
+          <Button type="submit" size="sm">{c.towerChallengesEnabled ? "Désactiver" : "Activer"}</Button>
         </form>
       )}
 
