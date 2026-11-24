@@ -92,7 +92,7 @@ const BY_TITLE = new Map<string, TowerChallengeCategory>([
   ["Le défi sans dégâts", "GAMING"],
   ["La série invaincue", "GAMING"],
   ["Le projet de mini-jeu", "CREATIF"],
-  ["La session sans HUD", "ABSURDE"],
+  ["La partie sans HUD", "ABSURDE"],
   ["Le trio d’objectifs", "GAMING"],
   ["L’expédition longue durée", "LONGUE_DUREE"],
   ["Le défi du jeu oublié", "DECOUVERTE"],

@@ -22,7 +22,7 @@ export const TOWER_S1_TEAM_CHALLENGES = [
   {
     title: "Le nom de l’escouade du jour",
     instructions:
-      "Jouez une partie ensemble et choisissez un nom d’escouade collectif pour la session. Partagez une capture et le nom retenu. Preuve postérieure à l’attribution, jamais réutilisée d’un autre défi. Aucun achat requis : un jeu gratuit convient.",
+      "Jouez une partie ensemble et choisissez un nom d’escouade collectif pour la partie. Partagez une capture et le nom retenu. Preuve postérieure à l’attribution, jamais réutilisée d’un autre défi. Aucun achat requis : un jeu gratuit convient.",
     rewardFloors: 1,
   },
   {

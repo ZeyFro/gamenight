@@ -15,9 +15,9 @@ const EXTRA_SECTIONS: GuideSection[] = [
     icon: "🎮",
     title: "Jouer maintenant",
     lines: [
-      "Lance une session spontanée : choisis un jeu et les potes à prévenir.",
+      "Lance une soirée spontanée : choisis un jeu et les potes à prévenir.",
       "Les autres rejoignent librement, sans invitation préalable.",
-      "La session se termine seule au bout de sa durée (3 h maximum).",
+      "La soirée se termine seule au bout de sa durée (3 h maximum).",
     ],
   },
   {

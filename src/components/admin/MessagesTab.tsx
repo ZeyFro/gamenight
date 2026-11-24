@@ -21,7 +21,7 @@ export async function MessagesTab() {
     <div className="flex flex-col gap-6">
       <p className="text-sm text-muted">
         Tirés au hasard pour les rappels avant soirée, et les notifications
-        de création/modification de session. Coche les catégories où un
+        de création/modification de soirée. Coche les catégories où un
         message peut être utilisé — chaque envoi tire au hasard parmi les
         messages actifs de sa catégorie. Réservé aux administrateurs du groupe :
         les autres membres ne peuvent ni voir ni modifier cette liste.

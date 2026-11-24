@@ -27,7 +27,7 @@ export const PLAY_HABITS = [
   { key: "WEEKEND", label: "Week-end" },
   { key: "LATE_NIGHT", label: "Tard dans la nuit" },
   { key: "SHORT_SESSIONS", label: "Parties courtes (moins d’une heure)" },
-  { key: "LONG_SESSIONS", label: "Longues sessions" },
+  { key: "LONG_SESSIONS", label: "Longues soirées" },
 ] as const;
 
 /** Préférences communautaires : ambiance recherchée. */

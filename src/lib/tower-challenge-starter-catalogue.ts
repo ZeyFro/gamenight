@@ -16,7 +16,7 @@ export const TOWER_STARTER_CHALLENGES = [
   },
   {
     "title": "Le trophée invisible",
-    "instructions": "Choisis une petite réussite de ta session que le jeu ne récompense pas spécialement. Partage une capture ou un lien de preuve dans le salon Défis et donne-lui un nom de trophée beaucoup trop solennel.",
+    "instructions": "Choisis une petite réussite de ta partie que le jeu ne récompense pas spécialement. Partage une capture ou un lien de preuve dans le salon Défis et donne-lui un nom de trophée beaucoup trop solennel.",
     "rewardFloors": 1
   },
   {
@@ -51,7 +51,7 @@ export const TOWER_STARTER_CHALLENGES = [
   },
   {
     "title": "Un mot, tout un jeu",
-    "instructions": "Choisis une capture de ta session et résume-la avec un seul mot, puis explique en une phrase pourquoi ce mot est beaucoup trop précis. Partage la preuve dans le salon Défis.",
+    "instructions": "Choisis une capture de ta partie et résume-la avec un seul mot, puis explique en une phrase pourquoi ce mot est beaucoup trop précis. Partage la preuve dans le salon Défis.",
     "rewardFloors": 1
   },
   {
@@ -86,7 +86,7 @@ export const TOWER_STARTER_CHALLENGES = [
   },
   {
     "title": "Le guide des trois obstacles",
-    "instructions": "Dans un jeu de ton choix déjà accessible, complète trois objectifs distincts de difficulté raisonnable sur une session. Fournis des captures montrant les étapes et un court récit chronologique. Alternative : jeu gratuit sans achat.",
+    "instructions": "Dans un jeu de ton choix déjà accessible, complète trois objectifs distincts de difficulté raisonnable sur une partie. Fournis des captures montrant les étapes et un court récit chronologique. Alternative : jeu gratuit sans achat.",
     "rewardFloors": 3
   },
   {
@@ -101,7 +101,7 @@ export const TOWER_STARTER_CHALLENGES = [
   },
   {
     "title": "Le défi de patience raisonnée",
-    "instructions": "Dans une session de jeu accessible sans mise en danger ni temps imposé, termine un objectif nécessitant plusieurs étapes et documente trois jalons visibles en jeu. Une alternative gratuite est acceptée ; aucun exploit ni dépense requis.",
+    "instructions": "Dans une partie de jeu accessible sans mise en danger ni temps imposé, termine un objectif nécessitant plusieurs étapes et documente trois jalons visibles en jeu. Une alternative gratuite est acceptée ; aucun exploit ni dépense requis.",
     "rewardFloors": 3
   },
   {
@@ -121,7 +121,7 @@ export const TOWER_STARTER_CHALLENGES = [
   },
   {
     "title": "La soirée surprise",
-    "instructions": "Inscris-toi à une soirée GameNight proposée par un autre membre sur un jeu que tu n’aurais pas choisi spontanément. Participe réellement à la session puis partage une capture de jeu et une courte impression.",
+    "instructions": "Inscris-toi à une soirée GameNight proposée par un autre membre sur un jeu que tu n’aurais pas choisi spontanément. Participe réellement à la soirée puis partage une capture de jeu et une courte impression.",
     "rewardFloors": 2
   },
   {
