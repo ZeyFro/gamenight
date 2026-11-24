@@ -22,7 +22,7 @@ Chaque type d'événement de la file porte un **genre explicite** (`src/lib/noti
 | `PUBLIC_MILESTONE` | salon, dans l'app | liste fermée ci-dessous |
 | `PUBLIC_UPDATE` | salon (édition ou retrait d'un message déjà autorisé) | `SESSION_MODIFIED`, `SESSION_REMOVED`, `TOURNAMENT_MODIFIED`, `TOURNAMENT_REMOVED`, `TOWER_PROOF_VOTE_UPDATED` |
 | `THREAD_CONTEXT` | salon (fil d'une annonce déjà autorisée, mention de secours) | `SESSION_REMINDER`, `SESSION_DATE_CHANGED`, `TOURNAMENT_MATCH_RESULT`, `*_DM_FALLBACK`, `TOWER_PROOF_THREAD` |
-| `OPT_IN_ROLE_PING` | salon, dans l'app | aucun type aujourd'hui (voir ping de rôle) |
+| `OPT_IN_ROLE_PING` | salon, dans l'app | `SESSION_GAME_PING` (ping du rôle de jeu d'une nouvelle soirée ouverte, Q19) |
 | `IN_APP_ONLY` | dans l'app seulement | aucun type aujourd'hui (le genre refuse tout canal Discord pour un futur événement purement in-app) |
 | `SYSTEM_ACTION` | salon (action de l'executor, ce n'est pas une notification) | synchronisation d'espaces, rôles, signalement, soutiens |
 
@@ -36,9 +36,9 @@ Chaque type d'événement de la file porte un **genre explicite** (`src/lib/noti
 
 1. **« Jouer maintenant » garde son annonce publique, sans mention** (corrigé avant fusion) : une partie immédiate est une soirée ouverte aux membres, annoncée comme une soirée (`INSTANT_SESSION_ANNOUNCE` = moment marquant, sa mise à jour = édition) ; le sous-agent l'avait supprimée par prudence, ce qui aurait retiré en silence un comportement déjà en production (`instant-announcement.integration.test.ts`). L'invitation reste un MP, jamais pré-cochée (#552).
 2. **La soirée annoncée et le tournoi créé restent des moments marquants** (ils portent le fil et les MP de la décision #116) ; un rappel, un changement de date, un résultat de match ou une mention de secours restent dans le fil de l'annonce, jamais dans un salon libre.
-3. **Aucun ping de rôle de jeu n'est branché** dans une annonce : le garde-fou est posé, mais aucun appelant n'en demande (option la plus restrictive). À brancher seulement sur demande (tournoi public, jeu gratuit).
+3. **Ping de rôle de jeu branché (Q19, décision de Maxime du 24/11 : oui)** sur UN seul chemin : la création d'une NOUVELLE soirée OUVERTE (`PUBLIC` ou `APPLICATION`, jamais `PRIVATE`). `enqueueSessionGamePing` (`session-announce.ts`, appelé par `enqueueSessionCreationDeliveries`) enfile l'événement `SESSION_GAME_PING` (genre `OPT_IN_ROLE_PING`, salon seulement, jamais de MP) ; `resolveGamePing` relit tout à l'envoi : `NOTIFICATION_CENTER_ENABLED` ET `SESSION_VISIBILITY_ENABLED` allumés, soirée VOTING/SCHEDULED encore ouverte, UN seul jeu (jeu retenu, sinon unique proposition ; plusieurs candidats = aucun ping), au moins un abonné opt-in du jeu dans la communauté, rôle Discord du jeu EXISTANT et unique et non sensible (aucune création de rôle ici). La mention vient uniquement de `buildGameRolePing` (`allowed_mentions` = ce rôle, jamais @everyone ni @here). Message dans le salon des soirées : mention, nom du jeu et lien ; ni créateur ni détail privé. Aucun ping à une modification, un rappel, une soirée privée ni une soirée issue d'une roulette différée. Limite connue : une mention de rôle prévient tous les porteurs du rôle (ceux qui l'ont pris par `/role`) et ne peut pas exclure le créateur s'il le porte.
 4. **Deux genres techniques** s'ajoutent aux quatre de la demande : `THREAD_CONTEXT`/`PUBLIC_UPDATE` (suite d'un message déjà autorisé) et `SYSTEM_ACTION` (actions d'administration de l'executor), pour ne pas casser les fils, les éditions et les espaces existants.
 
 ## Limites
-- `buildGameRolePing` et `notifyGamePingOptIns` sont prêts pour un contexte public (tournoi public, jeux gratuits) mais aucun appelant n'est branché (décision 3 ci-dessus).
+- `buildGameRolePing` et `notifyGamePingOptIns` : le ping de rôle est branché sur la création d'une soirée ouverte (décision 3). Reste non branché : tournoi public, jeux gratuits.
 - Les chemins MP existants (soirée, tournoi, roulette, Jouer maintenant) ne sont pas réécrits : la politique les encadre au point de passage unique de l'executor, elle ne change pas leur contenu.

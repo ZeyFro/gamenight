@@ -17,6 +17,11 @@ import { filterByActiveSessionInvite } from "@/lib/session-access";
 import { createNotifications } from "@/lib/notifications";
 import { isSessionDirectMessageEnabled, isRouletteDirectMessageEnabled } from "@/lib/discord-bot-config";
 import { resolveSessionAnnounceConfig } from "@/lib/community-channels";
+import { countGamePingOptIns, isNotificationCenterEnabled } from "@/lib/game-ping-optin";
+import { sessionVisibilityEnabled } from "@/lib/session-visibility";
+import { buildGameRolePing } from "@/lib/notification-policy";
+import { getDefaultCommunityId } from "@/lib/default-community";
+import { listGuildRoles } from "@/lib/discord-rest";
 import {
   createNotificationEvent,
   enqueueDelivery,
@@ -160,6 +165,9 @@ function inviteSlot(sessionId: string, inviteId: string): string {
 }
 function creatorMemberSlot(sessionId: string): string {
   return `${GUILD_SLOT_PREFIX}:SESSION:${sessionId}:creator-member`;
+}
+function gamePingSlot(sessionId: string): string {
+  return `${GUILD_SLOT_PREFIX}:SESSION:${sessionId}:game-ping`;
 }
 function threadDeleteSlot(sessionId: string): string {
   return `${GUILD_SLOT_PREFIX}:SESSION:${sessionId}:thread-delete`;
@@ -379,7 +387,7 @@ async function enqueueDirectMessageFallback(input: TerminalDiscordFailureInput):
  */
 export async function enqueueSessionCreationDeliveries(
   sessionId: string,
-  db: NotificationDb = prisma,
+  db: NotificationDb & Pick<typeof prisma, "session"> = prisma,
   sourceRouletteId?: string,
   /** Communauté de la soirée si l'appelant la connaît : évite de relire la session. */
   communityId?: string | null
@@ -422,6 +430,67 @@ export async function enqueueSessionCreationDeliveries(
   // classique ou roulette (un seul appelant, `enqueueSessionCreationDeliveries`,
   // commun aux deux chemins).
   await enqueueSessionCreatorThreadMembership(sessionId, db, communityId);
+  // Q19 : ping du rôle de jeu, SEULEMENT pour une nouvelle soirée OUVERTE (jamais une soirée privée) et un jeu qui a des abonnés opt-in.
+  // Une soirée issue d'une roulette différée n'est pas annoncée ici (la `Session` naît plus tard, par le cron).
+  if (!sourceRouletteId) await enqueueSessionGamePing(sessionId, db, communityId);
+}
+
+/** Jeu unique d'une soirée : le jeu retenu, sinon l'unique proposition. Plusieurs candidats = aucun jeu (un seul rôle pingable, jamais de devinette). */
+function singleGameOfSession(session: { decidedGameId: string | null; proposals: readonly { gameId: string }[] }): string | null {
+  if (session.decidedGameId) return session.decidedGameId;
+  return session.proposals.length === 1 ? session.proposals[0].gameId : null;
+}
+
+/**
+ * Enfile le ping du rôle de jeu d'une NOUVELLE soirée ouverte (Q19, décision de Maxime : oui). Tous les verrous sont revérifiés à
+ * l'envoi (`resolveGamePing`) ; ici on évite seulement une file inutile : centre de notifications allumé (opt-in), visibilité des soirées
+ * allumée, soirée PUBLIC ou APPLICATION, un seul jeu, au moins un abonné opt-in. Une soirée privée n'est jamais pingée.
+ */
+export async function enqueueSessionGamePing(sessionId: string, db: NotificationDb & Pick<typeof prisma, "session"> = prisma, communityId?: string | null): Promise<void> {
+  if (!isNotificationCenterEnabled() || !sessionVisibilityEnabled()) return;
+  const session = await db.session.findUnique({
+    where: { id: sessionId },
+    select: { visibility: true, communityId: true, decidedGameId: true, proposals: { select: { gameId: true } } },
+  });
+  if (!session || session.visibility === "PRIVATE") return;
+  const gameId = singleGameOfSession(session);
+  if (!gameId) return;
+  const community = communityId ?? session.communityId ?? (await getDefaultCommunityId());
+  if ((await countGamePingOptIns(community, gameId)) <= 0) return;
+  const event = await createNotificationEvent({ category: "SESSION", eventType: "SESSION_GAME_PING", sourceId: sessionId, communityId }, db);
+  const created = await db.notificationDelivery.createMany({
+    data: [{ eventId: event.id, channel: "DISCORD_CHANNEL" as const, transport: "BOT" as const, operation: "SEND" as const, recipientKey: "channel", targetSlot: gamePingSlot(sessionId) }],
+    skipDuplicates: true,
+  });
+  if (created.count > 0) kickNotificationExecutor();
+}
+
+/**
+ * Message de ping du rôle de jeu, posté dans le salon des soirées (jamais dans le fil privé). Relit l'état JUSTE À TEMPS : soirée encore
+ * à venir et ouverte, jeu unique, abonnés opt-in, rôle Discord EXISTANT et unique (aucune création de rôle ici). La mention vient
+ * UNIQUEMENT de `buildGameRolePing` (un seul rôle, jamais @everyone ni @here). Le message ne contient ni le nom du créateur ni de détail
+ * privé : le nom du jeu et le lien de la soirée ouverte.
+ */
+async function resolveGamePing(session: SessionWithVotes, config: { guildId: string; channelId: string }): Promise<Resolution> {
+  if (!isNotificationCenterEnabled() || !sessionVisibilityEnabled()) return { eligible: false, reason: "expired" };
+  if (session.visibility === "PRIVATE" || session.deferredRoulette) return { eligible: false, reason: "expired" };
+  if (session.status !== "VOTING" && session.status !== "SCHEDULED") return { eligible: false, reason: "expired" };
+  const gameId = singleGameOfSession(session);
+  const game = gameId ? session.proposals.find((proposal) => proposal.gameId === gameId)?.game : undefined;
+  if (!gameId || !game) return { eligible: false, reason: "expired" };
+  const communityId = session.communityId ?? (await getDefaultCommunityId());
+  const optedInCount = await countGamePingOptIns(communityId, gameId);
+  if (optedInCount <= 0) return { eligible: false, reason: "preference_declined" };
+  const listed = await listGuildRoles({ guildId: config.guildId, deadline: new Date(Date.now() + 2_500) });
+  if (!listed.ok) return { eligible: false, reason: "configuration_unavailable" };
+  const ping = buildGameRolePing({ gameName: game.name, roles: listed.data.roles, optedInCount });
+  if (!ping) return { eligible: false, reason: "not_configured" };
+  const action: ResolvedAction = {
+    kind: "send_channel_message",
+    channelId: config.channelId,
+    message: { content: `${ping.content} 🎮 Nouvelle soirée ouverte : ${game.name} — ${absoluteSessionUrl(session.id)}`, allowedMentions: ping.allowedMentions },
+  };
+  return { eligible: true, action };
 }
 
 /**
@@ -1384,6 +1453,9 @@ export const sessionAnnounceResolver: DeliveryResolver = {
       session.deferredRoulette = Boolean((initial?.payload as { sourceRouletteId?: string } | null)?.sourceRouletteId);
     }
 
+    if (role === "game-ping") {
+      return resolveGamePing(session, config);
+    }
     if (role === "thread") {
       return resolveThreadCreation(sessionId, config.channelId);
     }
