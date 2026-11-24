@@ -36,7 +36,7 @@ import { logger } from "@/lib/logger";
 import { closeThreadOnEndSafely } from "@/lib/thread-close-on-end";
 import { requestSessionVoicePresenceStop } from "@/lib/voice-presence-coordination";
 import { isVoicePresenceEnabled } from "@/lib/session-voice-config";
-import { isWithinHistoryWindow } from "@/lib/history-visibility";
+import { isWithinDoneSessionHistoryWindow, isWithinHistoryWindow } from "@/lib/history-visibility";
 import type { PostToDiscordResult } from "@/lib/discord";
 import type { Game, GroupAchievement, Prisma, Session, SessionStatus, User } from "@prisma/client";
 
@@ -174,6 +174,8 @@ export function isSessionVisibleInHistory(
   now: Date = wallClockNow()
 ): boolean {
   if (session.status !== "DONE" && session.status !== "CANCELLED") return true;
+  // Une soirée JOUÉE reste dans l'historique 365 jours ; une soirée annulée en sort après 7 jours (production du 24/11/2026).
+  if (session.status === "DONE") return isWithinDoneSessionHistoryWindow(session.date, now);
   return isWithinHistoryWindow(session.date, now);
 }
 

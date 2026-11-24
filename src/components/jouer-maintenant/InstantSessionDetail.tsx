@@ -179,7 +179,7 @@ export function InstantSessionDetail({
       <div className="flex items-center justify-between gap-3">
         <div>
           <p className="text-sm text-muted">
-            {isEnded ? "Session terminée" : "Jouer maintenant"}
+            {isEnded ? "Soirée terminée" : "Jouer maintenant"}
           </p>
           <h1 className="text-xl font-semibold text-foreground sm:text-2xl">{view.game.name}</h1>
         </div>
@@ -204,8 +204,8 @@ export function InstantSessionDetail({
       {isEnded && (
         <p className="rounded-lg bg-surface p-3 text-sm text-muted">
           {view.endedReason === "expired"
-            ? "Cette session a atteint sa durée maximale (3h) et s'est terminée automatiquement."
-            : "Le créateur a terminé cette session pour tout le monde."}
+            ? "Cette soirée a atteint sa durée maximale (3h) et s'est terminée automatiquement."
+            : "Le créateur a terminé cette soirée pour tout le monde."}
         </p>
       )}
 
@@ -249,7 +249,7 @@ export function InstantSessionDetail({
       {joinState.status === "error" && (
         <p className="text-sm text-destructive">
           {joinState.errorReason === "already_in_another_session"
-            ? "Tu es déjà dans une autre session instantanée active — quitte-la d'abord."
+            ? "Tu es déjà dans une autre soirée instantanée active — quitte-la d'abord."
             : "Impossible de rejoindre pour le moment."}
         </p>
       )}

@@ -28,7 +28,7 @@ export function EndInstantSessionDialog({ instantSessionId }: { instantSessionId
     <Dialog.Root open={open} onOpenChange={setOpen}>
       <Dialog.Trigger asChild>
         <Button type="button" variant="destructive" size="sm">
-          Terminer la session
+          Terminer la soirée
         </Button>
       </Dialog.Trigger>
       <Dialog.Portal>
@@ -41,16 +41,16 @@ export function EndInstantSessionDialog({ instantSessionId }: { instantSessionId
             className="fixed inset-x-0 bottom-0 z-50 rounded-t-2xl border-t border-border bg-surface p-4 sm:inset-x-auto sm:top-1/2 sm:left-1/2 sm:bottom-auto sm:w-full sm:max-w-sm sm:-translate-x-1/2 sm:-translate-y-1/2 sm:rounded-2xl sm:border sm:p-6"
           >
             <Dialog.Title className="text-lg font-semibold text-foreground">
-              Terminer cette session pour tout le monde ?
+              Terminer cette soirée pour tout le monde ?
             </Dialog.Title>
             <Dialog.Description className="mt-2 text-sm text-muted">
-              En tant que créateur, quitter termine la session pour tous les participants présents.
+              En tant que créateur, quitter termine la soirée pour tous les participants présents.
               Elle ne pourra plus être rejointe ni modifiée. Les minutes déjà comptabilisées restent
               acquises.
             </Dialog.Description>
             {state.status === "error" && (
               <p className="mt-2 text-sm text-destructive">
-                Impossible de terminer la session pour le moment. Réessaie.
+                Impossible de terminer la soirée pour le moment. Réessaie.
               </p>
             )}
 

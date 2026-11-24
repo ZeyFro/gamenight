@@ -66,7 +66,7 @@ export default async function DisponibilitesPage() {
             📅 Vue calendrier collective
           </p>
           <p className="mt-0.5 text-sm text-muted">
-            Visualise les dispos de tout le groupe, les sessions et les
+            Visualise les dispos de tout le groupe, les soirées et les
             votes en cours sur une même vue.
           </p>
         </div>

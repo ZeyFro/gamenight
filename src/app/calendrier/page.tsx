@@ -20,11 +20,13 @@ import { saveCommunityBirthdayAction, createCommunityDateAction } from "./action
 import { Button } from "@/components/ui/Button";
 import { CalendarSubscription } from "@/components/calendar/CalendarSubscription";
 import { isCalendarFeedEnabled } from "@/lib/calendar-feed";
+import { RATE_LIMIT_MESSAGE } from "@/lib/rate-limit";
 
 export const metadata = pageMetadata("Calendrier");
 
 interface CalendrierSearchParams {
   date?: string;
+  error?: string;
   mode?: string;
   pote?: string;
   potes?: string;
@@ -114,6 +116,8 @@ async function CalendrierContent({
           Télécharger les soirées à venir (.ics)
         </a>
       </div>
+
+      {sp.error === "rate" && <p role="alert" className="rounded-xl border border-border p-3 text-sm text-foreground">{RATE_LIMIT_MESSAGE}</p>}
 
       {isCalendarFeedEnabled() && <CalendarSubscription />}
 
