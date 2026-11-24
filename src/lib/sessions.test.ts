@@ -101,10 +101,14 @@ describe("isSessionVisibleInHistory", () => {
     ).toBe(true);
   });
 
-  it("DONE datée d'exactement 7 jours pile (15 septembre 10h) : à la frontière, plus visible (fenêtre en millisecondes pleines, jamais un jour calendaire arrondi)", () => {
-    expect(
-      isSessionVisibleInHistory({ status: "DONE", date: new Date("2026-09-15T10:00:00Z") })
-    ).toBe(false);
+  it("DONE datée de plus de 7 jours (production du 24/11/2026 : 28 soirées terminées, historique vide) : reste dans l'historique", () => {
+    expect(isSessionVisibleInHistory({ status: "DONE", date: new Date("2026-09-15T10:00:00Z") })).toBe(true);
+    expect(isSessionVisibleInHistory({ status: "DONE", date: new Date("2026-08-02T20:00:00Z") })).toBe(true);
+  });
+
+  it("DONE datée de plus de 365 jours : sort de la liste (jamais de la base ni de l'accès direct)", () => {
+    expect(isSessionVisibleInHistory({ status: "DONE", date: new Date("2025-09-21T20:00:00Z") })).toBe(false);
+    expect(isSessionVisibleInHistory({ status: "DONE", date: new Date("2025-09-23T20:00:00Z") })).toBe(true);
   });
 
   it("DONE datée du 21 septembre : reste visible le 22 (le lendemain) — ne disparaît jamais dès le jour d'après sous prétexte des 'sept jours'", () => {
