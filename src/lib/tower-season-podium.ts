@@ -49,6 +49,10 @@ export async function readTowerSeasonPodiumRows(scopedDb: Prisma.TransactionClie
 /**
  * Read-only podium; eligibility is rechecked even when community isolation is OFF.
  *
+ * Aucun verrou de ligne (`FOR SHARE`) : la page `/tower/palmares` est en lecture seule, et un
+ * écrivain qui tient la ligne `Membership`/`Community` la bloquait sans limite (la page restait
+ * sur « Chargement… » jusqu'à la fin de l'écriture). Un simple SELECT relit l'état validé.
+ *
  * Décision Q7 du propriétaire (9 novembre 2026) : l'ordre reste étages, défis à 3 étages, heure
  * d'arrivée ; des joueurs STRICTEMENT égaux sur ces trois critères sont co-lauréats et partagent la
  * même place (`userId` ne sert plus qu'à un ordre d'affichage stable). Les places suivent l'ordre du
@@ -67,7 +71,6 @@ export async function getTowerSeasonPodium(input: unknown, current = new Date())
       JOIN "Community" c ON c.id = m."communityId"
       WHERE m."userId" = ${userId} AND m."communityId" = ${communityId}
         AND m.status = 'ACTIVE' AND c.status = 'ACTIVE' AND c."towerChallengesEnabled" = true
-      FOR SHARE OF m, c
     `;
     if (!access.length) return { status: "UNAVAILABLE" } as const;
     const scopedDb = scopedTransactionPrisma(tx, { communityIds: [communityId], includesDefault: false });

@@ -189,6 +189,36 @@ describe.skipIf(!url)("progression personnelle Tower (requêtes SQL réelles)", 
     expect(await lib.getTowerPersonalProgress({ viewerId: "", memberId: id("member"), communityId })).toEqual({ status: "INVALID" });
   });
 
+  it("reste lisible pendant qu'une écriture tient la ligne Membership du membre", async () => {
+    await floors("member", 12);
+    let release!: () => void;
+    let locked!: () => void;
+    const gate = new Promise<void>(resolve => { release = resolve; });
+    const lockHeld = new Promise<void>(resolve => { locked = resolve; });
+    const writer = db.$transaction(async tx => {
+      await tx.membership.update({
+        where: { communityId_userId: { communityId, userId: id("member") } },
+        data: { status: "ACTIVE" },
+      });
+      locked();
+      await gate;
+    }, { timeout: 20_000 });
+    await lockHeld;
+    try {
+      // Régression : la progression prenait un FOR SHARE sur cette ligne et attendait l'écrivain
+      // sans limite (page /tower/palmares figée sur « Chargement… »).
+      const outcome = await Promise.race([
+        read().then(result => ({ state: "lu" as const, result })),
+        new Promise<{ state: "bloqué" }>(resolve => setTimeout(() => resolve({ state: "bloqué" as const }), 3_000)),
+      ]);
+      expect(outcome.state).toBe("lu");
+      if (outcome.state === "lu") expect(outcome.result).toMatchObject({ status: "PROGRESS", floorsClimbed: "12" });
+    } finally {
+      release();
+      await writer;
+    }
+  });
+
   it("un membre lit sa propre progression", async () => {
     await floors("member", 31);
     expect(await read("member", "member")).toMatchObject({ status: "PROGRESS", floorsClimbed: "31", rank: "Ranker" });
