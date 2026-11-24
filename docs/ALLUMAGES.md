@@ -73,14 +73,15 @@
 
 **Variables (7)** : `TOWER_DISCORD_VOTES_ENABLED`, `TOWER_SEASON_AWARDS_ENABLED`, `TOWER_CHALLENGE_PROPOSALS_ENABLED`, `TOWER_CHALLENGE_REPLACEMENT_ENABLED`, `TOWER_IRREGULAR_GRANTS_ENABLED`, `TOWER_STEAM_AUTOVALIDATE_ENABLED`, `TOWER_TEAM_DAILY_ENABLED`.
 
-**Hors Vercel** : `TOWER_TEAM_DAILY_ENABLED` est aussi lu par le workflow GitHub `tower-team-daily.yml`. Dans GitHub → Settings → Secrets and variables → Actions → **Variables** : `TOWER_TEAM_DAILY_ENABLED` = `true` et `GAMENIGHT_CRON_BASE_URL` = adresse du site (le secret `CRON_SECRET` doit exister côté GitHub). Ajouter aussi sur cron-job.org un appel toutes les 10 min à `/api/cron/tower-steam-autovalidate` (en-tête `Authorization: Bearer <CRON_SECRET>`).
+**Défi de 18 h (décision du 24/11/2026)** : UNE seule source, la tâche cron-job.org `/api/cron/tower-team-daily` à **18:05 Europe/Paris** (fuseau de la tâche = Europe/Paris, donc l'heure d'été est gérée ; la route refuse de toute façon avant 18:00 et un second appel le même jour est sans effet, clé `team-<jour>`). Le workflow GitHub `tower-team-daily.yml` est **désactivé en laissant la variable d'Actions `TOWER_TEAM_DAILY_ENABLED` absente (ou la supprimer)** : sans elle, il se termine sans rien appeler. Ne pas supprimer le fichier du workflow. Ajouter aussi sur cron-job.org un appel toutes les 10 min à `/api/cron/tower-steam-autovalidate` (en-tête `Authorization: Bearer <CRON_SECRET>`).
 
 **Vérifier**
 - Une preuve déposée arrive dans le salon des preuves avec les boutons ✅/❌ et un fil. Un vote d'un compte présent depuis au moins 3 jours compte.
 - `/tower/propositions` s'ouvre pour un Ranker et est refusée sous 30 étages. `/admin/tower-propositions` liste la proposition.
+- **Accès exact (ces deux écrans répondent 404, jamais « refusé », quand une condition manque)** : (1) `TOWER_CHALLENGES_ENABLED` ET l'interrupteur de l'écran valent exactement `true` en Production, et le site a été redéployé après leur création ; (2) le réglage « The Tower (défis) » est activé pour le serveur affiché (`/admin` → Communautés) ; (3) le serveur affiché dans le sélecteur est celui où le compte est **propriétaire ou administrateur DU SERVEUR** (rôle OWNER ou ADMIN de la communauté, pas seulement administrateur de l'application) ; un simple membre, ou l'administrateur de l'application sans ce rôle sur ce serveur, obtient 404. Le lien « Valider les propositions » de `/tower` n'apparaît que pour le staff : s'il manque, la condition (3) est en cause. Lecture seule pour vérifier le rôle : `SELECT role FROM "Membership" WHERE "userId" = '<id>' AND status = 'ACTIVE';`.
 - Sur `/tower`, le bouton « Remplacer » apparaît pour un défi dont le jeu n'est pas possédé.
-- `/admin/tower-irregular` permet de donner et retirer le grade.
-- Le lendemain à 18 h (heure de Paris) : un défi d'équipe est attribué (GitHub → Actions → « tower-team-daily » vert).
+- `/admin/tower-irregular` permet de donner et retirer le grade (mêmes conditions d'accès que ci-dessus).
+- Le lendemain à 18 h 05 (heure de Paris) : un défi d'équipe est attribué (cron-job.org → tâche `tower-team-daily` : dernier résultat 200).
 - Un défi « mesurable Steam » se valide seul pour un profil Steam public.
 
 **Retour arrière** : supprimer les 7 variables (et la variable GitHub), Redeploy.
@@ -304,7 +305,7 @@ Le dépôt ne déclare **aucune** tâche planifiée dans `vercel.json` : tout le
 | 16 | `/api/cron/tournament-teams` | toutes les 15 minutes | Proposition | Si `TOURNAMENT_TEAMS_ENABLED` |
 | 17 | `/api/cron/team-applications` | toutes les heures | Proposition | Si `TEAM_RECRUITERS_ENABLED` |
 | 18 | `/api/cron/team-captain-handover` | 1 fois par jour à 05:00 | Proposition (simulation tant que le mode n'est pas `execute`) | Si passation allumée |
-| 19 | `/api/cron/tower-team-daily` | **18:00 Europe/Paris** (jamais avant) | Décision du 17/11/2026 ; déjà assuré par le workflow GitHub `tower-team-daily.yml` (créneaux 16 h et 17 h UTC, garde « heure ≥ 18 ») : **ne créer cette tâche que si on abandonne le workflow**, jamais les deux sans le savoir (le second appel du soir est sans effet : clé `team-<jour>`) | Si `TOWER_TEAM_DAILY_ENABLED` |
+| 19 | `/api/cron/tower-team-daily` | **18:05 Europe/Paris** (jamais avant 18:00 : la route refuse de toute façon avant) | Décision du 17/11/2026 ; déjà assuré par le workflow GitHub `tower-team-daily.yml` (créneaux 16 h et 17 h UTC, garde « heure ≥ 18 ») : **ne créer cette tâche que si on abandonne le workflow**, jamais les deux sans le savoir (le second appel du soir est sans effet : clé `team-<jour>`) | Si `TOWER_TEAM_DAILY_ENABLED` |
 
 **Backfill (décision du 24/11/2026, lecture du code)** : `game-news` (POST seulement) = **1 fois par jour à 05:30** (10 appels Steam publics, alimente « Actu gaming ») ; `steam-store` (POST seulement) = **1 fois par semaine, dimanche 04:30** ; `igdb-coop` = **supprimer la tâche quotidienne** (jusqu'à 4 minutes de base réveillée à chaque passage), à lancer à la main après un gros ajout de jeux ; `seed-reconcile` = **supprimer la tâche quotidienne** (jusqu'à 240 secondes de requêtes ; rejoue `backfillXp`, désormais limité aux lacunes historiques, #603), à lancer à la main après un déploiement qui ajoute des badges, tags, superlatifs ou messages. `game-news` et `steam-store` n'acceptent que **POST** : une tâche en GET reçoit 405. Jamais `/api/admin/force-relogin` (manuel, secret dédié du (a)).
 

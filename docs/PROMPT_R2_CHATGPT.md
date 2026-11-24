@@ -66,7 +66,7 @@ Une seule tâche à ajouter : la validation automatique des défis Steam.
    - Planification : **toutes les 10 minutes**
    - Méthode : GET
 3. Vérifier sans l'afficher que la copie porte l'en-tête `Authorization` (valeur masquée), le fuseau **Europe/Paris**, le délai d'attente **30 s**, et la **notification d'échec par e-mail** activée.
-4. Ne PAS créer de tâche pour `/api/cron/tower-team-daily` : le défi de 18 h est assuré par le workflow GitHub (étape 7). Ne PAS créer de tâche `/api/backfill/*`.
+4. Créer AUSSI la tâche du défi d'équipe de 18 h (décision du 24/11/2026 : c'est la seule source ; le workflow GitHub reste désactivé) : dupliquer la même tâche, titre `gamenight tower-team-daily`, adresse `https://gamenight-zeyfro.vercel.app/api/cron/tower-team-daily`, planification **tous les jours à 18:05, fuseau Europe/Paris**, méthode GET, même en-tête, délai 30 s, e-mail d'échec. Ne PAS créer de tâche `/api/backfill/*`. Le test d'exécution avant 18:00 doit répondre 200 avec `due:false` (c'est normal).
 5. Cliquer « Tester l'exécution » : résultat attendu **200 ou 202** (une réponse 401 = mauvais secret, 503 = `CRON_SECRET` absent de Vercel : arrête-toi).
 
 ÉTAPE 5 : CONTRÔLES APRÈS REDÉPLOIEMENT (30 minutes ; capture de chaque point)
@@ -77,7 +77,7 @@ A. Routes (aucun secret à fournir : on teste avec un FAUX secret, c'est volonta
 B. Pages, connecté en administrateur (compte de Maxime), sur ordinateur puis sur téléphone :
    1. `/tower` : les défis du catalogue s'affichent ; pour un défi dont le jeu n'est pas dans la bibliothèque du joueur, un bouton « Remplacer » est proposé.
    2. `/tower/palmares` : cartes « La semaine à The Tower » et « Ta progression » présentes, sans erreur.
-   3. `/tower/propositions` : s'ouvre pour un Ranker et est refusée pour un joueur sous 30 étages. `/admin/tower-propositions` et `/admin/tower-irregular` s'ouvrent (administrateur) ; un non-administrateur est renvoyé à l'accueil.
+   3. `/tower/propositions` : s'ouvre pour un Ranker et est refusée pour un joueur sous 30 étages. `/admin/tower-propositions` et `/admin/tower-irregular` s'ouvrent SEULEMENT avec un compte propriétaire ou administrateur du serveur affiché (rôle de la communauté, pas seulement administrateur de l'application) ; tout autre compte reçoit 404 (c'est normal). Si le compte de Maxime reçoit 404 : vérifier d'abord le serveur affiché dans le sélecteur, puis le réglage « The Tower (défis) » dans `/admin` → Communautés, puis le rôle (voir `docs/ALLUMAGES.md`, lot B) ; un non-staff est renvoyé à l'accueil.
    4. `/notifications` : la page s'ouvre (plus de 404 ni de titre « Introuvable »).
    5. `/ce-soir` : on peut se déclarer dispo pour 1 à 3 jeux.
    6. `/profil/parametres` : on peut masquer son profil, déclarer un niveau par jeu, remplir « Pour trouver des partenaires » (langues, habitudes, ambiance), et voir « Importer mes comptes liés » qui DEMANDE D'ABORD un accord (ne rien importer pour de vrai : refuser puis fermer).
@@ -98,23 +98,17 @@ F. Ce qu'on ne doit PAS voir : une liste de potes vide pour un compte qui a des 
 Ne continue pas à l'étape 7. Fais le retour arrière de l'étape 9 (seulement les variables du lot concerné si le défaut est clairement dans B ou dans C), puis Redeploy, et écris à Maxime ce que tu as vu.
 
 ÉTAPE 7 : DÉFI D'ÉQUIPE QUOTIDIEN DE 18 H (SEULEMENT si tous les contrôles de l'étape 5 sont bons)
-Le défi est déclenché par le workflow GitHub `Tower team daily challenge` (aux créneaux 16:00 et 17:00 UTC, avec une garde « heure de Paris ≥ 18 »). Dans GitHub → dépôt `ZeyFro/gamenight` → Settings → Secrets and variables → Actions :
-1. Onglet **Variables** → « New repository variable » (ou modifier) :
-   - `GAMENIGHT_CRON_BASE_URL` = `https://gamenight-zeyfro.vercel.app` (origine HTTPS seule, sans chemin, sans `/api`, sans espace ; sinon le workflow échoue).
-   - `TOWER_TEAM_DAILY_ENABLED` = `true` (à poser EN DERNIER : tant qu'elle n'existe pas, le workflow ne fait rien).
-2. Onglet **Secrets** → le secret `CRON_SECRET` doit exister (même valeur que dans Vercel). S'il n'existe pas : c'est Maxime qui le crée et colle la valeur lui-même (New repository secret, nom exact `CRON_SECRET`). Tu ne la vois ni ne la recopies jamais.
-3. Le workflow n'a pas de bouton « Run workflow » : on ne le teste pas à la main. Vérification le lendemain, voir l'étape 8.
+Le défi est déclenché UNIQUEMENT par la tâche cron-job.org créée à l'étape 4 (18:05 Europe/Paris). Le workflow GitHub `Tower team daily challenge` doit rester DÉSACTIVÉ : dans GitHub → dépôt `ZeyFro/gamenight` → Settings → Secrets and variables → Actions → **Variables**, vérifier que `TOWER_TEAM_DAILY_ENABLED` n'existe PAS (la supprimer si elle existe) ; ne rien créer d'autre côté GitHub. Ne pas supprimer le fichier du workflow.
 
 ÉTAPE 8 : VÉRIFICATION DU LENDEMAIN
-- GitHub → Actions → « Tower team daily challenge » : le créneau de 17:00 UTC (18:00 heure d'hiver de Paris) est **vert** et sa dernière ligne dit « Daily team challenge assignment completed successfully. » (le créneau de 16:00 UTC saute avec « Skipping UTC schedule slot before 18:00 Europe/Paris » : c'est normal l'hiver). GitHub peut retarder un créneau : un passage vert après 18:00 suffit.
-- Dans Discord, chaque équipe de 2 à 8 membres a reçu son défi à partir de 18:00 ; un second appel le même soir n'attribue rien de plus.
-- cron-job.org : la tâche `tower-steam-autovalidate` est verte depuis 24 heures ; le tableau de bord admin n'affiche aucune livraison Discord en échec.
+- cron-job.org → tâche `gamenight tower-team-daily` : le passage de 18:05 (Europe/Paris) a répondu **200** ; le défi d'équipe est arrivé à chaque équipe de 2 à 8 membres ; un second appel le même soir n'attribue rien de plus. GitHub → Actions → « Tower team daily challenge » : aucune exécution ne doit apparaître avec une étape d'appel (le workflow est désactivé).
+- - cron-job.org : la tâche `tower-steam-autovalidate` est verte depuis 24 heures ; le tableau de bord admin n'affiche aucune livraison Discord en échec.
 - Journal des allumages de `docs/ALLUMAGES.md` : remplis la ligne des lots B et C (date et heure, nom de la branche `sauvegarde-avant-r2-AAAAMMJJ`, vérifications OK) sans aucune valeur de secret.
 - Après 7 jours sans incident : supprimer la branche de sauvegarde Neon (Neon gratuit limite le nombre de branches).
 
 ÉTAPE 9 : RETOUR ARRIÈRE (exact)
 1. Vercel → Environment Variables (Production) : supprimer (ou mettre `false`) les 17 variables de l'étape 2 (ou seulement celles du lot en cause). Si tu retires `GAME_LEVELS_ENABLED`, retire aussi `GAME_LEVELS_MATCHMAKING_ENABLED`.
-2. GitHub → Settings → Secrets and variables → Actions → Variables : supprimer `TOWER_TEAM_DAILY_ENABLED` (le workflow arrête d'appeler la route).
+2. cron-job.org : désactiver la tâche `gamenight tower-team-daily` (la route répond de toute façon `enabled:false` une fois la variable Vercel retirée).
 3. cron-job.org : désactiver la tâche `gamenight tower-steam-autovalidate`.
 4. **Redeploy** de la production, attendre « Ready ».
 5. Aucune donnée n'est perdue : une fonction éteinte garde ses lignes en base. Les messages Discord déjà publiés (votes, annonces) restent : ne pas les supprimer sans l'accord de Maxime.
