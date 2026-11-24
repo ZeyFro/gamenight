@@ -29,13 +29,14 @@ export type PolicyChannel = "DISCORD_DM" | "DISCORD_CHANNEL" | "IN_APP";
 
 /**
  * Moments marquants autorisés à ouvrir un message PUBLIC (D10). Liste fermée et documentée dans docs/CENTRE_NOTIFICATIONS.md :
- * soirée annoncée, soirée validée, résultat de soirée, tournoi créé, résultat de tournoi (victoire, fin), preuve et réussite d'un défi Tower
+ * soirée annoncée (y compris une partie « Jouer maintenant », sans mention), soirée validée, résultat de soirée, tournoi créé, résultat de tournoi (victoire, fin), preuve et réussite d'un défi Tower
  * (avec consentement), annonce communautaire (trophée de groupe, fin de saison, récompense, jeu gratuit).
  */
 export const PUBLIC_MILESTONE_EVENT_TYPES = [
   "SESSION_CREATED",
   "SESSION_VALIDATED",
   "SESSION_RESULT",
+  "INSTANT_SESSION_ANNOUNCE",
   "TOURNAMENT_CREATED",
   "TOURNAMENT_RESULT",
   "TOWER_PROOF_SUBMITTED",
@@ -57,6 +58,7 @@ const PERSONAL_DM_EVENT_TYPES = [
 const PUBLIC_UPDATE_EVENT_TYPES = [
   "SESSION_MODIFIED", "SESSION_REMOVED",
   "TOURNAMENT_MODIFIED", "TOURNAMENT_REMOVED",
+  "INSTANT_SESSION_ANNOUNCE_UPDATED",
   "TOWER_PROOF_VOTE_UPDATED", "TOWER_AUTO_VALIDATION_UPDATED",
 ] as const;
 
@@ -68,10 +70,11 @@ const THREAD_CONTEXT_EVENT_TYPES = [
 ] as const;
 
 /**
- * « Jouer maintenant » : l'invitation reste un MP ; l'annonce publique n'est pas un moment marquant (décision la plus restrictive du
- * 23/11/2026) et n'est plus créée (`enqueueInstantSessionAnnouncement`). Les lignes déjà en file sont refusées.
+ * Aucun type n'est aujourd'hui « dans l'app seulement » : « Jouer maintenant » garde son annonce publique SANS mention (une partie
+ * immédiate est une soirée ouverte aux membres, annoncée comme une soirée) et son invitation reste un MP. Le genre existe pour qu'un
+ * futur événement purement in-app soit refusé sur tout canal Discord.
  */
-const IN_APP_ONLY_EVENT_TYPES = ["INSTANT_SESSION_ANNOUNCE", "INSTANT_SESSION_ANNOUNCE_UPDATED"] as const;
+const IN_APP_ONLY_EVENT_TYPES: readonly string[] = [];
 
 const SYSTEM_ACTION_EVENT_TYPES = [
   "SESSION_SPACE_SYNC", "PROJECT_SYNC", "TEAM_SPACE_SYNC",

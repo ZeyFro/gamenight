@@ -23,7 +23,7 @@ Chaque type d'événement de la file porte un **genre explicite** (`src/lib/noti
 | `PUBLIC_UPDATE` | salon (édition ou retrait d'un message déjà autorisé) | `SESSION_MODIFIED`, `SESSION_REMOVED`, `TOURNAMENT_MODIFIED`, `TOURNAMENT_REMOVED`, `TOWER_PROOF_VOTE_UPDATED` |
 | `THREAD_CONTEXT` | salon (fil d'une annonce déjà autorisée, mention de secours) | `SESSION_REMINDER`, `SESSION_DATE_CHANGED`, `TOURNAMENT_MATCH_RESULT`, `*_DM_FALLBACK`, `TOWER_PROOF_THREAD` |
 | `OPT_IN_ROLE_PING` | salon, dans l'app | aucun type aujourd'hui (voir ping de rôle) |
-| `IN_APP_ONLY` | dans l'app seulement | `INSTANT_SESSION_ANNOUNCE` et sa mise à jour |
+| `IN_APP_ONLY` | dans l'app seulement | aucun type aujourd'hui (le genre refuse tout canal Discord pour un futur événement purement in-app) |
 | `SYSTEM_ACTION` | salon (action de l'executor, ce n'est pas une notification) | synchronisation d'espaces, rôles, signalement, soutiens |
 
 **Moments marquants (annonce publique, liste fermée `PUBLIC_MILESTONE_EVENT_TYPES`)** : soirée annoncée (`SESSION_CREATED`), soirée validée (`SESSION_VALIDATED`), résultat de soirée (`SESSION_RESULT`), tournoi créé (`TOURNAMENT_CREATED`), résultat de tournoi (`TOURNAMENT_RESULT`), preuve et réussite d'un défi Tower avec consentement (`TOWER_PROOF_SUBMITTED`, `TOWER_CHALLENGE_APPROVED`, `TOWER_CHALLENGE_REJECTED`, `TOWER_AUTO_VALIDATION`), annonce communautaire : trophée de groupe, récompense, fin de saison, jeu gratuit (`COMMUNITY_SYSTEM_ANNOUNCE`). **Tout autre événement** devient un MP personnel, un message dans le fil d'une annonce autorisée, ou une notification dans l'app.
@@ -34,7 +34,7 @@ Chaque type d'événement de la file porte un **genre explicite** (`src/lib/noti
 
 ## Décisions prises seules (lot 5, à valider par Maxime)
 
-1. **Option la plus restrictive pour « Jouer maintenant »** : l'annonce publique d'une partie immédiate n'est plus créée (`enqueueInstantSessionAnnouncement` sort sans rien enfiler) ; l'invitation reste un MP, et le centre de notifications reste disponible. Les lignes déjà en file sont refusées (`policy:channel_not_allowed_for_kind`).
+1. **« Jouer maintenant » garde son annonce publique, sans mention** (corrigé avant fusion) : une partie immédiate est une soirée ouverte aux membres, annoncée comme une soirée (`INSTANT_SESSION_ANNOUNCE` = moment marquant, sa mise à jour = édition) ; le sous-agent l'avait supprimée par prudence, ce qui aurait retiré en silence un comportement déjà en production (`instant-announcement.integration.test.ts`). L'invitation reste un MP, jamais pré-cochée (#552).
 2. **La soirée annoncée et le tournoi créé restent des moments marquants** (ils portent le fil et les MP de la décision #116) ; un rappel, un changement de date, un résultat de match ou une mention de secours restent dans le fil de l'annonce, jamais dans un salon libre.
 3. **Aucun ping de rôle de jeu n'est branché** dans une annonce : le garde-fou est posé, mais aucun appelant n'en demande (option la plus restrictive). À brancher seulement sur demande (tournoi public, jeu gratuit).
 4. **Deux genres techniques** s'ajoutent aux quatre de la demande : `THREAD_CONTEXT`/`PUBLIC_UPDATE` (suite d'un message déjà autorisé) et `SYSTEM_ACTION` (actions d'administration de l'executor), pour ne pas casser les fils, les éditions et les espaces existants.

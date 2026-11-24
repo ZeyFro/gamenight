@@ -38,11 +38,11 @@ describe("politique de livraison (évaluée avant tout envoi)", () => {
     }
   });
 
-  it("« Jouer maintenant » : plus d'annonce publique (dans l'app seulement), l'invitation reste un MP", () => {
-    expect(kindOfEvent("INSTANT_SESSION_ANNOUNCE")).toBe("IN_APP_ONLY");
-    expect(evaluateDeliveryPolicy({ eventType: "INSTANT_SESSION_ANNOUNCE", channel: "DISCORD_CHANNEL" })).toMatchObject({ allowed: false });
+  it("« Jouer maintenant » : annonce publique dans le salon (jamais en MP), sa mise à jour est une édition, l'invitation reste un MP", () => {
+    expect(kindOfEvent("INSTANT_SESSION_ANNOUNCE")).toBe("PUBLIC_MILESTONE");
+    expect(kindOfEvent("INSTANT_SESSION_ANNOUNCE_UPDATED")).toBe("PUBLIC_UPDATE");
+    expect(evaluateDeliveryPolicy({ eventType: "INSTANT_SESSION_ANNOUNCE", channel: "DISCORD_CHANNEL" })).toMatchObject({ allowed: true });
     expect(evaluateDeliveryPolicy({ eventType: "INSTANT_SESSION_ANNOUNCE", channel: "DISCORD_DM" })).toMatchObject({ allowed: false });
-    expect(evaluateDeliveryPolicy({ eventType: "INSTANT_SESSION_ANNOUNCE", channel: "IN_APP" })).toMatchObject({ allowed: true });
     expect(evaluateDeliveryPolicy({ eventType: "INSTANT_SESSION_INVITE", channel: "DISCORD_DM" })).toMatchObject({ allowed: true });
   });
 
