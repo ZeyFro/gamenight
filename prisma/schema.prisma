@@ -4156,6 +4156,8 @@ model TowerChallengeAttemptParticipant {
   userId String
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
   joinedAt DateTime @default(now())
+  // Audit du 23/11/2026 (1.5) : seul un participant CONFIRMÉ par le capitaine est récompensé. Null = en attente de confirmation.
+  confirmedAt DateTime?
   rewardedAt DateTime?
 
   @@id([attemptId, userId])
@@ -4402,6 +4404,24 @@ model SensitiveOperationLog {
 
   @@index([createdAt])
   @@index([action, createdAt])
+}
+
+// Journal d'erreurs serveur minimal (audit du 23/11/2026, « Journaux ») : Vercel Hobby ne garde que 1 h de journaux, une erreur de nuit
+// serait perdue au matin. Écrit en tâche de fond par `src/lib/error-log.ts` (chemins critiques seulement), lu sur /admin/erreurs,
+// purgé à 30 jours par le cron quotidien `monthly-tasks`. Sans relation (aucune donnée personnelle : message tronqué à 300 caractères
+// et nettoyé des URL, jetons et identifiants), regroupé par empreinte pour ne pas écrire 1000 lignes identiques.
+model ServerErrorLog {
+  id          String   @id @default(cuid())
+  fingerprint String   @unique @db.VarChar(64)
+  context     String   @db.VarChar(64)
+  code        String   @db.VarChar(64)
+  route       String?  @db.VarChar(96)
+  message     String   @db.VarChar(300)
+  count       Int      @default(1)
+  createdAt   DateTime @default(now())
+  lastAt      DateTime @default(now())
+
+  @@index([lastAt])
 }
 
 // Potes = amis (cahier C128, décision du 23/11/2026) : demande d’ami à accepter. Une seule ligne par paire de

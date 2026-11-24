@@ -50,11 +50,60 @@ export const CREATE_SESSION_XP_WINDOW_MS = 24 * 60 * 60 * 1000;
  */
 export const PARTICIPATE_DAILY_XP_CAP = 3;
 
+/**
+ * Plafond anti-farm des gains « vote » (audit du 23/11/2026, constat 1.10) : `VOTE` rapportait 5 XP par proposition votée, et
+ * rien ne limitait le nombre de propositions d'une soirée (un créateur en ajoutait N puis les votait). Valeur proposée, à valider :
+ * au plus `VOTE_XP_CAP_PER_SESSION` gains `VOTE` par membre et par soirée, comptés dans le ledger (`XpEvent`, sourceId = id de la
+ * proposition). Le 11ᵉ vote d'une soirée ne rapporte plus d'XP ; le vote lui-même reste enregistré. Le plafond de propositions par
+ * soirée (`MAX_PROPOSALS_PER_SESSION`, src/lib/session-proposal-limit.ts) a la même valeur : une soirée normale ne l'atteint jamais.
+ */
+export const VOTE_XP_CAP_PER_SESSION = 10;
+
+/**
+ * Nombre de gains `VOTE` déjà versés pour une soirée. `sourceIds` = gains `VOTE` du membre créés depuis la création de la soirée ;
+ * on retire ceux dont la proposition appartient à UNE AUTRE soirée (`proposalIdsOfOtherSessions`). Une proposition retirée (donc
+ * absente de toute soirée) reste comptée : sinon « proposer, voter, retirer, recommencer » contournerait le plafond, la ligne du
+ * ledger n'ayant pas de lien direct avec la soirée.
+ */
+export function countSessionVoteGains(sourceIds: readonly string[], proposalIdsOfOtherSessions: ReadonlySet<string>): number {
+  return sourceIds.filter((id) => !proposalIdsOfOtherSessions.has(id)).length;
+}
+
 /** Gains plafonnés par membre sur `CREATE_SESSION_XP_WINDOW_MS`, par motif. */
 export const DAILY_XP_CAPS = {
   CREATE_SESSION: CREATE_SESSION_DAILY_XP_CAP,
   PARTICIPATE: PARTICIPATE_DAILY_XP_CAP,
 } as const;
+
+/**
+ * Plafond anti-farm de l'XP de tournoi (audit du 23/11/2026, constat 1.11) : 4 comptes complices suffisent à monter un tournoi et
+ * à se verser l'XP du podium à volonté. Au plus `TOURNAMENT_XP_WEEKLY_CAP` gains `TOURNAMENT_RESULT` par membre et par communauté sur
+ * `TOURNAMENT_XP_WINDOW_MS` (7 jours glissants), comptés dans le ledger comme pour la présence. Un joueur ne reçoit qu'un gain par
+ * tournoi (1er, 2e ou demi-finaliste) : 5 tournois primés par semaine restent donc entièrement récompensés.
+ * Valeurs PROPOSÉES par l'audit, à valider par Maxime.
+ */
+export const TOURNAMENT_XP_WEEKLY_CAP = 5;
+export const TOURNAMENT_XP_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
+
+/**
+ * Seconde garde de l'XP de tournoi : elle n'est versée que si au moins `TOURNAMENT_XP_MIN_ESTABLISHED_PARTICIPANTS` participants
+ * sont des membres actifs établis (ancienneté de `tower-vote-eligibility.ts`, 3 jours) ; voir `tournament-xp-eligibility.ts`.
+ * Valeur PROPOSÉE par l'audit, à valider par Maxime.
+ */
+export const TOURNAMENT_XP_MIN_ESTABLISHED_PARTICIPANTS = 3;
+
+export interface XpWindowCap {
+  max: number;
+  windowMs: number;
+}
+
+/** Plafonds glissants du ledger, par motif ; `null` = motif non plafonné. */
+export function xpWindowCap(reason: string): XpWindowCap | null {
+  if (reason === "CREATE_SESSION") return { max: DAILY_XP_CAPS.CREATE_SESSION, windowMs: CREATE_SESSION_XP_WINDOW_MS };
+  if (reason === "PARTICIPATE") return { max: DAILY_XP_CAPS.PARTICIPATE, windowMs: CREATE_SESSION_XP_WINDOW_MS };
+  if (reason === "TOURNAMENT_RESULT") return { max: TOURNAMENT_XP_WEEKLY_CAP, windowMs: TOURNAMENT_XP_WINDOW_MS };
+  return null;
+}
 
 /**
  * Formules pures du chantier XP/niveaux/rangs — aucune I/O ici

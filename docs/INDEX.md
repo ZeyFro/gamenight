@@ -21,6 +21,8 @@
 - [Suppression et export de compte](SUPPRESSION_COMPTE.md) — anonymisation, classement des relations vers `User`, export JSON, activation et limites.
 - [Réponses Discord aux soirées](DISCORD_REPONSES_SOIREES.md).
 - [Commandes Discord The Tower (403, invitation, enregistrement)](DISCORD_COMMANDES.md).
+- [Messages à publier dans chaque salon Discord](MESSAGES_SALONS.md) — un message court par salon, avec les commandes exactes et les liens du site.
+- [Procédures de preuve](PROCEDURES_PREUVES.md) — comment prouver, étape par étape et en lecture seule, les 17 éléments du cahier « non vérifiés en réel » ou « côté Discord ».
 - [Défis Discord The Tower](tower-challenges.md) — lot préparé en brouillon, activation et enregistrement des commandes séparés.
 - [Audit final du 23/11/2026](AUDIT_FINAL.md) — constats, corrections, restants et ce qui n'a pas pu être vérifié ; détails dans [`audit/`](audit/01-securite-owasp.md).
 - [Audit local du serveur Discord](AUDIT_DISCORD.md) — inventaire REST en lecture seule, sans membres ni messages.

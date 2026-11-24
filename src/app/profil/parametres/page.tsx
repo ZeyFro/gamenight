@@ -492,7 +492,7 @@ export default async function ProfilParametresPage({
           <h2 className="font-semibold text-foreground">Sons</h2>
           <p className="text-sm text-muted">
             {user.soundEnabled
-              ? "Un son joue lors des célébrations (level up, badge débloqué, soirée validée)."
+              ? "Un son joue lors des célébrations (passage de niveau d’XP, badge débloqué, soirée validée)."
               : "Les célébrations restent visibles (confettis, notifications) mais sans son."}
           </p>
           <form action={toggleSoundEnabled}>

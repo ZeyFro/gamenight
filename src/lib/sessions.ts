@@ -1,4 +1,5 @@
 import { createOnce, lockCreationMembers } from "@/lib/creation-intent";
+import { assertDailyCreationQuota } from "@/lib/creation-quota";
 import { randomUUID } from "crypto";
 import { REMINDER_SCHEDULE_PREFIX } from "@/lib/reminders";
 import { prisma } from "@/lib/prisma";
@@ -83,6 +84,12 @@ export async function createRouletteResultSession(data: {
   decidedTime: Date;
   createdById: string;
   notifiedUserIds: string[];
+  /**
+   * Plafond de soirées créées par jour (audit 1.14) : vrai pour une création demandée par la personne (formulaire
+   * roulette « instantané »), faux pour le tirage différé (cron, `spinRoulette`) qui ne doit jamais échouer après coup.
+   * Lève `DailyCreationLimitError` (transaction annulée, rien d'écrit) au-delà du plafond.
+   */
+  enforceDailyLimit?: boolean;
 }): Promise<{ session: Session; announceViaBot: boolean; proposalId: string; replayed: boolean }> {
   // Multi-communautés (PR3) : `null` tant que `COMMUNITY_CHANNELS_ENABLED` est éteint.
   const communityId = data.communityId !== undefined ? data.communityId : await pickCreationCommunityId(data.createdById);
@@ -97,8 +104,9 @@ export async function createRouletteResultSession(data: {
     announceViaBot,
   });
 
-  const { transaction, creationKey, sourceRouletteId, ...sessionData } = data;
+  const { transaction, creationKey, sourceRouletteId, enforceDailyLimit, ...sessionData } = data;
   const { result: { session, proposalId }, replayed } = await createOnce(data.createdById, "ROULETTE_SESSION", creationKey, async (tx) => {
+    if (enforceDailyLimit) await assertDailyCreationQuota("SESSION", data.createdById, tx);
     await lockCreationMembers(tx, communityId, [data.createdById, ...data.notifiedUserIds]);
     const created = await tx.session.create({
       data: { ...sessionData, status: "SCHEDULED", createdViaRoulette: true, announceViaBot, communityId },

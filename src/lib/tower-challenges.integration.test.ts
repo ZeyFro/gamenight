@@ -114,7 +114,7 @@ describe.skipIf(!url)("défis solo et votes persistants", () => {
     await db.user.createMany({ data: members.map(id => ({ id, discordId: id, discordName: id })) });
     await db.membership.createMany({ data: members.map(userId => ({
       communityId: userId === "tower-outsider" ? "tower-b" : "tower-a", userId, status: "ACTIVE",
-      joinedAt: new Date("2020-01-01T00:00:00Z"), // votants : plus de 7 jours d'ancienneté (appliqué même interrupteur éteint)
+      joinedAt: new Date("2020-01-01T00:00:00Z"), // votants : plus de 3 jours d'ancienneté (appliqué même interrupteur éteint)
     })) });
     await db.towerChallengeDefinition.createMany({ data: ["tower-a", "tower-b"].map(communityId => ({
       id: communityId + "-easy", communityId, title: "Création libre",
@@ -669,6 +669,8 @@ describe.skipIf(!url)("défis solo et votes persistants", () => {
     expect(await db.towerChallengeAttempt.count({ where: { teamId: team.id } })).toBe(1);
     expect((await api.joinTowerTeamChallenge({ ...author, attemptId: first.attempt.id })).status).toBe("JOINED");
     expect((await api.joinTowerTeamChallenge({ communityId: "tower-a", userId: "tower-a1", attemptId: first.attempt.id })).status).toBe("JOINED");
+    // Audit du 23/11/2026 (1.5) : tower-a1 n'est récompensé que si le capitaine (tower-author) le confirme.
+    expect((await api.confirmTowerTeamParticipant({ ...author, attemptId: first.attempt.id, participantId: "tower-a1" })).status).toBe("CONFIRMED");
     expect((await api.submitTowerChallengeProof(await proof(first.attempt.id))).status).toBe("SUBMITTED");
     expect((await api.voteTowerChallenge({ communityId: "tower-a", userId: "tower-a1", attemptId: first.attempt.id, approve: true })).status).toBe("SELF_VOTE");
     for (const userId of ["tower-a2", "tower-a3", "tower-a4"]) {
@@ -692,6 +694,144 @@ describe.skipIf(!url)("défis solo et votes persistants", () => {
     });
     expect((await db.towerChallengeProgress.findUniqueOrThrow({ where: { communityId_userId: author } })).floorsClimbed).toBe(BigInt(2));
     expect(await db.towerChallengeAttemptParticipant.count({ where: { attemptId: first.attempt.id, rewardedAt: { not: null } } })).toBe(2);
+  });
+  // Audit du 23/11/2026, constat 1.5 : le capitaine confirme les participants ; seuls les confirmés sont récompensés.
+  describe("défi d'équipe : participants confirmés par le capitaine", () => {
+    const a1 = { communityId: "tower-a", userId: "tower-a1" };
+    const a2 = { communityId: "tower-a", userId: "tower-a2" };
+    async function teamAttempt() {
+      await db.community.update({ where: { id: "tower-a" }, data: { communityTeamsEnabled: true } });
+      const game = await db.game.create({ data: { id: "tower-team-game", name: "Tower Team Game", source: "MANUAL", addedById: "tower-author" } });
+      const team = await db.communityTeam.create({ data: {
+        id: "tower-team-a", communityId: "tower-a", gameId: game.id, createdById: "tower-author",
+        name: "Les grimpeurs", description: "Défis partagés", platform: "PC", maxMembers: 5,
+      } });
+      await db.communityTeamMember.createMany({ data: ["tower-author", "tower-a1", "tower-a2"].map(userId => ({ communityId: "tower-a", teamId: team.id, userId })) });
+      await db.towerChallengeDefinition.create({ data: {
+        id: "tower-a-team", communityId: "tower-a", mode: "TEAM", title: "Le défi collectif",
+        instructions: "Jouez ensemble.", rewardFloors: 2, active: true,
+      } });
+      clock.now = new Date("2026-10-29T17:00:00Z");
+      const state = await api.getTeamDailyTowerChallenge({ ...author, teamId: team.id });
+      if (state.status !== "TEAM_CHALLENGE") throw new Error("Défi d'équipe attendu");
+      return { teamId: team.id, attemptId: state.attempt.id };
+    }
+    const confirmedAt = async (attemptId: string, userId: string) =>
+      (await db.towerChallengeAttemptParticipant.findUniqueOrThrow({ where: { attemptId_userId: { attemptId, userId } } })).confirmedAt;
+    /** Un 6ᵉ membre vote : trois participants plus trois votants (les participants ne votent pas). Retiré à la fin du test. */
+    async function withExtraVoter(run: () => Promise<void>) {
+      const [community] = await db.community.findMany({ where: { id: "tower-a" }, select: { id: true } });
+      await db.user.deleteMany({ where: { id: "tower-a5" } });
+      await db.user.create({ data: { id: "tower-a5", discordId: "tower-a5", discordName: "tower-a5" } });
+      await db.membership.create({ data: { communityId: community.id, userId: "tower-a5", status: "ACTIVE", joinedAt: new Date("2020-01-01T00:00:00Z") } });
+      try { await run(); } finally { await db.user.deleteMany({ where: { id: "tower-a5" } }); }
+    }
+
+    it("un membre qui rejoint sans être confirmé n'est PAS récompensé ; le capitaine et l'auteur sont confirmés d'office", async () => {
+      await withExtraVoter(async () => {
+        const { attemptId } = await teamAttempt();
+        expect(await api.joinTowerTeamChallenge({ ...author, attemptId })).toMatchObject({ status: "JOINED", confirmed: true });
+        expect(await api.joinTowerTeamChallenge({ ...a1, attemptId })).toMatchObject({ status: "JOINED", confirmed: false });
+        expect(await api.joinTowerTeamChallenge({ ...a2, attemptId })).toMatchObject({ status: "JOINED", confirmed: false });
+        expect(await confirmedAt(attemptId, "tower-author")).not.toBeNull();
+        expect(await confirmedAt(attemptId, "tower-a1")).toBeNull();
+        // Le capitaine ne confirme que tower-a1.
+        const journalRows = () => db.sensitiveOperationLog.count({ where: { action: "tower.participant_confirm" } });
+        const journalBefore = await journalRows();
+        expect(await api.confirmTowerTeamParticipant({ ...author, attemptId, participantId: "tower-a1" })).toMatchObject({ status: "CONFIRMED", replayed: false });
+        expect(await api.confirmTowerTeamParticipant({ ...author, attemptId, participantId: "tower-a1" })).toMatchObject({ status: "CONFIRMED", replayed: true });
+        // Journal des opérations sensibles (C055) : la confirmation nouvelle est journalisée UNE fois, le rejeu non.
+        expect(await journalRows()).toBe(journalBefore + 1);
+        expect((await api.submitTowerChallengeProof(await proof(attemptId))).status).toBe("SUBMITTED");
+        for (const userId of ["tower-a3", "tower-a4", "tower-a5"]) {
+          expect((await api.voteTowerChallenge({ communityId: "tower-a", userId, attemptId, approve: true })).status).toBe("VOTED");
+        }
+        clock.now = new Date("2026-10-30T18:00:00Z");
+        // Deux confirmés (tower-author, tower-a1) sont récompensés ; tower-a2, jamais confirmé, ne l'est pas et n'est pas « en attente ».
+        expect(await api.settleTowerChallenge({ ...author, attemptId })).toMatchObject({ status: "APPROVED", rewardedMembers: 2, pendingRewards: 0, userRewarded: true });
+        const floors = async (userId: string) => (await db.towerChallengeProgress.findUnique({ where: { communityId_userId: { communityId: "tower-a", userId } } }))?.floorsClimbed ?? BigInt(0);
+        expect(await floors("tower-author")).toBe(BigInt(2));
+        expect(await floors("tower-a1")).toBe(BigInt(2));
+        expect(await floors("tower-a2")).toBe(BigInt(0));
+        const rewarded = await db.towerChallengeAttemptParticipant.findMany({ where: { attemptId, rewardedAt: { not: null } }, select: { userId: true }, orderBy: { userId: "asc" } });
+        expect(rewarded.map(row => row.userId)).toEqual(["tower-a1", "tower-author"]);
+        // Après le résultat, la liste est figée : confirmer tower-a2 est refusé et ne verse rien.
+        expect(await api.confirmTowerTeamParticipant({ ...author, attemptId, participantId: "tower-a2" })).toMatchObject({ status: "CLOSED" });
+        clock.now = new Date("2026-10-31T12:00:00Z");
+        await api.settleTowerChallenge({ ...author, attemptId });
+        expect(await floors("tower-a2")).toBe(BigInt(0));
+      });
+    });
+
+    it("confirmé par le capitaine avant le résultat, le participant est récompensé", async () => {
+      await withExtraVoter(async () => {
+        const { attemptId } = await teamAttempt();
+        await api.joinTowerTeamChallenge({ ...author, attemptId });
+        await api.joinTowerTeamChallenge({ ...a1, attemptId });
+        await api.joinTowerTeamChallenge({ ...a2, attemptId });
+        for (const participantId of ["tower-a1", "tower-a2"]) expect((await api.confirmTowerTeamParticipant({ ...author, attemptId, participantId })).status).toBe("CONFIRMED");
+        expect((await api.submitTowerChallengeProof(await proof(attemptId))).status).toBe("SUBMITTED");
+        for (const userId of ["tower-a3", "tower-a4", "tower-a5"]) await api.voteTowerChallenge({ communityId: "tower-a", userId, attemptId, approve: true });
+        clock.now = new Date("2026-10-30T18:00:00Z");
+        expect(await api.settleTowerChallenge({ ...author, attemptId })).toMatchObject({ status: "APPROVED", rewardedMembers: 3, pendingRewards: 0 });
+        expect((await db.towerChallengeProgress.findUniqueOrThrow({ where: { communityId_userId: { communityId: "tower-a", userId: "tower-a2" } } })).floorsClimbed).toBe(BigInt(2));
+      });
+    });
+
+    it("un non-capitaine ne peut pas confirmer ; un participant inconnu est refusé", async () => {
+      const { attemptId } = await teamAttempt();
+      await api.joinTowerTeamChallenge({ ...author, attemptId });
+      await api.joinTowerTeamChallenge({ ...a1, attemptId });
+      await api.joinTowerTeamChallenge({ ...a2, attemptId });
+      expect(await api.confirmTowerTeamParticipant({ ...a1, attemptId, participantId: "tower-a2" })).toEqual({ status: "NOT_CAPTAIN" });
+      expect(await api.confirmTowerTeamParticipant({ ...a2, attemptId, participantId: "tower-a2" })).toEqual({ status: "NOT_CAPTAIN" });
+      expect(await confirmedAt(attemptId, "tower-a2")).toBeNull();
+      expect(await api.confirmTowerTeamParticipant({ ...author, attemptId, participantId: "tower-a4" })).toEqual({ status: "UNAVAILABLE" });
+      // Un membre d'une autre communauté ou sans accès ne confirme rien non plus.
+      expect((await api.confirmTowerTeamParticipant({ communityId: "tower-a", userId: "tower-outsider", attemptId, participantId: "tower-a2" })).status).not.toBe("CONFIRMED");
+    });
+
+    it("un participant non confirmé ne peut pas déposer la preuve, et il faut deux confirmés", async () => {
+      const { attemptId } = await teamAttempt();
+      await api.joinTowerTeamChallenge({ ...author, attemptId });
+      await api.joinTowerTeamChallenge({ ...a1, attemptId });
+      // Seul le capitaine est confirmé : pas assez de confirmés pour déposer.
+      expect(await api.submitTowerChallengeProof(await proof(attemptId))).toMatchObject({ status: "TEAM_NEEDS_PARTICIPANTS" });
+      // Un non-confirmé ne dépose pas la preuve à la place des autres.
+      expect(await api.submitTowerChallengeProof({ ...(await proof(attemptId)), userId: "tower-a1" })).toEqual({ status: "UNAVAILABLE" });
+      await api.confirmTowerTeamParticipant({ ...author, attemptId, participantId: "tower-a1" });
+      expect((await api.submitTowerChallengeProof(await proof(attemptId))).status).toBe("SUBMITTED");
+    });
+
+    it("le 4ᵉ gain d'équipe du jour n'est pas versé, sans erreur bloquante pour l'équipe", async () => {
+      await withExtraVoter(async () => {
+        const { attemptId } = await teamAttempt();
+        // Trois récompenses d'équipe déjà versées à tower-a1 le même jour de Paris (hors défi du jour).
+        for (const index of [0, 1, 2]) {
+          await db.towerChallengeAttempt.create({ data: {
+            id: "team-cap-" + index, communityId: "tower-a", userId: "tower-author", teamId: "tower-team-a", definitionId: "tower-a-team",
+            requestKey: "team-2026-10-30-cap" + index, title: "Défi d'équipe passé", instructions: "Déjà validé.", rewardFloors: 1,
+            assignedAt: new Date("2026-10-30T06:00:00Z"), expiresAt: new Date("2026-11-01T06:00:00Z"),
+            status: "APPROVED" as const, rewardedAt: new Date("2026-10-30T09:00:00Z"),
+          } });
+          await db.towerChallengeAttemptParticipant.create({ data: {
+            communityId: "tower-a", attemptId: "team-cap-" + index, userId: "tower-a1",
+            joinedAt: new Date("2026-10-30T07:00:00Z"), confirmedAt: new Date("2026-10-30T07:00:00Z"), rewardedAt: new Date("2026-10-30T09:00:00Z"),
+          } });
+        }
+        await api.joinTowerTeamChallenge({ ...author, attemptId });
+        await api.joinTowerTeamChallenge({ ...a1, attemptId });
+        await api.confirmTowerTeamParticipant({ ...author, attemptId, participantId: "tower-a1" });
+        expect((await api.submitTowerChallengeProof(await proof(attemptId))).status).toBe("SUBMITTED");
+        for (const userId of ["tower-a3", "tower-a4", "tower-a5"]) await api.voteTowerChallenge({ communityId: "tower-a", userId, attemptId, approve: true });
+        clock.now = new Date("2026-10-30T18:00:00Z");
+        // L'équipe est validée (pas d'erreur) ; tower-author est récompensé, tower-a1 (déjà 3 gains d'équipe aujourd'hui) ne l'est pas.
+        expect(await api.settleTowerChallenge({ ...author, attemptId })).toMatchObject({ status: "APPROVED", rewardedMembers: 1 });
+        expect((await db.towerChallengeAttempt.findUniqueOrThrow({ where: { id: attemptId } })).status).toBe("APPROVED");
+        expect((await db.towerChallengeAttemptParticipant.findUniqueOrThrow({ where: { attemptId_userId: { attemptId, userId: "tower-a1" } } })).rewardedAt).toBeNull();
+        expect((await db.towerChallengeAttemptParticipant.findUniqueOrThrow({ where: { attemptId_userId: { attemptId, userId: "tower-author" } } })).rewardedAt).not.toBeNull();
+      });
+    });
   });
   it("laisse une preuve en attente après 24 h si le quorum de trois votes manque", async () => {
     const id = await submitted();

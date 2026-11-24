@@ -56,7 +56,7 @@ export const metadata: Metadata = {
     title: "GameNight",
   },
   icons: {
-    apple: "/icon-192.png",
+    apple: [{ url: "/apple-touch-icon.png", sizes: "180x180", type: "image/png" }],
   },
 };
 

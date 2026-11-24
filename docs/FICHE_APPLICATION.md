@@ -91,7 +91,7 @@ Adresse du site : `https://gamenight-zeyfro.vercel.app`. Une page « éteinte »
 | **Visiteur** (pas connecté) | Voir la page de connexion et les pages légales. Rien d'autre. |
 | **Compte Discord hors serveur** | Il est **refusé à la connexion** : seuls les membres d'un serveur Discord relié entrent. |
 | **Nouveau membre** | Se connecter, passer par `/bienvenue`, puis tout le quotidien. |
-| **Membre** (« Régulars » dans The Tower) | Soirées, votes, tournois, équipes, bibliothèque, profil, défis The Tower. Voter sur les preuves des autres après 7 jours de présence. |
+| **Membre** (« Régulars » dans The Tower) | Soirées, votes, tournois, équipes, bibliothèque, profil, défis The Tower. Voter sur les preuves des autres après 3 jours de présence. |
 | **Ranker** (au moins 30 étages) | Comme un membre. En plus, proposer des défis si l'interrupteur est allumé (éteint aujourd'hui). |
 | **High Ranker** (au moins 100 étages et 5 défis validés dans la saison) | Comme un Ranker. Le grade est honorifique. |
 | **Irregular** | Grade de prestige donné à la main par l'équipe. **Aucun droit en plus.** |

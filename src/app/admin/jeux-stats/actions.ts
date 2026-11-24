@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import { StatType, SuperlativeRule } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { requireAdmin } from "@/lib/admin";
+import { recordSensitiveOperation, sensitiveTarget } from "@/lib/sensitive-operation-log";
 
 const STAT_TYPES: StatType[] = ["INT", "FLOAT", "BOOL"];
 const SUPERLATIVE_RULES: SuperlativeRule[] = ["MAX", "MIN", "TRUE_COUNT"];
@@ -17,6 +18,7 @@ function parseXpReward(formData: FormData): number {
 export async function addGameStatType(formData: FormData) {
   const user = await requireAdmin();
   if (!user) redirect("/");
+  await recordSensitiveOperation({ actorId: user.id, action: "admin.game_stats", target: sensitiveTarget(formData), outcome: "requested" });
 
   const gameId = String(formData.get("gameId") ?? "");
   const key = String(formData.get("key") ?? "").trim();
@@ -39,6 +41,7 @@ export async function addGameStatType(formData: FormData) {
 export async function updateGameStatType(formData: FormData) {
   const user = await requireAdmin();
   if (!user) redirect("/");
+  await recordSensitiveOperation({ actorId: user.id, action: "admin.game_stats", target: sensitiveTarget(formData), outcome: "requested" });
 
   const id = String(formData.get("id") ?? "");
   const gameId = String(formData.get("gameId") ?? "");
@@ -58,6 +61,7 @@ export async function updateGameStatType(formData: FormData) {
 export async function deleteGameStatType(formData: FormData) {
   const user = await requireAdmin();
   if (!user) redirect("/");
+  await recordSensitiveOperation({ actorId: user.id, action: "admin.game_stats", target: sensitiveTarget(formData), outcome: "requested" });
 
   const id = String(formData.get("id") ?? "");
   const gameId = String(formData.get("gameId") ?? "");
@@ -72,6 +76,7 @@ export async function deleteGameStatType(formData: FormData) {
 export async function addSuperlative(formData: FormData) {
   const user = await requireAdmin();
   if (!user) redirect("/");
+  await recordSensitiveOperation({ actorId: user.id, action: "admin.game_stats", target: sensitiveTarget(formData), outcome: "requested" });
 
   const gameId = String(formData.get("gameId") ?? "");
   const gameStatTypeId = String(formData.get("gameStatTypeId") ?? "");
@@ -95,6 +100,7 @@ export async function addSuperlative(formData: FormData) {
 export async function updateSuperlative(formData: FormData) {
   const user = await requireAdmin();
   if (!user) redirect("/");
+  await recordSensitiveOperation({ actorId: user.id, action: "admin.game_stats", target: sensitiveTarget(formData), outcome: "requested" });
 
   const id = String(formData.get("id") ?? "");
   const gameId = String(formData.get("gameId") ?? "");
@@ -113,6 +119,7 @@ export async function updateSuperlative(formData: FormData) {
 export async function deleteSuperlative(formData: FormData) {
   const user = await requireAdmin();
   if (!user) redirect("/");
+  await recordSensitiveOperation({ actorId: user.id, action: "admin.game_stats", target: sensitiveTarget(formData), outcome: "requested" });
 
   const id = String(formData.get("id") ?? "");
   const gameId = String(formData.get("gameId") ?? "");

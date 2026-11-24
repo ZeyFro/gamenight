@@ -40,7 +40,7 @@ export async function announceLevelUp(
   const message = await pickMessageTemplate("LEVEL_UP", vars);
 
   const embed: DiscordEmbed = {
-    title: rankChanged ? "🎖️ Nouveau rang !" : "🎉 Level up !",
+    title: rankChanged ? "🎖️ Nouveau rang !" : "🎉 Niveau d’XP supérieur !",
     description: `${xpLevelLabel(beforeLevel)} → ${xpLevelLabel(afterLevel)}`,
     color: ACCENT_COLOR,
     fields: [

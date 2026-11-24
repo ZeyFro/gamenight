@@ -45,6 +45,7 @@ import { parseReminderTimingsFromFormData } from "@/lib/reminder-timings";
 import { parseNotifyRecipientsFromFormData } from "@/lib/notify-recipients";
 import { logger } from "@/lib/logger";
 import { checkRateLimit, RATE_LIMIT_ERROR_KEY } from "@/lib/rate-limit";
+import { assertDailyCreationQuota, DailyCreationLimitError, SESSION_QUOTA_ERROR_KEY } from "@/lib/creation-quota";
 import {
   createSessionSchema,
   editSessionSchema,
@@ -154,6 +155,9 @@ export async function createSession(formData: FormData) {
   let creation: Awaited<ReturnType<typeof createOnce<Session>>>;
   try {
     creation = await createOnce(user.id, "SESSION", creationKey(formData.get("creationKey"), true), async (tx) => {
+      // Plafond du jour (audit 1.14) consommé DANS la transaction : un rejeu de la même intention (reçu existant) n'y
+      // passe jamais, et un refus annule tout avant la moindre écriture de soirée ou de notification.
+      await assertDailyCreationQuota("SESSION", user.id, tx);
       const sessions = [];
       for (const occurrenceDate of occurrenceDates) {
         sessions.push(await createVotingSessionInTransaction(tx, {
@@ -173,6 +177,7 @@ export async function createSession(formData: FormData) {
       return sessions[0];
     }, (created) => created.id, (tx, id) => tx.session.findUniqueOrThrow({ where: { id } }));
   } catch (error) {
+    if (error instanceof DailyCreationLimitError) redirect(`/sessions?error=${SESSION_QUOTA_ERROR_KEY}`);
     if (error instanceof Error && error.message === "invalid_session_team_link") redirect(`/sessions?error=${VALIDATION_ERROR_KEY}`);
     throw error;
   }

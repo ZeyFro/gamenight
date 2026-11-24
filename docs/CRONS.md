@@ -2,7 +2,7 @@
 
 Toutes les routes de cette liste sont présentes dans le code. Les méthodes sont maintenues comme contrat par les tests de cohérence associés à ce document.
 
-Les routes `/api/cron/*` et `/api/backfill/*` exigent `CRON_SECRET` et répondent 503 lorsque ce secret n’est pas configuré. Envoyer l’en-tête `Authorization: Bearer <CRON_SECRET>`. Les interrupteurs fonctionnels des jobs restent indépendants de cette authentification.
+La route manuelle `/api/admin/force-relogin` n'est PAS une tâche planifiée : elle exige un secret dédié, `FORCE_RELOGIN_SECRET` (jamais `CRON_SECRET`, 503 sans lui). Les routes `/api/cron/*` et `/api/backfill/*` exigent `CRON_SECRET` et répondent 503 lorsque ce secret n’est pas configuré. Envoyer l’en-tête `Authorization: Bearer <CRON_SECRET>`. Les interrupteurs fonctionnels des jobs restent indépendants de cette authentification.
 
 Le dépôt ne définit aucun déclencheur cron dans vercel.json. Le défi d’équipe Tower est préparé dans le workflow GitHub Actions `.github/workflows/tower-team-daily.yml` de #396; le schedule n’est pris en compte qu’après fusion dans la branche par défaut. Les autres tâches sont configurées par l’opérateur selon leur procédure propre; leur état réel n’est pas vérifiable depuis le code seul. Ne déduire aucun horaire des anciens comptes rendus.
 
@@ -11,12 +11,12 @@ Le dépôt ne définit aucun déclencheur cron dans vercel.json. Le défi d’é
 | Route | Méthodes | Rôle |
 | --- | --- | --- |
 | `/api/cron/tower-steam-autovalidate` | GET, POST | Validation automatique des défis Tower mesurables Steam (temps de jeu, succès) ; 202 + `after()` ; OFF si `TOWER_STEAM_AUTOVALIDATE_ENABLED` absent ; aucun déclencheur créé, cadence externe (10 min conseillées) |
-| `/api/cron/tower-team-daily` | GET | Défi d'équipe quotidien ; workflow GitHub Actions #396, slots UTC 16:00/17:00 avec garde 18:00 Europe/Paris; OFF si interrupteur absent; Preview bloquée |
+| `/api/cron/tower-team-daily` | GET | Défi d'équipe quotidien ; workflow GitHub Actions #396, slots UTC 16:00/17:00 avec garde « heure de Paris ≥ 18 »; OFF si interrupteur absent; Preview bloquée |
 | `/api/cron/close-sessions` | GET | Clôture des sessions échues |
 | `/api/cron/community-guild-sync` | GET | Synchronisation de l’état des communautés Discord |
 | `/api/cron/discord-thread-cleanup` | GET | Nettoyage des fils Discord |
 | `/api/cron/free-game-discord` | GET | Préparation des annonces de jeux gratuits |
-| `/api/cron/monthly-tasks` | GET | Tâches mensuelles |
+| `/api/cron/monthly-tasks` | GET | Tâches mensuelles ; **purge à 30 jours du journal d'erreurs serveur** (`ServerErrorLog`, lu sur `/admin/erreurs`) : ce cron quotidien tourne même interrupteurs éteints, il doit donc rester planifié 1 fois par jour |
 | `/api/cron/notification-executor` | GET | Livraison de la file de notifications |
 | `/api/cron/refresh-discord-profiles` | GET | Rafraîchissement des profils Discord |
 | `/api/cron/reminders` | GET | Rappels de sessions |

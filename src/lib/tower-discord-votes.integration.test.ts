@@ -72,7 +72,7 @@ describe.skipIf(!url)("votes Discord des preuves Tower", () => {
     } });
   });
 
-  it("refuse un votant de moins de 7 jours et laisse l'auteur sans vote", async () => {
+  it("refuse un votant de moins de 3 jours et laisse l'auteur sans vote", async () => {
     expect((await vote("dv-new", true)).status).toBe("VOTER_TOO_RECENT");
     expect((await vote("dv-author", true)).status).toBe("SELF_VOTE");
     expect(await db.towerChallengeVote.count({ where: { attemptId } })).toBe(0);
@@ -112,7 +112,7 @@ describe.skipIf(!url)("votes Discord des preuves Tower", () => {
     expect(await edits()).toHaveLength(0);
   });
 
-  it("l'ancienneté de 7 jours s'applique AUSSI drapeau éteint (audit 23/11/2026, constat 1.3)", async () => {
+  it("l'ancienneté de 3 jours s'applique AUSSI drapeau éteint (audit 23/11/2026, constat 1.3)", async () => {
     vi.stubEnv("TOWER_DISCORD_VOTES_ENABLED", "false");
     expect((await vote("dv-new", true)).status).toBe("VOTER_TOO_RECENT");
     expect(await db.towerChallengeVote.count({ where: { attemptId, userId: "dv-new" } })).toBe(0);

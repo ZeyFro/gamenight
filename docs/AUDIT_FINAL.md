@@ -34,7 +34,7 @@ Aucun constat 🔴 ni haute gravité. Crons et backfills (`verifyCronRequest`, 5
 
 | Gravité | Où | Correctif | État |
 |---|---|---|---|
-| 🟠 | `/api/cron/force-relogin` : un seul `CRON_SECRET` pour tous les crons | Secret dédié par route sensible, rotation documentée | Restant : exige une nouvelle variable d'environnement chez Vercel (à décider avec Maxime) |
+| 🟠 | `/api/admin/force-relogin` : `CRON_SECRET` partagé avec tous les crons | Secret dédié `FORCE_RELOGIN_SECRET` (503 sans lui, `CRON_SECRET` n'ouvre plus la route) ; étapes dans `ALLUMAGES.md` § « Pour ChatGPT » | Corrigé (code) ; **variable à créer chez Vercel** (ChatGPT) |
 | 🟠 | `/api/igdb/search` sans limite de débit | 30 recherches par minute et par membre (429 au-delà) | Corrigé (#573) |
 | 🟠 | `/api/push/subscription` sans limite ni plafond | 10 appels par minute et par membre en plus du plafond de 5 appareils | Corrigé (#573) |
 | 🟠 | `/api/discord/interactions` : corps lu en entier avant la signature | 413 au-delà de 64 Ko (Content-Length puis corps lu) | Corrigé (#573) |
@@ -53,7 +53,7 @@ Aucun constat 🔴 ni haute gravité. Crons et backfills (`verifyCronRequest`, 5
 | 🟠 | Vercel Hobby : 2 crons par jour, précision ±59 min, 100 déploiements par jour | Planificateur externe conservé ; **aperçus coupés** : seul `main` est construit | Corrigé (#560) |
 | 🔴 | Sauvegarde : 6 h de restauration Neon, restauration jamais éprouvée | Essai de [`procedure-restauration.md`](audit/procedure-restauration.md) sur une branche, branche de sauvegarde avant l'ouverture, export hebdomadaire hors Neon | **Non vérifié** : la règle du dépôt interdit tout accès à Neon depuis ces sessions ; à faire par Maxime |
 | 🔴 | Aucune alerte de panne ; `/api/health` sans appelant | Job cron-job.org sur `/api/health` avec e-mail ; lot I (`HOSTING_ALERT_ENABLED`, route `hosting-usage`) | Code livré (#549) ; **réglage extérieur à faire** |
-| 🟠 | Journaux : 1 h sur Vercel Hobby, `logger` seulement dans la console | Journal d'erreurs minimal en base (table additive, purge 30 jours) | Restant |
+| 🟠 | Journaux : 1 h sur Vercel Hobby, `logger` seulement dans la console | Journal d'erreurs minimal en base (table additive, purge 30 jours) | Corrigé (PR « journal d'erreurs ») : table `ServerErrorLog`, `src/lib/error-log.ts` (message nettoyé, 300 caractères, regroupé par empreinte, 30 écritures par minute et par instance), appelé depuis les crons, le routeur d'interactions Discord et l'échec terminal d'une livraison ; purge à 30 jours dans `monthly-tasks` ; page `/admin/erreurs` ; migration `20261124120000_server_error_log` |
 | 🟠 | Calcul Neon (100 h par mois) non mesuré | Relevé manuel hebdomadaire | **Non vérifié** (la mesure automatique exigerait une clé d'API que le dépôt interdit) |
 
 ## 5. Triche, notifications iPhone, aperçu du lien ([détail](audit/03-triche-iphone-apercu.md))
@@ -63,9 +63,12 @@ Aucun constat 🔴 ni haute gravité. Crons et backfills (`verifyCronRequest`, 5
 | 🟠 | 1.9 XP de présence farmée par des soirées fantômes | Plafond sur 24 h glissantes dans le ledger ; participants distincts non exigés (à décider) | Corrigé (#569) : plafond de 3 gains par membre et par 24 h, valeur à valider par Maxime |
 | 🟠 | 1.4 Preuve Tower validée par 3 faux comptes | Quorum de votants actifs, votes décisifs visibles du staff | Restant (priorité 2) |
 | 🟠 | 1.5 Défi d'équipe : coéquipier fantôme récompensé | Participants confirmés par le capitaine, plafond par jour | Restant (priorité 2) |
-| 🟡 | 1.3 Ancienneté de 7 jours des votants selon le seul interrupteur | Ancienneté appliquée même interrupteur éteint | Corrigé (#570) |
-| 🟡 | 1.6, 1.10, 1.11, 1.14 (temps Steam AFK, XP de vote, tournoi complice, MP en masse) | Plafonds par jour, limite partagée | Restant |
-| 🟡 | 1.8, 1.15 plafonds sans test (soirée créée, demandes d'ami) | Tests d'intégration | Partiel : plafond « soirée créée » testé (#569) ; demandes d'ami restantes |
+| 🟡 | 1.3 Ancienneté de 7 jours des votants selon le seul interrupteur | Ancienneté appliquée même interrupteur éteint | Corrigé (#570), puis 3 jours (décision de Maxime) |
+| 🟡 | 1.10 XP « voter » : 5 XP par proposition votée, aucun plafond de propositions par soirée | 10 propositions au plus par soirée (la 11e est refusée avec un message) ; 10 gains d'XP « VOTE » au plus par membre et par soirée, comptés dans le ledger | Corrigé (#585) : valeurs proposées par l'audit, à valider par Maxime |
+| 🟡 | 1.6 Temps de jeu Steam farmé en AFK (validation automatique des défis `temps`) | Temps compté plafonné à 2 h par jour (décision de Maxime), « Signaler un doute » inchangé | Corrigé (#583) : `TOWER_STEAM_DAILY_CAP_MINUTES = 120`, tests purs ; un défi `temps` de plus de 240 min retombe sur la preuve et le vote (`TOWER_STEAM_AUTOVALIDATE.md`) |
+| 🟡 | 1.11 Tournoi à comptes complices : XP du podium sans plafond | Au plus 5 gains d'XP de tournoi par joueur sur 7 jours glissants (ledger, comme #569) ; aucun XP si moins de 3 participants ont 3 jours d'ancienneté (même constante que les votants Tower ; l'audit proposait 7 jours, la décision de Maxime pour les votants est 3 jours) | Corrigé (PR) : valeurs proposées (5 gains / 7 jours, 3 participants établis / 3 jours), à valider par Maxime ; tests d'intégration non exécutés en local, validés par la CI |
+| 🟡 | 1.14 MP en masse : créations de soirées et de tournois sans plafond partagé | Limite partagée : 10 soirées et 5 tournois par personne et par jour (`creation-quota.ts`, dans la transaction de création) ; site, `/soiree creer`, roulette instantanée, sondage et tournois individuels ou par équipes ; « Jouer maintenant » et la roulette différée non plafonnés ; au plus 20 MP personnels reçus par destinataire et par jour, appliqués à l'enfilement (`assertDmQuota`, `notification-delivery.ts`, limite partagée sans migration) : le 21e est conservé en SKIPPED (motif `dm_quota`) et journalisé, jamais perdu en silence | Corrigé (#586 créations ; plafond de MP reçus par destinataire : cette PR) |
+| 🟡 | 1.8, 1.15 plafonds sans test (soirée créée, demandes d'ami) | Tests d'intégration | Corrigé : « soirée créée » testé (#569), demandes d'ami testées (10 par minute, 20 par jour : `friends-actions.limits.integration.test.ts`, cette PR) |
 | 🟠 | 2.4 Web Push : `getRegistration("/sw.js")` au lieu de `/service-worker.js` ; abonnement jamais détecté après rechargement | Chemin `/service-worker.js`, test jsdom : abonnement détecté après rechargement | Corrigé (#572) |
 | 🟠 | 2.5–2.6 iPhone : aucune détection du mode installé ni guide « Sur l'écran d'accueil » | Détection (`detectPushSupport`), guide « Sur l'écran d'accueil », messages dédiés (navigateur sans push, permission refusée) | Corrigé (#572) ; réception sur iPhone réel non vérifiée |
 | 🟡 | 2.7–2.9 icône Apple 180×180, `icon`/`badge` de notification, manifest minimal | Ajouts | Partiel (#572) : icône de notification et `id`/`scope`/`lang` du manifest corrigés ; restent l'icône Apple 180×180 et le `badge` (images à produire) |
@@ -82,12 +85,12 @@ Honnêtement, ces contrôles n'ont pas pu être faits complètement :
 
 ## 7. Prochaines PR, par ordre
 
-Faites : XP de présence (#569), ancienneté des votants (#570), aperçu du lien (#571), notifications iPhone (#572), limites de débit (#573), garde du défi de 18 h (#574).
+Faites : XP de présence (#569), XP de vote (#585), ancienneté des votants (#570), aperçu du lien (#571), notifications iPhone (#572), limites de débit (#573), garde du défi de 18 h (#574).
 
 1. **À arbitrer avec Maxime** : preuves Tower validées par de faux comptes (1.4) et coéquipier fantôme (1.5) : quorum de votants « actifs », confirmation des participants par le capitaine.
 2. Autocomplétion Discord sous 3 s avec base endormie (course à ~2 s, liste vide en repli).
 3. Secret dédié de `force-relogin` (nouvelle variable d'environnement chez Vercel).
-4. Plafonds par jour des autres gains d'XP et des MP en masse (1.6, 1.10, 1.11, 1.14) ; tests des plafonds de demandes d'ami (1.15).
+4. Plafonds : faits (1.6, 1.10, 1.11, 1.14, 1.15). Reste le journal d'erreurs minimal en base (journaux Vercel limités à 1 h).
 5. Icône Apple 180×180 et `badge` de notification (2.7, 2.8).
 6. Journal d'erreurs minimal en base (journaux Vercel limités à 1 h).
 

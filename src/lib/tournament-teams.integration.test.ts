@@ -44,7 +44,7 @@ describe.skipIf(!TEST_DATABASE_URL)("tournois par équipes inscrites : PostgreSQ
     ids.community = (await db.community.create({ data: { slug: "tower-tt", name: "The Tower", status: "ACTIVE", communityTeamsEnabled: true } })).id;
     for (const name of ["org", "a1", "a2", "b1", "b2", "c1", "c2", "d1", "d2", "outsider"]) {
       ids[name] = (await db.user.create({ data: { discordId: `tt-${name}`, discordName: name } })).id;
-      await db.membership.create({ data: { userId: ids[name], communityId: ids.community, status: "ACTIVE", joinedAt: new Date() } });
+      await db.membership.create({ data: { userId: ids[name], communityId: ids.community, status: "ACTIVE", joinedAt: new Date(Date.now() - 30 * 24 * H) } });
     }
     ids.game = (await db.game.create({ data: { name: "Deadlock", source: "MANUAL", addedById: ids.org } })).id;
     for (const [letter, captain, member] of [["A", "a1", "a2"], ["B", "b1", "b2"], ["C", "c1", "c2"], ["D", "d1", "d2"]]) {
@@ -67,6 +67,16 @@ describe.skipIf(!TEST_DATABASE_URL)("tournois par équipes inscrites : PostgreSQ
     vi.stubEnv("TOURNAMENT_TEAMS_ENABLED", "false");
     expect(await tt.createTeamTournament(ids.org, ids.community, { name: "Coupe", gameId: ids.game, maxTeams: 2, isPrivate: false, registrationClosesAt: null })).toEqual({ result: "unavailable" });
     expect(await db.tournamentTeamSettings.count()).toBe(0);
+  });
+
+  it("plafond de 5 tournois par jour : le 6ᵉ est refusé sans rien écrire (compteur partagé avec les tournois individuels)", async () => {
+    // Compteur du jour déjà à 5 pour l'organisateur (tournois individuels ou par équipes confondus).
+    const { rateLimitWindowStart } = await import("./shared-rate-limit");
+    await db.rateLimitWindow.create({ data: { key: `dailyCreateTournament:${ids.org}`, windowStart: rateLimitWindowStart(Date.now(), 86_400_000), count: 5 } });
+    expect(await tt.createTeamTournament(ids.org, ids.community, { name: "Coupe", gameId: ids.game, maxTeams: 2, isPrivate: false, registrationClosesAt: null })).toEqual({ result: "daily_limit" });
+    expect(await db.tournament.count()).toBe(0);
+    expect(await db.tournamentTeamSettings.count()).toBe(0);
+    await db.rateLimitWindow.deleteMany({ where: { key: `dailyCreateTournament:${ids.org}` } });
   });
 
   it("deux équipes : lancement à la dernière place, confirmation par les deux capitaines, victoire et XP existants", async () => {

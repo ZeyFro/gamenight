@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { logger } from "@/lib/logger";
+import { persistServerError } from "@/lib/error-log";
 import { verifyDiscordSignature } from "@/lib/discord-signature";
 import { setupCommunityFromGuild } from "@/lib/community-setup";
 import { editSetupResponse } from "@/lib/discord-rest";
@@ -211,6 +212,7 @@ export async function handleDiscordInteraction(input: InteractionInput): Promise
             channelId,
           });
         } catch (error) {
+          persistServerError("discord-listing", error, { route: "discord/interactions" });
           logger.error("discord-listing", error, { customId: interaction.data?.custom_id });
           content = "Ta demande n’a pas pu être traitée. Réessaie dans un instant.";
         }
@@ -246,6 +248,7 @@ export async function handleDiscordInteraction(input: InteractionInput): Promise
             ? await respondToInstantSessionRsvp(resolvedRsvp!.sessionId, resolvedRsvp!.kind, origin)
             : await respondToSessionRsvp(resolvedRsvp!.sessionId, resolvedRsvp!.kind, origin);
       } catch (error) {
+        persistServerError("discord-rsvp", error, { route: "discord/interactions" });
         logger.error("discord-rsvp", error, { customId });
         content = "Ta réponse n’a pas pu être confirmée. Vérifie ton inscription dans GameNight, puis réessaie si nécessaire.";
       }
@@ -306,6 +309,7 @@ export async function handleDiscordInteraction(input: InteractionInput): Promise
           content = "Ce serveur ne peut pas être activé (suspendu ou archivé). Contacte un admin GameNight.";
         }
       } catch (error) {
+        persistServerError("discord-interactions", error, { route: "discord/interactions" });
         logger.error("discord-interactions", error, { guildId });
         content = "Une erreur est survenue. Les salons déjà créés sont conservés ; relance /gamenight setup.";
       }

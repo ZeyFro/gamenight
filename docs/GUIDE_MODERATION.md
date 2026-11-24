@@ -89,9 +89,9 @@ Une commande enregistrée dont l'interrupteur est éteint répond « désactivé
 Règles décidées (`docs/DECISIONS_TOWER.md`, constantes dans `src/lib/tower-challenge-*.ts`) :
 
 - **Preuve** : 48 h pour la déposer. Max 2 récompenses validées par jour (solo + équipe).
-- **Vote** : 24 h, au moins 3 votants distincts, majorité stricte, égalité = non validé, jamais sur sa propre preuve (ni pour un participant de l'équipe concernée). Votants : membre actif depuis au moins 7 jours.
+- **Vote** : 24 h, au moins 3 votants distincts, majorité stricte, égalité = non validé, jamais sur sa propre preuve (ni pour un participant de l'équipe concernée). Votants : membre actif depuis au moins 3 jours.
 - **Sans quorum** : une seule prolongation de 24 h, puis rejet **sans pénalité** ; le joueur peut resoumettre une fois.
-- **Validation automatique Steam** (défis mesurables, `docs/TOWER_STEAM_AUTOVALIDATE.md`) : fenêtre de doute de 6 h ; « Signaler un doute » (membre actif depuis 7 jours, jamais l'auteur, un seul par défi) renvoie le défi au vote communautaire. Aucune IA ne valide une preuve.
+- **Validation automatique Steam** (défis mesurables, `docs/TOWER_STEAM_AUTOVALIDATE.md`) : fenêtre de doute de 6 h ; « Signaler un doute » (membre actif depuis 3 jours, jamais l'auteur, un seul par défi) renvoie le défi au vote communautaire. Aucune IA ne valide une preuve.
 - **Contestation d'un rejet** : ouverte 48 h après l'annonce du résultat, une seule par défi, avec un motif.
 
 Qui examine une contestation (code de `canReviewTowerChallengeAppeal`) :

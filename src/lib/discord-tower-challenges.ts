@@ -8,7 +8,7 @@ import { logger } from "@/lib/logger";
 import { claimSoloTowerChallenge, getTowerChallengeState, resolveTowerDiscordActor,
   settleTowerChallenge, submitTowerChallengeProof, voteTowerChallenge, getTowerSeasonLeaderboard,
   getTowerSeasonVote, castTowerSeasonVote, getTeamDailyTowerChallenge, listDiscordTowerTeams,
-  joinTowerTeamChallenge } from "@/lib/tower-challenges";
+  joinTowerTeamChallenge, confirmTowerTeamParticipant } from "@/lib/tower-challenges";
 import { captureTowerMeasureBaseline, reportTowerChallengeDoubt } from "@/lib/tower-steam-measure";
 
 const snowflake = z.string().regex(/^[0-9]{16,20}$/);
@@ -98,10 +98,13 @@ function renderTeamState(state: TeamState) {
   const phase = attempt.status === "ASSIGNED" ? "à réaliser" : attempt.status === "SUBMITTED" ? "en vote" : attempt.status === "APPROVED" ? "réussi" : "refusé";
   const buttons: ReturnType<typeof button>[] = [];
   if (attempt.status === "ASSIGNED" && !state.joined) buttons.push(button("Je participe", `gn:tower:join:${attempt.id}`, 1));
-  if (attempt.status === "ASSIGNED" && state.joined) buttons.push(button("Déposer la preuve", `gn:tower:proof:${attempt.id}`, 1));
+  if (attempt.status === "ASSIGNED" && state.joined && state.confirmed) buttons.push(button("Déposer la preuve", `gn:tower:proof:${attempt.id}`, 1));
   if (attempt.status === "SUBMITTED" && state.joined) buttons.push(button("Voir le résultat", `gn:tower:settle:${attempt.id}`, 1));
   buttons.push(button("Mes équipes", "gn:tower:teams"));
-  const reward = state.joined && attempt.status === "APPROVED"
+  const awaiting = state.joined && !state.confirmed;
+  const reward = awaiting
+    ? " Ta participation attend la confirmation du capitaine de l’équipe : sans elle, aucune récompense."
+    : state.joined && attempt.status === "APPROVED"
     ? state.pendingReward ? " Ta récompense personnelle sera créditée demain, après la remise à zéro du plafond parisien."
       : " Tes étages personnels sont crédités."
     : state.joined ? " Tu participes à ce défi."
@@ -111,7 +114,16 @@ function renderTeamState(state: TeamState) {
     : attempt.proofCode
     ? `\nCode de preuve : **${attempt.proofCode}**. Inscris-le dans le jeu si possible, sinon dans la composition GameNight qui accompagne la capture. Il ne prouve pas la date de capture.` : "";
   const details = `🏰 **Défi quotidien · ${team.name}**\n**${attempt.title}** — ${phase}\n${proofCode}\n${attempt.instructions}\n${team.memberCount} membre(s) actif(s) · ${state.participantCount} participant(s) confirmé(s) · +${attempt.rewardFloors} étage(s) personnel(s) chacun après validation.${reward}\nDeux réussites récompensées par jour, solo et équipe confondus. Défi attribué jusqu’au <t:${Math.floor(attempt.expiresAt.getTime() / 1000)}:f>.`;
-  return { content: details.slice(0, 1900), components: [{ type: 1 as const, components: buttons.slice(0, 5) }] };
+  const rows: { type: 1; components: ReturnType<typeof button>[] }[] = [{ type: 1 as const, components: buttons.slice(0, 5) }];
+  // Capitaine : un bouton par participant à confirmer (4 au plus), identifiants de composants existants du bot, rien à enregistrer chez Discord.
+  const toConfirm = attempt.status === "APPROVED" || attempt.status === "REJECTED" ? [] : state.pendingParticipants;
+  if (state.isCaptain && toConfirm.length) {
+    rows.push({ type: 1 as const, components: toConfirm.map(person => button(("Confirmer " + person.name).slice(0, 80), `gn:tower:confirm:${attempt.id}:${person.userId}`, 3)) });
+  }
+  const captainNote = state.isCaptain && toConfirm.length
+    ? "\nCapitaine : confirme les participants que tu reconnais ; un participant non confirmé n’est pas récompensé et ne peut pas déposer la preuve."
+    : "";
+  return { content: (details + captainNote).slice(0, 1900), components: rows };
 }
 function renderSeasonVote(result: Awaited<ReturnType<typeof getTowerSeasonVote>>, userId: string) {
   if (result.status === "NO_FINALISTS") return { content: "Il n’y a pas encore assez de finalistes actifs pour ouvrir un vote de saison." };
@@ -153,13 +165,15 @@ const feedback: Record<string, string> = {
   VOTED: "Ton vote est enregistré.",
   ALREADY_VOTED: "Tu as déjà voté pour cette preuve.",
   VOTE_CHANGED: "Ton vote est modifié. Tu peux encore le changer jusqu’à l’échéance.",
-  VOTER_TOO_RECENT: "Pour voter, ton compte GameNight doit être actif depuis au moins 7 jours.",
+  VOTER_TOO_RECENT: "Pour voter, ton compte GameNight doit être actif depuis au moins 3 jours.",
   VOTER_NOT_ACTIVE: "Seuls les comptes GameNight actifs peuvent voter.",
   SELF_VOTE: "Tu ne peux pas voter pour ta propre preuve.",
   OPEN: "Le vote est encore ouvert (24 heures, prolongées une fois de 24 heures sans quorum).",
   NO_QUORUM_RESUBMIT: "Moins de trois votants : preuve rejetée sans pénalité. Tu peux déposer une nouvelle preuve une seule fois, sous 48 heures.",
   TEAM_NEEDS_PARTICIPANTS: "Il faut au moins deux membres confirmés avant de déposer la preuve d'équipe.",
-  JOINED: "Tu participes à ce défi d'équipe.",
+  JOINED: "Tu participes à ce défi d'équipe. Le capitaine doit te confirmer pour que tu sois récompensé.",
+  CONFIRMED: "Participant confirmé.",
+  NOT_CAPTAIN: "Seul le capitaine de l'équipe peut confirmer les participants.",
   DAILY_LIMIT: "Tu as atteint tes deux réussites récompensées pour cette journée.",
   APPROVED: "Défi validé ! Ton étage a été mis à jour.",
   REJECTED: "La preuve n’a pas obtenu trois votes et une majorité favorable dans le délai de vote.",
@@ -171,7 +185,7 @@ const feedback: Record<string, string> = {
   DOUBT_RECORDED: "Ton doute est enregistré : la validation automatique est suspendue et le défi passe au vote communautaire.",
   SELF_DOUBT: "Tu ne peux pas signaler un doute sur ton propre défi.",
   DOUBT_NOT_ACTIVE: "Seuls les comptes GameNight actifs peuvent signaler un doute.",
-  DOUBT_TOO_RECENT: "Pour signaler un doute, ton compte GameNight doit être actif depuis au moins 7 jours.",
+  DOUBT_TOO_RECENT: "Pour signaler un doute, ton compte GameNight doit être actif depuis au moins 3 jours.",
   ARCHIVED: "Cette preuve est archivée et ne peut plus être modifiée.",
 };
 
@@ -196,7 +210,8 @@ export function handleSignedTowerInteraction(body: unknown, timestamp: string | 
   const settle = /^gn:tower:settle:([a-zA-Z0-9_-]{1,64})$/.exec(customId);
   const team = /^gn:tower:team:([a-zA-Z0-9_-]{1,64})$/.exec(customId);
   const joinTeam = /^gn:tower:join:([a-zA-Z0-9_-]{1,64})$/.exec(customId);
-  if ((!action && !proof && !view && !vote && !doubt && !settle && !seasonBallot && !team && !joinTeam) || (i.type === 5 && !proof) || (i.type === 3 && i.data.component_type !== 2)) return { status: 400 };
+  const confirmTeam = /^gn:tower:confirm:([a-zA-Z0-9_-]{1,64}):([a-zA-Z0-9_-]{1,64})$/.exec(customId);
+  if ((!action && !proof && !view && !vote && !doubt && !settle && !seasonBallot && !team && !joinTeam && !confirmTeam) || (i.type === 5 && !proof) || (i.type === 3 && i.data.component_type !== 2)) return { status: 400 };
   if (process.env.TOWER_CHALLENGES_ENABLED !== "true") return quiet("Les défis de la Tour ne sont pas encore ouverts.");
   if (i.type === 3 && proof) return { status: 200, body: proofModal(proof[1]) };
   const messageId = i.type === 3 ? i.message.id : null;
@@ -243,6 +258,13 @@ export function handleSignedTowerInteraction(body: unknown, timestamp: string | 
           else response.content = result.status === "NO_CHALLENGE"
             ? "Aucun défi d’équipe n’est dans le catalogue. Un administrateur peut importer le pack avec /tower-admin importer-equipe."
             : feedback[result.status] ?? response.content;
+        } else if (confirmTeam) {
+          const result = await confirmTowerTeamParticipant({ ...actor, attemptId: confirmTeam[1], participantId: confirmTeam[2] });
+          response.content = feedback[result.status] ?? response.content;
+          if (result.status === "CONFIRMED") {
+            const state = await getTeamDailyTowerChallenge({ ...actor, teamId: result.teamId });
+            if (state.status === "TEAM_CHALLENGE") { response = renderTeamState(state); response.content = feedback.CONFIRMED + "\n\n" + response.content; }
+          }
         } else if (joinTeam) {
           const result = await joinTowerTeamChallenge({ ...actor, attemptId: joinTeam[1] });
           response.content = feedback[result.status] ?? response.content;

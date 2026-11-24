@@ -3,6 +3,8 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const triggerGlobalRelogin = vi.fn();
 vi.mock("@/lib/force-relogin", () => ({ triggerGlobalRelogin: () => triggerGlobalRelogin() }));
 vi.mock("@/lib/logger", () => ({ logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() } }));
+const record = vi.hoisted(() => vi.fn());
+vi.mock("@/lib/sensitive-operation-log", async () => ({ ...(await vi.importActual<typeof import("@/lib/sensitive-operation-log")>("@/lib/sensitive-operation-log")), recordSensitiveOperation: record }));
 // Espion sur `timingSafeEqual` tel qu'importé par `cron-auth` (export ESM non espionnable par vi.spyOn).
 const timingSafeEqual = vi.hoisted(() => vi.fn());
 vi.mock("node:crypto", async (importOriginal) => {
@@ -22,9 +24,11 @@ function req(authorization?: string) {
 
 describe("POST /api/admin/force-relogin", () => {
   beforeEach(() => {
+    record.mockReset();
     triggerGlobalRelogin.mockReset().mockResolvedValue({ forcedAt: "2026-01-01T00:00:00.000Z" });
     timingSafeEqual.mockClear();
-    vi.stubEnv("CRON_SECRET", "s3cret");
+    vi.stubEnv("FORCE_RELOGIN_SECRET", "s3cret");
+    vi.stubEnv("CRON_SECRET", "cron-secret-distinct");
   });
 
   it("mauvais secret → 401, comparaison à temps constant", async () => {
@@ -35,17 +39,24 @@ describe("POST /api/admin/force-relogin", () => {
     expect(triggerGlobalRelogin).not.toHaveBeenCalled();
   });
 
-  it("sans CRON_SECRET → 503", async () => {
-    vi.stubEnv("CRON_SECRET", "");
+  it("sans FORCE_RELOGIN_SECRET → 503, même avec un CRON_SECRET valide (échec fermé)", async () => {
+    vi.stubEnv("FORCE_RELOGIN_SECRET", "");
     const res = await POST(req("Bearer s3cret"));
     expect(res.status).toBe(503);
     expect(await res.json()).toEqual({ error: "not_configured" });
     expect(triggerGlobalRelogin).not.toHaveBeenCalled();
   });
 
-  it("bon secret → 200 avec le résultat", async () => {
+  it("CRON_SECRET n'ouvre plus la route : 401, la reconnexion n'est pas déclenchée (audit 23/11/2026, A01)", async () => {
+    const res = await POST(req("Bearer cron-secret-distinct"));
+    expect(res.status).toBe(401);
+    expect(triggerGlobalRelogin).not.toHaveBeenCalled();
+  });
+
+  it("bon secret → 200 avec le résultat, et l'opération est journalisée (sans acteur : secret dédié)", async () => {
     const res = await POST(req("Bearer s3cret"));
     expect(res.status).toBe(200);
+    expect(record).toHaveBeenCalledWith({ actorId: null, action: "auth.force_relogin", target: "route", outcome: "ok" });
     expect(await res.json()).toEqual({ forcedAt: "2026-01-01T00:00:00.000Z" });
   });
 
@@ -55,6 +66,7 @@ describe("POST /api/admin/force-relogin", () => {
     expect(res.status).toBe(500);
     const body = await res.text();
     expect(body).not.toContain("détail interne secret");
+    expect(record).toHaveBeenCalledWith({ actorId: null, action: "auth.force_relogin", target: "route", outcome: "server_error" });
     expect(JSON.parse(body)).toEqual({ error: "internal_error" });
   });
 });

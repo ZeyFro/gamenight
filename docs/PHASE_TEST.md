@@ -82,7 +82,7 @@ Option : `TOWER_TEAM_DAILY_ENABLED` (défi d'équipe quotidien à 18:00 Europe/P
 2. `/tower progression` : réponse **privée** (visible de lui seul) avec son étage et son rang ; aucun message public.
 3. `/tower defi` : un défi du catalogue lui est attribué ; la réponse reste privée.
 4. Soumettre une preuve (suivre la consigne du défi) : **dans le salon `TOWER_DISCORD_CHANNEL_ID`**, une annonce de preuve apparaît **uniquement si le consentement de publication est donné**, avec les boutons ✅ Valider / ❌ Refuser (ou ✅/❌ + un **fil** par preuve avec `TOWER_DISCORD_VOTES_ENABLED`).
-5. Un **deuxième** compte de test (membre actif **depuis au moins 7 jours** de la communauté, sinon son vote est refusé) vote : le message public est **édité** (compteur de votants, jamais le détail pour/contre) ; le fil de discussion est créé une seule fois.
+5. Un **deuxième** compte de test (membre actif **depuis au moins 3 jours** de la communauté, sinon son vote est refusé) vote : le message public est **édité** (compteur de votants, jamais le détail pour/contre) ; le fil de discussion est créé une seule fois.
 6. `/tower classement` : liste sans erreur.
 7. Au règlement du vote : boutons retirés, annonce de réussite dans le salon général si configuré.
 

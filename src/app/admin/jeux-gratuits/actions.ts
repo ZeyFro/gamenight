@@ -3,6 +3,7 @@
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { requireAdmin } from "@/lib/admin";
+import { recordSensitiveOperation, sensitiveTarget } from "@/lib/sensitive-operation-log";
 import { checkRateLimit } from "@/lib/rate-limit";
 import { prisma } from "@/lib/prisma";
 import { scopedPrismaForCommunityId } from "@/lib/community-scoped-client";
@@ -19,6 +20,7 @@ function back(communityId: string, error?: string): never {
 export async function createFreeGameOfferAction(formData: FormData): Promise<void> {
   const admin = await requireAdmin();
   if (!admin) redirect("/");
+  await recordSensitiveOperation({ actorId: admin.id, action: "admin.free_games", target: sensitiveTarget(formData), outcome: "requested" });
   const communityId = idSchema.safeParse(formData.get("communityId"));
   if (!communityId.success) redirect("/admin/jeux-gratuits?error=invalid");
   if (!checkRateLimit(admin.id, "createFreeGameOffer")) back(communityId.data, "rate_limited");
@@ -48,6 +50,7 @@ export async function createFreeGameOfferAction(formData: FormData): Promise<voi
 export async function deleteFreeGameOfferAction(formData: FormData): Promise<void> {
   const admin = await requireAdmin();
   if (!admin) redirect("/");
+  await recordSensitiveOperation({ actorId: admin.id, action: "admin.free_games", target: sensitiveTarget(formData), outcome: "requested" });
   const communityId = idSchema.safeParse(formData.get("communityId"));
   const offerId = idSchema.safeParse(formData.get("id"));
   if (!communityId.success || !offerId.success) redirect("/admin/jeux-gratuits?error=invalid");

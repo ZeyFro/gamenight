@@ -1,6 +1,7 @@
 import { NextResponse, after } from "next/server";
 import { verifyCronRequest } from "@/lib/cron-auth";
 import { logger } from "@/lib/logger";
+import { persistServerError } from "@/lib/error-log";
 import { boostersEnabled, runBoosterSync } from "@/lib/booster-support";
 import { withRoleCreationLock } from "@/lib/discord-role-lock";
 
@@ -32,6 +33,7 @@ export async function GET(request: Request) {
       }
       logger.info("cron:booster-sync", `fin durée=${Date.now() - startedAt} ms.`, { ...locked.value });
     } catch (error) {
+      persistServerError("cron:booster-sync", error, { route: "cron/booster-sync" });
       logger.error("cron:booster-sync", error, { durationMs: Date.now() - startedAt });
     }
   });

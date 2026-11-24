@@ -12,6 +12,7 @@ import { resolveNotifiedUserIds } from "@/lib/notify-recipients";
 import { accessibleSessionWhereFor } from "@/lib/session-access";
 import { isSessionVisibleInHistory } from "@/lib/sessions";
 import { RATE_LIMIT_MESSAGE } from "@/lib/rate-limit";
+import { SESSION_QUOTA_ERROR_KEY, SESSION_QUOTA_MESSAGE } from "@/lib/creation-quota";
 import { VALIDATION_ERROR_KEY, VALIDATION_ERROR_MESSAGE } from "@/lib/validations";
 import { SESSION_STATUS_LABELS } from "@/lib/session-status";
 import { Avatar } from "@/components/ui/Avatar";
@@ -31,9 +32,10 @@ export const metadata = pageMetadata("Roulette");
 
 const ROULETTE_ERROR_MESSAGES: Record<string, string> = {
   rate_limited: RATE_LIMIT_MESSAGE,
+  [SESSION_QUOTA_ERROR_KEY]: SESSION_QUOTA_MESSAGE,
   [VALIDATION_ERROR_KEY]: VALIDATION_ERROR_MESSAGE,
   deadline_trop_proche:
-    "La deadline de proposition tombe déjà dans le passé — recule l'heure de la soirée ou raccourcis le délai.",
+    "La date limite de proposition tombe déjà dans le passé — recule l'heure de la soirée ou raccourcis le délai.",
 };
 
 export default async function RoulettePage({

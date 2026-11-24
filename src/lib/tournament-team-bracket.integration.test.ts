@@ -2,6 +2,8 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vites
 
 const { awardXp, postToCommunity } = vi.hoisted(() => ({ awardXp: vi.fn(), postToCommunity: vi.fn() }));
 const TEST_DATABASE_URL = process.env.TEST_DATABASE_URL;
+// L'XP de tournoi exige 3 participants établis (Membership de plus de 3 jours) : constat 1.11 de l'audit.
+const ESTABLISHED_JOINED_AT = new Date(Date.now() - 30 * 24 * 3600_000);
 
 vi.mock("@/lib/prisma", async () => {
   const { PrismaClient } = await import("@prisma/client");
@@ -34,7 +36,7 @@ describe.skipIf(!TEST_DATABASE_URL)("tournois en équipes (Postgres)", () => {
       ["a", "b", "c", "d", "outsider"].map((name) => db.user.create({ data: { discordId: `team-${name}`, discordName: name } }))
     );
     const communityId = await (await import("@/lib/default-community")).getDefaultCommunityId();
-    await db.membership.createMany({ data: users.slice(0, 4).map(user => ({ userId: user.id, communityId, status: "ACTIVE" })) });
+    await db.membership.createMany({ data: users.slice(0, 4).map(user => ({ userId: user.id, communityId, status: "ACTIVE", joinedAt: ESTABLISHED_JOINED_AT })) });
     const game = await db.game.create({ data: { name: "g", source: "MANUAL", addedById: users[0].id } });
     const tournament = await db.tournament.create({
       data: { name: "équipes", gameId: game.id, createdById: users[0].id, maxPlayers: 4, format: "TEAMS" },
@@ -70,7 +72,7 @@ describe.skipIf(!TEST_DATABASE_URL)("tournois en équipes (Postgres)", () => {
       ["a", "b", "c", "d", "e", "f"].map((name) => db.user.create({ data: { discordId: `bye-${name}`, discordName: name } }))
     );
     const communityId = await (await import("@/lib/default-community")).getDefaultCommunityId();
-    await db.membership.createMany({ data: users.map(user => ({ userId: user.id, communityId, status: "ACTIVE" })) });
+    await db.membership.createMany({ data: users.map(user => ({ userId: user.id, communityId, status: "ACTIVE", joinedAt: ESTABLISHED_JOINED_AT })) });
     const game = await db.game.create({ data: { name: "g", source: "MANUAL", addedById: users[0].id } });
     const tournament = await db.tournament.create({
       data: { name: "bye équipes", gameId: game.id, createdById: users[0].id, maxPlayers: 6, format: "TEAMS" },

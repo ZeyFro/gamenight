@@ -55,7 +55,7 @@ Routes HTTP (28) :
 
 | Route | Méthodes | Type | Écriture base | Effets externes | `after()` | Garde détectée |
 |---|---|---|---|---|---|---|
-| `/api/admin/force-relogin` | POST | autre | via 2 fichier(s) | oui | non | CRON_SECRET (Bearer) |
+| `/api/admin/force-relogin` | POST | autre | via 2 fichier(s) | oui | non | FORCE_RELOGIN_SECRET (Bearer, dédié, jamais CRON_SECRET) |
 | `/api/auth/[...nextauth]` | ? | authentification | via 4 fichier(s) | oui | non | session utilisateur |
 | `/api/backfill/game-news` | POST | backfill | via 2 fichier(s) | oui | oui | CRON_SECRET (Bearer) |
 | `/api/backfill/igdb-coop` | GET, POST | backfill | via 3 fichier(s) | oui | oui | CRON_SECRET (Bearer) |

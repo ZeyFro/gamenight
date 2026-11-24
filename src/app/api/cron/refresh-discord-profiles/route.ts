@@ -1,6 +1,7 @@
 import { NextResponse, after } from "next/server";
 import { refreshAllDiscordProfiles } from "@/lib/discord-profile";
 import { logger } from "@/lib/logger";
+import { persistServerError } from "@/lib/error-log";
 import { verifyCronRequest } from "@/lib/cron-auth";
 
 /**
@@ -60,6 +61,7 @@ export async function GET(request: Request) {
         result
       );
     } catch (error) {
+      persistServerError("cron:refresh-discord-profiles", error, { route: "cron/refresh-discord-profiles" });
       logger.error("cron:refresh-discord-profiles", error, { durationMs: Date.now() - startedAt });
     }
   });
