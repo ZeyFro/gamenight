@@ -57,6 +57,18 @@ Vercel déploie `main` dès la fusion ; la migration part en parallèle (environ
 - Réglages GitHub : environnement `production-migrations` (relecteurs facultatifs : aucun aujourd'hui, choix du propriétaire) avec **branches de déploiement limitées à `main`** ; protection de `main` avec `verify` et `immutable` obligatoires. Au dernier relevé (#400), `main` n'avait aucune règle de protection : sans elle, rien n'empêche une fusion sans CI verte.
 - Avant #370 : `node scripts/check-team-membership-duplicates.mjs` contre Production en lecture seule (doublons d'appartenance, créateurs orphelins).
 
+## Critères du cahier 21.4 et leur preuve
+
+Cahier C061 : « structure vérifiée, sauvegarde, tests, retour arrière, validation de la bascule ». Chaque critère a une preuve exécutable (`src/lib/migrations-criteres.test.ts`, dans la CI) ou, quand il exige Neon, un geste humain décrit ci-dessous.
+
+| Critère | Preuve exécutable | Geste humain (hors accès du code) |
+| --- | --- | --- |
+| Structure vérifiée | Noms au bon format, `migration.sql` non vide, verrou PostgreSQL, horodatages récents uniques, **migrations récentes additives** (aucun `DROP`, `TRUNCATE`, renommage, `DELETE FROM`, changement de type) ; check CI « immutable » (`scripts/check-migrations-immutable.mjs`) | — |
+| Sauvegarde | Le workflow de production ne fait que `migrate deploy`, depuis `main`, dans l'environnement protégé `production-migrations`, une exécution à la fois, URL poolée refusée ; jamais de `reset`, `db push`, `migrate dev` ni `--accept-data-loss` | Créer une branche Neon datée avant une migration risquée et noter l'heure ; essai de restauration : [audit/procedure-restauration.md](audit/procedure-restauration.md) |
+| Tests | Suite Postgres de la CI (4 tranches) sur une base jetable après `prisma migrate deploy` ; `migrations-rollback.integration.test.ts` | — |
+| Retour arrière | `prisma/rollbacks/<nom>.sql` obligatoire pour toute migration à partir du 23/11/2026, en-tête « manuel », jamais exécuté par un script ni un workflow, sans `DROP DATABASE`/`TRUNCATE` | Exécuter le fichier à la main sur une branche Neon, après décision du propriétaire |
+| Validation de la bascule | Garde de build « anti-fenêtre » en lecture seule (`scripts/assert-migrations-applied.mjs`, `MIGRATION_GATE_ENFORCE`) ; le build n'exécute aucune migration ; run « Migrations Production » vert avant la PR suivante | Lire le run vert après chaque fusion avec migration |
+
 ## Retour arrière d'une migration (cahier §21.4)
 
 Chaque migration créée à partir du 23 novembre 2026 a un fichier **manuel** `prisma/rollbacks/<nom>.sql` (garde : `src/lib/migrations-rollback.test.ts`). Il n'est **jamais** exécuté automatiquement. La CI le valide (`src/lib/migrations-rollback.integration.test.ts`) : sur la base de test, dans une transaction toujours annulée, retour arrière puis migration rejouée, sans erreur et sans changement final du schéma.

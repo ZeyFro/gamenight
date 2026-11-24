@@ -736,8 +736,12 @@ describe.skipIf(!url)("défis solo et votes persistants", () => {
         expect(await confirmedAt(attemptId, "tower-author")).not.toBeNull();
         expect(await confirmedAt(attemptId, "tower-a1")).toBeNull();
         // Le capitaine ne confirme que tower-a1.
+        const journalRows = () => db.sensitiveOperationLog.count({ where: { action: "tower.participant_confirm" } });
+        const journalBefore = await journalRows();
         expect(await api.confirmTowerTeamParticipant({ ...author, attemptId, participantId: "tower-a1" })).toMatchObject({ status: "CONFIRMED", replayed: false });
         expect(await api.confirmTowerTeamParticipant({ ...author, attemptId, participantId: "tower-a1" })).toMatchObject({ status: "CONFIRMED", replayed: true });
+        // Journal des opérations sensibles (C055) : la confirmation nouvelle est journalisée UNE fois, le rejeu non.
+        expect(await journalRows()).toBe(journalBefore + 1);
         expect((await api.submitTowerChallengeProof(await proof(attemptId))).status).toBe("SUBMITTED");
         for (const userId of ["tower-a3", "tower-a4", "tower-a5"]) {
           expect((await api.voteTowerChallenge({ communityId: "tower-a", userId, attemptId, approve: true })).status).toBe("VOTED");

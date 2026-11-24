@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { buildGameRolePing } from "@/lib/notification-policy";
 import {
   addThreadMember,
   archiveThread,
@@ -625,6 +626,38 @@ describe("discord-rest", () => {
       });
       const body = JSON.parse(fetchMock.mock.calls[0][1].body as string);
       expect(body.allowed_mentions.parse).toEqual(["users"]);
+    });
+
+    it("retire toute mention de rôle qui ne vient pas d'un ping de jeu opt-in, et parse=roles (lot 5, Q19)", async () => {
+      fetchMock.mockResolvedValue(jsonResponse(200, { id: "m1", channel_id: "c1" }));
+      await sendChannelMessage({
+        channelId: "c1",
+        content: "<@&9>",
+        allowedMentions: { parse: ["roles", "users"], roles: ["9"], users: ["123"] },
+        deadline: FAR_FUTURE,
+        now: NOW,
+      });
+      const body = JSON.parse(fetchMock.mock.calls[0][1].body as string);
+      expect(body.allowed_mentions.parse).toEqual(["users"]);
+      expect(body.allowed_mentions.roles).toBeUndefined();
+      expect(body.allowed_mentions.users).toEqual(["123"]);
+    });
+
+    it("laisse passer le ping produit par buildGameRolePing, et lui seul (rôle précis, jamais parse)", async () => {
+      fetchMock.mockResolvedValue(jsonResponse(200, { id: "m1", channel_id: "c1" }));
+      const ping = buildGameRolePing({
+        gameName: "Valorant",
+        roles: [{ id: "9", name: "Valorant", permissions: "0", managed: false, position: 1 } as never],
+        optedInCount: 2,
+      });
+      expect(ping).not.toBeNull();
+      await sendChannelMessage({ channelId: "c1", content: ping!.content, allowedMentions: ping!.allowedMentions, deadline: FAR_FUTURE, now: NOW });
+      const approved = JSON.parse(fetchMock.mock.calls[0][1].body as string);
+      expect(approved.allowed_mentions).toMatchObject({ parse: [], roles: ["9"] });
+      // Copie de l'objet (spread) : plus approuvée, le rôle est retiré.
+      await sendChannelMessage({ channelId: "c1", content: ping!.content, allowedMentions: { ...ping!.allowedMentions }, deadline: FAR_FUTURE, now: NOW });
+      const copied = JSON.parse(fetchMock.mock.calls[1][1].body as string);
+      expect(copied.allowed_mentions.roles).toBeUndefined();
     });
 
     it("transmet aussi allowed_mentions (désactivées par défaut) lors d'une ÉDITION, pas seulement à la création", async () => {

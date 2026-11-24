@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { checkCronAuth } from "@/lib/cron-auth";
 import { triggerGlobalRelogin } from "@/lib/force-relogin";
 import { logger } from "@/lib/logger";
+import { recordSensitiveOperation } from "@/lib/sensitive-operation-log";
 
 /**
  * Déclenchement manuel/scripté de la reconnexion forcée globale (voir
@@ -25,12 +26,16 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
 
+  // Journal des opérations sensibles (cahier §19.1) : acteur inconnu (secret dédié, pas de session), cible « route ».
+  let result;
   try {
-    const result = await triggerGlobalRelogin();
-    return NextResponse.json(result);
+    result = await triggerGlobalRelogin();
   } catch (error) {
     logger.error("admin:force-relogin", error);
+    await recordSensitiveOperation({ actorId: null, action: "auth.force_relogin", target: "route", outcome: "server_error" });
     // Détail loggé côté serveur (logger.error ci-dessus), jamais renvoyé au client.
     return NextResponse.json({ error: "internal_error" }, { status: 500 });
   }
+  await recordSensitiveOperation({ actorId: null, action: "auth.force_relogin", target: "route", outcome: "ok" });
+  return NextResponse.json(result);
 }
