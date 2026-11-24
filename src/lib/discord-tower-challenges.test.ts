@@ -354,4 +354,54 @@ describe("parcours Discord The Tower signé", () => {
     expect(mocks.warn.mock.calls.flat()).not.toContain(failure);
   });
 
+
+  describe("salon des commandes (#🤖・commandes-bot) en plus de #⚡・épreuves", () => {
+    const commandsChannel = "100000000000000099";
+    const slash = (name: string, channel_id: string) => payload("", { type: 2, message: undefined, channel_id, data: { name: "tower", options: [{ name, type: 1 }] } });
+    it("sans la variable : seul le salon des épreuves répond, et le message le cite", async () => {
+      const out = await run(slash("progression", commandsChannel));
+      expect(JSON.stringify(out.body)).toContain("#⚡・épreuves");
+      expect(JSON.stringify(out.body)).not.toContain("commandes-bot");
+      expect(mocks.actor).not.toHaveBeenCalled();
+    });
+    it.each(["defi", "progression", "classement", "vote", "equipe"])("avec la variable : /tower %s répond aussi dans le salon des commandes", async name => {
+      vi.stubEnv("TOWER_DISCORD_COMMANDS_CHANNEL_ID", commandsChannel);
+      const out = await run(slash(name, commandsChannel));
+      expect(out.body).toEqual({ type: 5, data: { flags: 64 } });
+      await out.runTower?.();
+      expect(mocks.actor).toHaveBeenCalled();
+    });
+    it("reste valable dans le salon des épreuves quand la variable est posée", async () => {
+      vi.stubEnv("TOWER_DISCORD_COMMANDS_CHANNEL_ID", commandsChannel);
+      const out = await run(slash("progression", channel));
+      expect(out.body).toEqual({ type: 5, data: { flags: 64 } });
+    });
+    it("un autre salon est refusé avec un message qui cite les DEUX salons autorisés", async () => {
+      vi.stubEnv("TOWER_DISCORD_COMMANDS_CHANNEL_ID", commandsChannel);
+      const out = await run(slash("progression", "100000000000000077"));
+      const text = JSON.stringify(out.body);
+      expect(text).toContain("#⚡・épreuves");
+      expect(text).toContain("#🤖・commandes-bot");
+      expect(mocks.actor).not.toHaveBeenCalled();
+    });
+    it("un identifiant invalide dans la variable est ignoré (épreuves seulement)", async () => {
+      vi.stubEnv("TOWER_DISCORD_COMMANDS_CHANNEL_ID", "pas-un-salon");
+      const out = await run(slash("progression", commandsChannel));
+      expect(JSON.stringify(out.body)).not.toContain("commandes-bot");
+    });
+    it("les boutons des réponses fonctionnent depuis le salon des commandes, mais un salon inconnu reste refusé (400)", async () => {
+      vi.stubEnv("TOWER_DISCORD_COMMANDS_CHANNEL_ID", commandsChannel);
+      expect((await run(payload("gn:tower:mine", { channel_id: commandsChannel }))).status).not.toBe(400);
+      expect((await run(payload("gn:tower:mine", { channel_id: "100000000000000077" }))).status).toBe(400);
+    });
+    it("la preuve reste vérifiée contre le salon des épreuves, même soumise depuis le salon des commandes", async () => {
+      vi.stubEnv("TOWER_DISCORD_COMMANDS_CHANNEL_ID", commandsChannel);
+      const inCommands = modal(`https://discord.com/channels/${guild}/${commandsChannel}/${message}`);
+      inCommands.channel_id = commandsChannel;
+      expect((await run(inCommands)).status).toBe(400);
+      const inTrials = modal();
+      inTrials.channel_id = commandsChannel;
+      expect((await run(inTrials)).status).not.toBe(400);
+    });
+  });
 });
