@@ -9,6 +9,7 @@ const { prisma, scopedDb, getCalendarData } = vi.hoisted(() => ({
   // PR9 : compteurs de groupe lus via le client scopé (communauté active).
   scopedDb: {
     groupSessionStats: { aggregate: vi.fn() },
+    session: { count: vi.fn() },
     groupGameStat: { groupBy: vi.fn(), aggregate: vi.fn(), findMany: vi.fn() },
     communityMemberStats: { findFirst: vi.fn(), count: vi.fn() },
   },
@@ -34,6 +35,7 @@ beforeEach(() => {
 const emptyStats = () => {
   prisma.user.count.mockResolvedValue(9); // membres actifs du serveur (toi compris)
   scopedDb.groupSessionStats.aggregate.mockResolvedValue({ _sum: { totalSessionsPlayed: null } });
+  scopedDb.session.count.mockResolvedValue(0);
   scopedDb.groupGameStat.groupBy.mockResolvedValue([]);
   scopedDb.groupGameStat.aggregate.mockResolvedValue({ _sum: { totalPlayMinutes: null } });
   scopedDb.groupGameStat.findMany.mockResolvedValue([]);
@@ -76,7 +78,17 @@ describe("getGroupStats", () => {
     expect(prisma.game.findUnique).toHaveBeenCalledWith(expect.objectContaining({ where: { id: "g1" } }));
   });
 
-  it("n'utilise jamais les lignes Session (compteurs durables uniquement)", async () => {
+  it("les soirées terminées encore présentes ne servent que de minimum au compteur durable (le plus grand l'emporte, jamais une addition)", async () => {
+    emptyStats();
+    scopedDb.groupSessionStats.aggregate.mockResolvedValue({ _sum: { totalSessionsPlayed: 5 } });
+    scopedDb.session.count.mockResolvedValue(28);
+    expect((await getGroupStats("viewer")).totalSessionsPlayed).toBe(28);
+    scopedDb.session.count.mockResolvedValue(3);
+    expect((await getGroupStats("viewer")).totalSessionsPlayed).toBe(5);
+    expect(scopedDb.session.count).toHaveBeenCalledWith({ where: { status: "DONE" } });
+  });
+
+  it("lit les compteurs durables de la communauté affichée", async () => {
     emptyStats();
     await getGroupStats("viewer");
     expect(scopedDb.groupSessionStats.aggregate).toHaveBeenCalledWith({ where: { communityId: { in: ["community"] } }, _sum: { totalSessionsPlayed: true } });

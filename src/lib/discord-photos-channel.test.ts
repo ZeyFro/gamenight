@@ -14,3 +14,18 @@ describe("lien vers le salon des photos (Q6)", () => {
     expect(discordPhotosChannelUrl({ DISCORD_BOT_GUILD_ID: "abc", DISCORD_PHOTOS_CHANNEL_ID: "1234567890123456789" })).toBeNull();
   });
 });
+
+import { readFileSync } from "node:fs";
+describe("lien « photos » sur la page d'une soirée (production du 24/11/2026)", () => {
+  it("est rendu sans condition de statut : une soirée passée (DONE) porte aussi le lien", () => {
+    const page = readFileSync("src/app/sessions/[id]/page.tsx", "utf8");
+    const line = page.split("\n").find((l) => l.includes("<SessionPhotosLink"));
+    expect(line).toBeTruthy();
+    expect(line).toMatch(/^\s*\{discordPhotosChannelUrl\(\) && <SessionPhotosLink url=\{discordPhotosChannelUrl\(\)!\} \/>\}\s*$/);
+  });
+  it("exige DEUX variables : DISCORD_BOT_GUILD_ID et DISCORD_PHOTOS_CHANNEL_ID (sans l'identifiant du serveur, aucun lien)", () => {
+    expect(discordPhotosChannelUrl({ DISCORD_PHOTOS_CHANNEL_ID: "123456789012345678" })).toBeNull();
+    expect(discordPhotosChannelUrl({ DISCORD_BOT_GUILD_ID: "223456789012345678", DISCORD_PHOTOS_CHANNEL_ID: "123456789012345678" }))
+      .toBe("https://discord.com/channels/223456789012345678/123456789012345678");
+  });
+});
