@@ -30,7 +30,7 @@ Le dépôt ne définit aucun déclencheur cron dans vercel.json. Le défi d’é
 | `/api/cron/team-applications` | GET | Relance (48 h) et expiration (7 j) des candidatures d’équipe, retrait des accès Discord des membres non actifs ; OFF sans `TEAM_RECRUITERS_ENABLED` ; 503 sans `CRON_SECRET` |
 | `/api/backfill/game-news` | POST | Backfill des nouvelles de jeux |
 | `/api/backfill/igdb-coop` | GET, POST | Backfill des données coop IGDB |
-| `/api/backfill/seed-reconcile` | GET, POST | Réconciliation des données seed |
+| `/api/backfill/seed-reconcile` | GET, POST | Réconciliation des données seed ; le backfill d'XP ne traite que les soirées créées avant le 23/11/2026 (`XP_CAPS_START`), jamais un gain refusé par un plafond |
 | `/api/backfill/steam-store` | POST | Backfill des données Steam Store |
 
 ## Réponse 202 et `after()` (limite cron-job.org de 30 s)
