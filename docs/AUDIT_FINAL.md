@@ -46,7 +46,7 @@ Aucun constat 🔴 ni haute gravité. Crons et backfills (`verifyCronRequest`, 5
 | Gravité | Où | Correctif | État |
 |---|---|---|---|
 | 🟢 | Commandes et boutons : réponse différée avant tout accès à la base, donc sous 3 s même base en veille | — | Vérifié en lecture du code ; **non vérifié en réel** (base endormie, Discord) |
-| 🟠 | Autocomplétion (tournois, soirées, rôles) : non différable, interroge la base avant de répondre | Course `Promise.race` à ~2 s, liste vide en repli ; appel de santé régulier | Restant |
+| 🟠 | Autocomplétion (tournois, soirées, rôles) : non différable, interroge la base avant de répondre | Course `Promise.race` à ~2 s, liste vide en repli ; appel de santé régulier | Corrigé (#576) : budget de 2,2 s, liste vide en repli |
 | 🔴 | Aucun cron déclaré dans `vercel.json` : tout dépend de cron-job.org | Créer les jobs de `docs/CRONS.md`, e-mail d'échec, test à 202 | **Non vérifié** (réglage extérieur de Maxime) |
 | 🔴 | Workflow `tower-team-daily` : garde « heure de Paris = 18 » plus stricte que la route (≥ 18) ; un retard de GitHub fait sauter la journée | Garde « heure >= 18 » : un retard de GitHub ne fait plus sauter la journée ; la route reste idempotente par jour. L'exécuteur de notifications rattrapait déjà l'attribution à partir de 18 h | Corrigé (#574) |
 | 🟠 | Heure d'été/hiver du défi de 18 h : aucun test des deux nuits de bascule | Des tests existent déjà (`tower-challenge-rules.test.ts`, `tower-team-daily-workflow.test.ts`) ; #574 les complète (retard de 0 et 1 h, jours de bascule) | Constat inexact (corrigé par #574) |
@@ -60,13 +60,13 @@ Aucun constat 🔴 ni haute gravité. Crons et backfills (`verifyCronRequest`, 5
 
 | Gravité | Où | Correctif | État |
 |---|---|---|---|
-| 🟠 | 1.9 XP de présence farmée par des soirées fantômes | Plafond sur 24 h glissantes dans le ledger ; participants distincts non exigés (à décider) | Corrigé (#569) : plafond de 3 gains par membre et par 24 h, valeur à valider par Maxime |
-| 🟠 | 1.4 Preuve Tower validée par 3 faux comptes | Quorum de votants actifs, votes décisifs visibles du staff | Restant (priorité 2) |
-| 🟠 | 1.5 Défi d'équipe : coéquipier fantôme récompensé | Participants confirmés par le capitaine, plafond par jour | Restant (priorité 2) |
+| 🟠 | 1.9 XP de présence farmée par des soirées fantômes | Plafond sur 24 h glissantes dans le ledger ; participants distincts non exigés (à décider) | Corrigé (#569) : plafond de 3 gains par membre et par 24 h, valeur validée par Maxime (24/11) |
+| 🟠 | 1.4 Preuve Tower validée par 3 faux comptes | Quorum de votants actifs, votes décisifs visibles du staff | Corrigé (#570, #578) : un votant compte après 3 jours de présence sur le serveur (décision de Maxime), le signaleur de doute aussi |
+| 🟠 | 1.5 Défi d'équipe : coéquipier fantôme récompensé | Participants confirmés par le capitaine, plafond par jour | Corrigé (#580) : le capitaine confirme les participants nommés ; 3 récompenses d'équipe par jour au plus (décision de Maxime) |
 | 🟡 | 1.3 Ancienneté de 7 jours des votants selon le seul interrupteur | Ancienneté appliquée même interrupteur éteint | Corrigé (#570), puis 3 jours (décision de Maxime) |
-| 🟡 | 1.10 XP « voter » : 5 XP par proposition votée, aucun plafond de propositions par soirée | 10 propositions au plus par soirée (la 11e est refusée avec un message) ; 10 gains d'XP « VOTE » au plus par membre et par soirée, comptés dans le ledger | Corrigé (#585) : valeurs proposées par l'audit, à valider par Maxime |
+| 🟡 | 1.10 XP « voter » : 5 XP par proposition votée, aucun plafond de propositions par soirée | 10 propositions au plus par soirée (la 11e est refusée avec un message) ; 10 gains d'XP « VOTE » au plus par membre et par soirée, comptés dans le ledger | Corrigé (#585) : valeurs validées par Maxime (24/11) |
 | 🟡 | 1.6 Temps de jeu Steam farmé en AFK (validation automatique des défis `temps`) | Temps compté plafonné à 2 h par jour (décision de Maxime), « Signaler un doute » inchangé | Corrigé (#583) : `TOWER_STEAM_DAILY_CAP_MINUTES = 120`, tests purs ; un défi `temps` de plus de 240 min retombe sur la preuve et le vote (`TOWER_STEAM_AUTOVALIDATE.md`) |
-| 🟡 | 1.11 Tournoi à comptes complices : XP du podium sans plafond | Au plus 5 gains d'XP de tournoi par joueur sur 7 jours glissants (ledger, comme #569) ; aucun XP si moins de 3 participants ont 3 jours d'ancienneté (même constante que les votants Tower ; l'audit proposait 7 jours, la décision de Maxime pour les votants est 3 jours) | Corrigé (PR) : valeurs proposées (5 gains / 7 jours, 3 participants établis / 3 jours), à valider par Maxime ; tests d'intégration non exécutés en local, validés par la CI |
+| 🟡 | 1.11 Tournoi à comptes complices : XP du podium sans plafond | Au plus 5 gains d'XP de tournoi par joueur sur 7 jours glissants (ledger, comme #569) ; aucun XP si moins de 3 participants ont 3 jours d'ancienneté (même constante que les votants Tower ; l'audit proposait 7 jours, la décision de Maxime pour les votants est 3 jours) | Corrigé (PR) : valeurs validées par Maxime (5 gains / 7 jours, 3 participants établis / 3 jours) ; tests d'intégration non exécutés en local, validés par la CI |
 | 🟡 | 1.14 MP en masse : créations de soirées et de tournois sans plafond partagé | Limite partagée : 10 soirées et 5 tournois par personne et par jour (`creation-quota.ts`, dans la transaction de création) ; site, `/soiree creer`, roulette instantanée, sondage et tournois individuels ou par équipes ; « Jouer maintenant » et la roulette différée non plafonnés ; au plus 20 MP personnels reçus par destinataire et par jour, appliqués à l'enfilement (`assertDmQuota`, `notification-delivery.ts`, limite partagée sans migration) : le 21e est conservé en SKIPPED (motif `dm_quota`) et journalisé, jamais perdu en silence | Corrigé (#586 créations ; plafond de MP reçus par destinataire : cette PR) |
 | 🟡 | 1.8, 1.15 plafonds sans test (soirée créée, demandes d'ami) | Tests d'intégration | Corrigé : « soirée créée » testé (#569), demandes d'ami testées (10 par minute, 20 par jour : `friends-actions.limits.integration.test.ts`, cette PR) |
 | 🟠 | 2.4 Web Push : `getRegistration("/sw.js")` au lieu de `/service-worker.js` ; abonnement jamais détecté après rechargement | Chemin `/service-worker.js`, test jsdom : abonnement détecté après rechargement | Corrigé (#572) |
@@ -90,9 +90,9 @@ Faites : XP de présence (#569), XP de vote (#585), ancienneté des votants (#57
 1. **À arbitrer avec Maxime** : preuves Tower validées par de faux comptes (1.4) et coéquipier fantôme (1.5) : quorum de votants « actifs », confirmation des participants par le capitaine.
 2. Autocomplétion Discord sous 3 s avec base endormie (course à ~2 s, liste vide en repli).
 3. Secret dédié de `force-relogin` (nouvelle variable d'environnement chez Vercel).
-4. Plafonds : faits (1.6, 1.10, 1.11, 1.14, 1.15). Reste le journal d'erreurs minimal en base (journaux Vercel limités à 1 h).
-5. Icône Apple 180×180 et `badge` de notification (2.7, 2.8).
-6. Journal d'erreurs minimal en base (journaux Vercel limités à 1 h).
+4. Plafonds : faits (1.6, 1.10, 1.11, 1.14, 1.15). Journal d'erreurs minimal en base : fait (PR #594).
+5. Icône Apple 180×180 : faite (#592). Reste le `badge` monochrome de notification (2.8), à vérifier sur un vrai iPhone.
+6. ~~Journal d'erreurs minimal en base~~ : fait (#594).
 
 ## 8. À faire par Maxime (aucun accès depuis ces sessions)
 

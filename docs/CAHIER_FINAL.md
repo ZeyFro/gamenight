@@ -1,6 +1,6 @@
 # Cahier des charges — la ligne d'arrivée
 
-> Relevé du 23 novembre 2026. **Un seul lancement, cahier entièrement terminé** (décision de Maxime du 23/11). Ce tableau et [LANCEMENT_GO.md](LANCEMENT_GO.md) forment la ligne d'arrivée : on lance quand **chaque ligne** est « ✅ Fait », ou « Reporté » avec la réponse de Maxime.
+> Relevé mis à jour le 24 novembre 2026 (nuit). **Un seul lancement, cahier entièrement terminé** (décision de Maxime du 23/11). Ce tableau et [LANCEMENT_GO.md](LANCEMENT_GO.md) forment la ligne d'arrivée : on lance quand **chaque ligne** est « ✅ Fait », ou « Reporté » avec la réponse de Maxime.
 >
 > **Source** : les 127 exigences de [COUVERTURE_CAHIER.md](COUVERTURE_CAHIER.md) et les 20 décisions du 17-18/11, avec le verdict testé de la traçabilité (`docs/preuves/tracabilite.json`, PR #514). Cela fait **147 éléments**. La demande en citait 148 : l'écart d'une ligne vient du découpage, et aucune exigence du cahier n'est omise. **Ajout du 23/11** : C128 (Potes = amis), besoin nouveau de Maxime, soit 148 éléments. L'état des interrupteurs est celui lu dans Vercel le 22/11.
 >
@@ -10,12 +10,12 @@
 
 | Statut | Nombre |
 | --- | ---: |
-| ✅ Fait | 51 |
+| ✅ Fait | 58 |
 | Codé, non vérifié en réel | 11 |
-| Codé, éteint | 36 |
-| Partiel | 6 |
+| Codé, éteint | 40 |
+| Partiel | 1 |
 | Partiel (côté Discord) | 5 |
-| Non fait | 6 |
+| Non fait | 0 |
 | Sans code (action humaine ou Discord) | 24 |
 | Reporté | 9 |
 
@@ -41,11 +41,11 @@
 | C016 | 8.2 | Bouton « Mon défi », 1 attribution toutes les 12 h, 48 h pour réaliser | `TOWER_CHALLENGES_ENABLED` (allumé) | ✅ Fait | — | — | Tests verts : `lib/tower-challenge-rules.test.ts` |
 | C017 | 8.3 | Défi d'équipe quotidien automatique, éligibilité et anti-abus | `TOWER_TEAM_DAILY_ENABLED` (éteint), `TOWER_CHALLENGES_ENABLED` (allumé) | Codé, éteint | Allumer (lot B) + tester | ChatGPT (Vercel) + Maxime | Tests verts : `lib/tower-team-daily.regression.integration.test.ts` ; capture après allumage |
 | C018 | 8.4 | Deux réussites validées par jour au plus, même sous validations simultanées | `TOWER_CHALLENGES_ENABLED` (allumé) | ✅ Fait | — | — | Tests verts : `lib/tower-challenge-rules.test.ts`, `lib/tower-challenges.integration.test.ts` |
-| C019 | 8.5 | Variété des défis (gaming, créatifs, absurdes, coopération, hors jeu…) | aucun | Codé, PR #525 (migration) | Fusion avec approbation de la migration, puis importer le catalogue (P3) | Claude Code | Test Vitest + PR verte |
+| C019 | 8.5 | Variété des défis (gaming, créatifs, absurdes, coopération, hors jeu…) | aucun | ✅ Fait | — | — | Tests verts : `lib/tower-challenge-categories.test.ts`, `lib/tower-challenges.integration.test.ts` (PR #525 fusionnée, migration `tower_challenge_variety` appliquée) |
 | C020 | 8.6 | Remplacement d'un défi si le jeu n'est pas possédé ; aucun achat obligatoire | `TOWER_CHALLENGE_REPLACEMENT_ENABLED` (éteint) | Codé, éteint | Allumer (lot B) + tester | ChatGPT (Vercel) + Maxime | Tests verts : `lib/tower-challenge-replacement.integration.test.ts` ; capture après allumage |
 | C021 | 8.7 | Propositions de défis par les grades élevés (≥ Ranker) | `TOWER_CHALLENGE_PROPOSALS_ENABLED` (éteint) | Codé, éteint | Allumer (lot B) + tester | ChatGPT (Vercel) + Maxime | Tests verts : `lib/tower-challenge-proposals.integration.test.ts` ; capture après allumage |
 | C022 | 9.1 | Dépôt de preuve postérieur à l'attribution, avec code de preuve et consentement de publication | `TOWER_CHALLENGES_ENABLED` (allumé) | ✅ Fait | — | — | Tests verts : `lib/tower-challenge-proof-rules.test.ts`, `lib/tower-challenges.integration.test.ts` |
-| C023 | 9.1 | Les défis qui autorisent des preuves anciennes doivent l'indiquer explicitement | aucun | Codé, PR #525 (migration) | Fusion avec approbation de la migration | Claude Code | Test Vitest + PR verte |
+| C023 | 9.1 | Les défis qui autorisent des preuves anciennes doivent l'indiquer explicitement | aucun | ✅ Fait | — | — | Tests verts : `lib/tower-challenge-categories.test.ts` (PR #525 fusionnée) |
 | C024 | 9.2 | Vote 24 h, 3 votants distincts, majorité stricte, pas d'auto-vote, égalité = refus, sans quorum : prolongation | `TOWER_CHALLENGES_ENABLED` (allumé) | ✅ Fait | — | — | Tests verts : `lib/tower-challenge-voting.test.ts` |
 | C025 | 9.3 | Contestations publiques et anti-abus (votes multiples, rejeux, non autorisés, double récompense, abus d'équipe | `TOWER_CHALLENGES_ENABLED` (allumé) | ✅ Fait | — | — | Tests verts : `lib/tower-challenge-appeal-rules.test.ts`, `lib/tower-challenges.integration.test.ts` |
 | C026 | 9.4 | Aucune IA ne valide une preuve | aucun | ✅ Fait | — | — | Scénario exécuté : dépendances IA dans package.json : « aucune » ; fichiers de src/ (hors  |
@@ -54,14 +54,14 @@
 | C029 | 10.3 | Animation : réussites marquantes, exploits insolites, distinctions humoristiques, résultats de compétitions, r | `COMMUNITY_HIGHLIGHTS_ENABLED` (éteint) | Partiel | Liste fermée des moments marquants PUBLICS faite (D10) ; reste : exploits insolites et distinctions humoristiques (`COMMUNITY_HIGHLIGHTS_ENABLED`), à allumer (lot F) puis tester | ChatGPT (Vercel) + Maxime | Tests verts : `lib/notification-kinds.test.ts` (liste des moments marquants), `lib/notification-executor.integration.test.ts` (refus avant envoi) |
 | C030 | 11.1 | Découvrir, créer, rejoindre une équipe, candidater, recruter | `TEAM_APPLICATIONS_ENABLED` (éteint), `TEAM_RECRUITERS_ENABLED` (éteint) | Codé, éteint | Allumer (lot E) + tester | ChatGPT (Vercel) + Maxime | Tests verts : `lib/team-recruiters-rules.test.ts` ; capture après allumage |
 | C031 | 11.2 | Fiche d'équipe : nom, présentation, capitaine, membres, jeux, objectifs, critères de recrutement, rendez-vous | `TEAM_RECRUITMENT_CRITERIA_ENABLED` (éteint) | Codé, éteint | Allumer (lot E) + tester | ChatGPT (Vercel) + Maxime | Tests verts : `lib/community-teams-rules.test.ts` ; capture après allumage |
-| C032 | 11.2 | Identité visuelle d'une équipe | aucun | Codé, PR #526 (migration) | Fusion avec approbation de la migration ; capture sur /equipes/gestion | Claude Code | Test Vitest + PR verte |
+| C032 | 11.2 | Identité visuelle d'une équipe | aucun | ✅ Fait | — | — | PR #526 fusionnée, migration `team_identity` appliquée ; capture sur /equipes/gestion à la prochaine vérification |
 | C033 | 11.3 | Forums existants (recherche de joueurs, recrutement, projets) avec tags | aucun | ✅ Fait | — | — | Tests verts : `lib/tower-forums.test.ts`, `app/tower/forums/page.test.tsx` |
 | C034 | 11.4 | Équipes conservées dans GameNight : 2 à 8 membres, équipe unique, capitaine | aucun | ✅ Fait | — | — | Tests verts : `lib/community-teams-rules.test.ts` |
 | C035 | 12.2 | Critères de recherche : jeux, plateformes, disponibilités, mode compétitif ou détente, niveau | `GAME_LEVELS_ENABLED` (éteint), `GAME_LEVELS_MATCHMAKING_ENABLED` (éteint) | Codé, éteint | Allumer (lot C) + tester | ChatGPT (Vercel) + Maxime | Capture après allumage |
-| C036 | 12.2 | Critères de recherche : langue, préférences communautaires, habitudes de jeu, centres d'intérêt | `PLAYER_MATCHING_ENABLED` (éteint) | Codé, PR #527 (migration) | Fusion avec approbation, puis allumer (lot C) | Claude Code | Test Vitest + PR verte |
+| C036 | 12.2 | Critères de recherche : langue, préférences communautaires, habitudes de jeu, centres d'intérêt | `PLAYER_MATCHING_ENABLED` (éteint) | Codé, éteint | Allumer (lot C) + tester | ChatGPT (Vercel) + Maxime | Tests verts : `lib/player-matching-rules.test.ts` (PR #527 fusionnée, migration `player_matching_profile` appliquée) ; capture après allumage |
 | C037 | 12.3 | Parcours « Qui joue ce soir ? », « Je cherche une partie », recherche par jeu, profils publics, recrutement | `WHO_PLAYS_TONIGHT_ENABLED` (éteint) | Codé, éteint | Allumer (lot C) + tester | ChatGPT (Vercel) + Maxime | Tests verts : `lib/tonight.integration.test.ts` ; capture après allumage |
-| C038 | 12.3 | Proposition de partenaires compatibles | `PLAYER_MATCHING_ENABLED` (éteint) | Codé, PR #527 (migration) | Fusion avec approbation, puis allumer (lot C) | Claude Code | Test Vitest + PR verte |
-| C039 | 12.3 | Découverte des joueurs respectant leur choix de visibilité | `PROFILE_VISIBILITY_ENABLED`, `PLAYER_MATCHING_ENABLED` (éteints) | Codé pour la découverte, PR #527 | Allumer (lot C) ; classements : décision Q20 | Claude Code | Test Vitest + PR verte |
+| C038 | 12.3 | Proposition de partenaires compatibles | `PLAYER_MATCHING_ENABLED` (éteint) | Codé, éteint | Allumer (lot C) + tester | ChatGPT (Vercel) + Maxime | Tests verts : `lib/player-matching-rules.test.ts` (PR #527 fusionnée, migration `player_matching_profile` appliquée) ; capture après allumage |
+| C039 | 12.3 | Découverte des joueurs respectant leur choix de visibilité | `PROFILE_VISIBILITY_ENABLED`, `PLAYER_MATCHING_ENABLED` (éteints) | Codé, éteint | Allumer (lot C) + tester ; classements : décision Q20 | ChatGPT (Vercel) + Maxime | Tests verts : `lib/player-matching-rules.test.ts` (PR #527 fusionnée) ; capture après allumage |
 | C040 | 12.4 | Profil : jeux favoris, plateformes, niveaux, disponibilités, préférences, tier list, historique | `GAME_PLATFORMS_ENABLED` (éteint), `GAME_LEVELS_ENABLED` (éteint) | Codé, éteint | Allumer (lot C) + tester | ChatGPT (Vercel) + Maxime | Tests verts : `lib/game-platforms.test.ts` ; capture après allumage |
 | C041 | 13.1 | Soirées : création, jeux, disponibilités, inscriptions, votes, rappels, annonces, coordination | `DISCORD_BOT_SESSION_ANNOUNCE_ENABLED` (présent (valeur cachée)) | ✅ Fait | — | — | Tests verts : `lib/session-announce.integration.test.ts` |
 | C042 | 13.2 | Calendrier communautaire sans second bot | `CALENDAR_SUBSCRIPTIONS_ENABLED` (éteint) | Codé, éteint | Allumer (lot D) + tester | ChatGPT (Vercel) + Maxime | Tests verts : `lib/calendar-feed.integration.test.ts` ; capture après allumage |
@@ -70,7 +70,7 @@
 | C045 | 14.1 | Saisons accessibles aux arrivants tardifs | `TOWER_CHALLENGES_ENABLED` (allumé) | Codé, non vérifié en réel | Procédure prête (PROCEDURES_PREUVES.md § C045), preuve à capturer par Maxime | Maxime | Capture en Production ; procédure : PROCEDURES_PREUVES.md § C045 |
 | C046 | 14.2 | Calendrier scolaire et saison d'été (S1 du 1er décembre au 31 mars, avril–juin, été, septembre–novembre) | aucun | ✅ Fait | — | — | Tests verts : `lib/tower-challenge-seasons.test.ts` |
 | C047 | 14.3 | Classements individuel, saisonnier, permanent, historique, distinctions | `TOWER_CHALLENGES_ENABLED` (allumé) | ✅ Fait | — | — | Tests verts : `lib/tower-standings.test.ts` |
-| C048 | 14.3 | Classement d'équipes | `TOWER_CHALLENGES_ENABLED` (allumé) | Codé, PR #526 (migration) | Fusion avec approbation ; capture sur /tower/palmares | Claude Code | Test Vitest + PR verte |
+| C048 | 14.3 | Classement d'équipes | `TOWER_CHALLENGES_ENABLED` (allumé) | ✅ Fait | — | — | Tests verts : `lib/tower-team-standings-rules.test.ts`, `lib/tower-team-standings.integration.test.ts` (PR #526 fusionnée) |
 | C049 | 14.4 | Réinitialisation saisonnière, étages conservés, historique, pas de salon par saison | `TOWER_CHALLENGES_ENABLED` (allumé) | ✅ Fait | — | — | Tests verts : `lib/tower-challenges.integration.test.ts` |
 | C050 | 15.1 | Récompenses : badges, titres, grades cosmétiques, distinctions de saison, Hall of Fame, proposer des défis, ch | `TOWER_SEASON_AWARDS_ENABLED` (éteint), `PROFILE_CUSTOMIZATION_ENABLED` (éteint) | Codé, éteint | Allumer (lot B, C) + tester | ChatGPT (Vercel) + Maxime | Capture après allumage |
 | C051 | 15.2 | Aucun droit d'administration par récompense ; aucun cadeau payant sans budget | aucun | ✅ Fait | — | — | Tests verts : `lib/profile-customization.test.ts` |
@@ -126,7 +126,7 @@
 | C101 | 27.3 | Bot gateway permanent (activité Discord, temps en vocal, « 3 membres jouent à X ») | aucun | Feuille de route, après le lancement (décision du 23/11) | Rien avant le lancement | Maxime | — |
 | C102 | 27.3 | Rangs importés via API officielles (Riot, Hypixel) | aucun | Feuille de route, après le lancement (décision du 23/11) | Rien avant le lancement | Maxime | — |
 | C103 | 27.4 | VIP payant cosmétique et confort | aucun | Feuille de route, après le lancement (décision du 23/11) | Rien avant le lancement | Maxime | — |
-| C128 | 12.3 | Potes = amis GameNight : demande d’ami à accepter, recherche par pseudo, non-ami : voit si une soirée est publique (rejoindre) ou privée (sur invitation) | `POTES_FRIENDS_ENABLED` (éteint) | Codé, PR Code 7 (migration `friendships`) | Fusion, puis allumer (lot C) | Claude Code | Tests `friends-rules.test.ts`, `friends.integration.test.ts` + PR verte |
+| C128 | 12.3 | Potes = amis GameNight : demande d’ami à accepter, recherche par pseudo, non-ami : voit si une soirée est publique (rejoindre) ou privée (sur invitation) | `POTES_FRIENDS_ENABLED` (éteint) | Codé, éteint | Allumer `POTES_FRIENDS_ENABLED` (lot C) + tester avec un pote | ChatGPT (Vercel) + Maxime | Tests : `friends-rules.test.ts`, `friends.integration.test.ts`, `friends-actions.limits.integration.test.ts` (migration `friendships` appliquée) |
 | C104 | 1.1 | Vision : parcours complet du joueur (découvrir, partenaires, soirées, équipes, Tour, défis, grades, compétitio | aucun | Sans code (action humaine ou Discord) | Rendre vérifiable (procédure de capture) | Maxime + ChatGPT | Capture datée (procédure : PLAN_TESTS.md) |
 | C105 | 1.2 | Multigaming : aucun jeu imposé | aucun | Sans code (action humaine ou Discord) | Rendre vérifiable (procédure de capture) | Maxime + ChatGPT | Capture datée (procédure : PLAN_TESTS.md) |
 | C106 | 1.3 | Lancement prioritairement francophone | aucun | Sans code (action humaine ou Discord) | Rendre vérifiable (procédure de capture) | Maxime + ChatGPT | Capture datée (procédure : PLAN_TESTS.md) |
@@ -158,8 +158,8 @@
 | D05 | 27 J | Défis : jamais de défi impossible sur les plateformes du joueur ; photo d'écran TV avec code acceptée | aucun | ✅ Fait | — | — | Tests verts : `lib/tower-challenge-proof-rules.test.ts`, `lib/tower-challenges.integration.test.ts` |
 | D06 | 27 C | Validation automatique : défis mesurables Steam validés par cron, profil privé = repli sur le vote, MP au joue | aucun | ✅ Fait | — | — | Tests verts : `lib/tower-steam-measure.integration.test.ts` |
 | D07 | 27 C | Validation automatique : bouton « Signaler un doute » (membres éligibles) bascule en vote | aucun | ✅ Fait | — | — | Tests verts : `lib/tower-steam-measure.integration.test.ts`, `lib/tower-vote-eligibility.test.ts` |
-| D08 | 27 I | Notifications : MP uniquement pour ce qui vise personnellement le joueur | `NOTIFICATION_CENTER_ENABLED` (éteint) | Partiel : « Jouer maintenant » ne pré-coche plus personne (centre allumé) ; la garde générique « seuls les MP personnels partent » n’est PAS câblée : les mêmes catégories de notification portent des MP personnels et des annonces publiques, un blocage à l’aveugle couperait des MP légitimes | Décider avec Maxime la liste des types d’événement autorisés en MP avant d’en faire une garde | Claude Code + Maxime | Test Vitest + PR verte |
-| D09 | 27 I | Notifications : pings de rôle de jeu en opt-in + centre de notifications dans l'app, jamais @everyone | aucun | Codé, éteint | Garde-fou fait : un ping de rôle de jeu n'existe que via `buildGameRolePing` (abonnés opt-in), toute autre mention de rôle est retirée. Aucun appelant ne pingue aujourd'hui (décision la plus restrictive) ; brancher un ping dans une annonce publique seulement si Maxime le demande | Maxime (décision) + ChatGPT | Tests verts : `lib/notification-policy.test.ts`, `lib/discord-rest.test.ts` |
+| D08 | 27 I | Notifications : MP uniquement pour ce qui vise personnellement le joueur | `NOTIFICATION_CENTER_ENABLED` (éteint) | ✅ Fait | — | — | Tests verts : `lib/notification-kinds.test.ts` (liste fermée `PERSONAL_DM_EVENT_TYPES`, combinaison inconnue ou interdite refusée avant envoi), `lib/notification-executor.integration.test.ts`, `assertDmQuota` (20 MP par jour et par personne) |
+| D09 | 27 I | Notifications : pings de rôle de jeu en opt-in + centre de notifications dans l'app, jamais @everyone | aucun | Codé, éteint | Garde-fou fait : un ping de rôle de jeu n'existe que via `buildGameRolePing` (abonnés opt-in), toute autre mention de rôle est retirée. Aucun appelant ne pingue aujourd'hui : décision prudente de la nuit du 24/11, à brancher seulement si Maxime le demande | Maxime (décision) + ChatGPT | Tests verts : `lib/notification-policy.test.ts`, `lib/discord-rest.test.ts`, `lib/notification-kinds.test.ts` |
 | D10 | 27 I | Notifications : annonces publiques seulement pour les moments marquants | aucun | ✅ Fait | — | — | Tests verts : `lib/notification-kinds.test.ts` (liste fermée `PUBLIC_MILESTONE_EVENT_TYPES`, tout le reste refusé), `lib/notification-executor.integration.test.ts` |
 | D11 | 27 K | Niveau par jeu : niveau déclaratif Débutant/Intermédiaire/Confirmé/Compétitif utilisé par matchmaking et équil | aucun | ✅ Fait | — | — | Tests verts : `lib/game-levels-rules.test.ts`, `lib/game-levels-matchmaking.integration.test.ts` |
 | D12 | 27 K | Niveau par jeu : interface prête pour un rang importé (source DECLARED\|IMPORTED) | aucun | ✅ Fait | — | — | Tests verts : `lib/game-levels-rules.test.ts` |
