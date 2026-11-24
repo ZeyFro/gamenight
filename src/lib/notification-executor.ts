@@ -1,6 +1,7 @@
 import type { NotificationEvent } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { logger } from "@/lib/logger";
+import { evaluateDeliveryPolicy } from "@/lib/notification-kinds";
 import {
   claimNextDelivery,
   finalizeDeliveryFailure,
@@ -823,6 +824,19 @@ export async function processNextDelivery(opts: ProcessDeliveryOptions): Promise
       lastError: "NotificationEvent introuvable pour cette livraison.",
     });
     return { deliveryId: claimed.id, outcome: "failed", errorClass: "event_missing" };
+  }
+
+  // Politique de notification (lot 5, Q17 à Q19) : MP seulement pour un événement personnel, nouveau message public seulement pour un
+  // moment marquant, rien pour un type inconnu. Décidé AVANT toute résolution de contenu et tout appel Discord ; refus terminal et journalisé.
+  const policy = evaluateDeliveryPolicy({ eventType: event.eventType, channel: claimed.channel });
+  if (!policy.allowed) {
+    logger.warn("notification-policy", "Livraison refusée par la politique de notification : aucun envoi.", {
+      deliveryId: claimed.id, eventType: event.eventType, channel: claimed.channel, reason: policy.reason,
+    });
+    await finalizeDeliveryFailure(claimed.id, reservationToken, {
+      retryable: false, errorClass: "policy:" + policy.reason, lastError: policy.detail,
+    });
+    return { deliveryId: claimed.id, outcome: "failed", errorClass: "policy:" + policy.reason };
   }
 
   let resolution: Resolution;

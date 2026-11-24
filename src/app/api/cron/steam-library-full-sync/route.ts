@@ -3,6 +3,7 @@ import { after } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { importSteamLibrary } from "@/lib/steam";
 import { logger } from "@/lib/logger";
+import { persistServerError } from "@/lib/error-log";
 import { verifyCronRequest } from "@/lib/cron-auth";
 import { wallClockNow } from "@/lib/wallclock";
 
@@ -104,6 +105,7 @@ async function handle(request: Request) {
         );
       }
     } catch (error) {
+      persistServerError("cron:steam-library-full-sync", error, { route: "cron/steam-library-full-sync" });
       logger.error("cron:steam-library-full-sync", error, {
         userId,
         stopReason: "error",

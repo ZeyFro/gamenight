@@ -5,6 +5,7 @@ import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { towerTransactionBudget, setTowerStatementDeadline } from "@/lib/tower-deadline";
 import { logger } from "@/lib/logger";
+import { recordSensitiveOperation } from "@/lib/sensitive-operation-log";
 import { towerRejectionAnnouncementJoin } from "@/lib/tower-rejection-notice";
 import { scopedTransactionPrisma } from "@/lib/community-scoped-client";
 import { canClaimSoloChallenge, canSubmitChallengeProof, canReceiveChallengeReward, canReceiveTeamReward, getTowerParisDayKey, isTowerTeamDailyDue } from "@/lib/tower-challenge-rules";
@@ -424,7 +425,7 @@ export async function confirmTowerTeamParticipant(input: unknown) {
   const parsed = confirmParticipantSchema.safeParse(input);
   if (!parsed.success) return { status: "INVALID" } as const;
   const { communityId, userId, attemptId, participantId } = parsed.data;
-  return withTower({ communityId, userId }, async scopedDb => {
+  const result = await withTower({ communityId, userId }, async scopedDb => {
     await scopedDb.$queryRaw`SELECT id FROM "TowerChallengeAttempt" WHERE id = ${attemptId} AND "communityId" = ${communityId} FOR UPDATE`;
     const attempt = await scopedDb.towerChallengeAttempt.findFirst({
       where: { id: attemptId, communityId, teamId: { not: null } },
@@ -447,6 +448,11 @@ export async function confirmTowerTeamParticipant(input: unknown) {
     });
     return { status: "CONFIRMED" as const, teamId: attempt.teamId, replayed: false };
   });
+  // Journal des opérations sensibles (cahier §19.1) : une confirmation nouvelle décide qui sera récompensé ; un rejeu n'est pas journalisé.
+  if (result.status === "CONFIRMED" && !result.replayed) {
+    await recordSensitiveOperation({ actorId: userId, action: "tower.participant_confirm", communityId, target: participantId, outcome: "ok" });
+  }
+  return result;
 }
 
 async function assignDailyTowerTeamChallenges(deadline: Date) {

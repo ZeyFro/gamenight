@@ -6,6 +6,7 @@ import { settleAllDueInstantSessions } from "@/lib/instant-sessions";
 import { ensureActiveSeasonsExist } from "@/lib/seasons";
 import { wallClockNow } from "@/lib/wallclock";
 import { logger } from "@/lib/logger";
+import { persistServerError } from "@/lib/error-log";
 import { verifyCronRequest } from "@/lib/cron-auth";
 
 /**
@@ -62,6 +63,7 @@ async function runPass<T>(task: string, fallback: T, errors: string[], fn: () =>
   try {
     return await fn();
   } catch (error) {
+    persistServerError("cron:close-sessions", error, { route: "cron/close-sessions" });
     logger.error("cron:close-sessions", error, { task });
     errors.push(task);
     return fallback;
@@ -83,6 +85,7 @@ export async function GET(request: Request) {
   try {
     await ensureActiveSeasonsExist();
   } catch (error) {
+    persistServerError("cron:close-sessions", error, { route: "cron/close-sessions" });
     logger.error("cron:close-sessions", error, { task: "ensureActiveSeasonsExist" });
   }
 
@@ -110,6 +113,7 @@ export async function GET(request: Request) {
     try {
       result = await closeSession(session.id);
     } catch (error) {
+      persistServerError("cron:close-sessions", error, { route: "cron/close-sessions" });
       logger.error("cron:close-sessions", error, { task: "closeSession", sessionId: session.id });
       errors.push(`closeSession:${session.id}`);
       continue;

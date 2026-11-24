@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { after } from "next/server";
 import { verifyCronRequest } from "@/lib/cron-auth";
 import { logger } from "@/lib/logger";
+import { persistServerError } from "@/lib/error-log";
 import { runTowerSteamAutovalidation } from "@/lib/tower-steam-measure";
 import { isTowerSteamAutovalidateEnabled } from "@/lib/tower-steam-measure-rules";
 
@@ -32,6 +33,7 @@ async function handle(request: Request) {
       const summary = await runTowerSteamAutovalidation(new Date(startedAt + BUDGET_MS));
       logger.info("cron:tower-steam-autovalidate", "fin " + JSON.stringify(summary) + " durée=" + (Date.now() - startedAt) + " ms");
     } catch (error) {
+      persistServerError("cron:tower-steam-autovalidate", error, { route: "cron/tower-steam-autovalidate" });
       logger.error("cron:tower-steam-autovalidate", error, { stopReason: "error", durationMs: Date.now() - startedAt });
     }
   });

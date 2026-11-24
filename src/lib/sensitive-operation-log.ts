@@ -17,6 +17,8 @@ export const SENSITIVE_OPERATIONS = [
   "cleanup.retry_reward", "cleanup.retry_discord",
   "discord.commands_execute",
   "discord.commands_bulk",
+  "admin.badges", "admin.free_games", "admin.game_stats", "admin.messages", "admin.superlatives",
+  "tower.irregular_grant", "tower.irregular_revoke", "tower.participant_confirm",
 ] as const;
 export type SensitiveOperation = (typeof SENSITIVE_OPERATIONS)[number];
 
@@ -29,6 +31,12 @@ export type SensitiveOperationEntry = {
 };
 
 const CODE = /^[a-z0-9_.:-]{1,64}$/i;
+
+/** Cible d'une action de formulaire : la valeur du champ `id` si c'est du texte, sinon null (le format est ensuite filtré par `normalizeSensitiveOperation`). */
+export function sensitiveTarget(formData: FormData, field = "id"): string | null {
+  const value = formData.get(field);
+  return typeof value === "string" ? value : null;
+}
 
 /** Garde le seul format attendu (code court ou identifiant) ; toute autre valeur devient « invalid » / null. */
 export function normalizeSensitiveOperation(entry: SensitiveOperationEntry) {

@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { finalizeSeasonIfDue } from "@/lib/seasons";
 import { generateMonthlyRecapIfDue } from "@/lib/monthly-recap";
 import { logger } from "@/lib/logger";
+import { persistServerError, purgeServerErrors } from "@/lib/error-log";
 import { verifyCronRequest } from "@/lib/cron-auth";
 
 /**
@@ -25,13 +26,22 @@ export async function GET(request: Request) {
   try {
     await finalizeSeasonIfDue();
   } catch (error) {
+    persistServerError("cron:monthly-tasks", error, { route: "cron/monthly-tasks" });
     logger.error("cron:monthly-tasks", error, { task: "finalizeSeasonIfDue" });
   }
 
   try {
     await generateMonthlyRecapIfDue();
   } catch (error) {
+    persistServerError("cron:monthly-tasks", error, { route: "cron/monthly-tasks" });
     logger.error("cron:monthly-tasks", error, { task: "generateMonthlyRecapIfDue" });
+  }
+
+  // Purge du journal d'erreurs à 30 jours (docs/CRONS.md) : ce cron quotidien tourne même interrupteurs éteints.
+  try {
+    await purgeServerErrors();
+  } catch (error) {
+    logger.error("cron:monthly-tasks", error, { task: "purgeServerErrors" });
   }
 
   return NextResponse.json({ ok: true });
