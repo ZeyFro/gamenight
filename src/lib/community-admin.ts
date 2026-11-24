@@ -111,6 +111,20 @@ export async function setCommunityTeams(input: { communityId: unknown; enabled: 
   return result.count ? "saved" as const : "unavailable" as const;
 }
 
+/**
+ * Réglage « The Tower (défis) » d'une communauté (`Community.towerChallengesEnabled`) : sans lui, /tower, les défis et les écrans staff
+ * /admin/tower-propositions et /admin/tower-irregular répondent 404 pour ce serveur, même interrupteurs d'environnement allumés.
+ * Seule une communauté ACTIVE peut l'activer ; l'éteindre reste toujours possible. Aucun message Discord.
+ */
+export async function setCommunityTowerChallenges(input: { communityId: unknown; enabled: unknown }) {
+  if (typeof input.communityId !== "string" || !input.communityId || typeof input.enabled !== "boolean") return "invalid" as const;
+  const result = await prisma.community.updateMany({
+    where: { id: input.communityId, ...(input.enabled ? { status: "ACTIVE" as const } : {}) },
+    data: { towerChallengesEnabled: input.enabled },
+  });
+  return result.count ? "saved" as const : "unavailable" as const;
+}
+
 export async function setCommunityTowerLevelsPerFloor(input: { communityId: unknown; levelsPerFloor: unknown }) {
   if (typeof input.communityId !== "string" || !input.communityId) return "invalid" as const;
   const raw = input.levelsPerFloor;
@@ -207,6 +221,7 @@ export interface AdminCommunityRow {
   absencePenaltyXp: number;
   playerClassifiedsEnabled: boolean;
   communityTeamsEnabled: boolean;
+  towerChallengesEnabled: boolean;
   towerLevelsPerFloor: number;
   status: string;
   discordGuildId: string | null;
@@ -254,6 +269,7 @@ export async function listAdminCommunities(): Promise<AdminCommunityRow[]> {
         absencePenaltyXp: c.absencePenaltyXp,
         playerClassifiedsEnabled: c.playerClassifiedsEnabled,
         communityTeamsEnabled: c.communityTeamsEnabled,
+        towerChallengesEnabled: c.towerChallengesEnabled,
         towerLevelsPerFloor: c.towerLevelsPerFloor,
         status: c.status,
         discordGuildId: guildId,

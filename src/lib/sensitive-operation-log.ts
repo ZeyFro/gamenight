@@ -10,7 +10,7 @@ import { prisma } from "@/lib/prisma";
  */
 export const SENSITIVE_OPERATIONS = [
   "community.activate", "community.channel", "community.guide", "community.free_games", "community.steam_price_alerts",
-  "community.group_purchase_plans", "community.attendance_xp", "community.player_classifieds", "community.teams",
+  "community.group_purchase_plans", "community.attendance_xp", "community.player_classifieds", "community.teams", "community.tower_challenges",
   "community.tower_levels_per_floor", "community.session_gallery",
   "player.xp_adjust", "auth.force_relogin",
   "tower.appeal_decide", "tower.arbiter_appoint", "tower.arbiter_configure",
