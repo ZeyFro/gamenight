@@ -21,7 +21,7 @@ Gravités : 🔴 bloquant lancement · 🟠 important · 🟡 mineur · 🟢 vé
 | 🟡 | Pages sans lien d'accès, pied de page mobile | Pages orphelines, pied de page cassé sur mobile | Liens ajoutés, garde `page-links-coverage.test.ts` | Corrigé (#550, #551) |
 
 | 🔴 | `/sessions?tab=history` vide et accueil « 0 soirée jouée » alors que 28 soirées terminées existent (production du 24/11) | La fenêtre de 7 jours masquait toute soirée terminée depuis plus d'une semaine ; le total de l'accueil ne lisait que le compteur durable du serveur affiché | Historique : soirées jouées 365 jours (annulées et rétention : 7 jours) ; total de l'accueil = le plus grand du compteur et des soirées terminées ; test du cas ; lien « photos » gardé | Corrigé (#600) ; cause exacte en production à confirmer par lecture seule (voir LANCEMENT_GO § 4) |
-| 🟠 | `seed-reconcile` rejoue `backfillXp` chaque jour et recrédite l'XP refusée par les plafonds (#569, #584, #585) | Le backfill écrit dans le ledger sans les plafonds | Backfill limité aux lacunes historiques ; tâche quotidienne à supprimer (ALLUMAGES § Pour ChatGPT) | PR « backfill et plafonds d'XP » en cours |
+| 🟠 | `seed-reconcile` rejoue `backfillXp` chaque jour et recrédite l'XP refusée par les plafonds (#569, #584, #585) | Le backfill écrit dans le ledger sans les plafonds | Backfill limité aux lacunes historiques ; tâche quotidienne à supprimer (ALLUMAGES § Pour ChatGPT) | Corrigé (#603) : `backfillXp` ne traite que les soirées créées avant `XP_CAPS_START` (23/11/2026) ; test `backfill-xp-caps.integration.test.ts` |
 
 ## 2. Mineurs du bug 9
 
