@@ -81,7 +81,8 @@ const SYSTEM_ACTION_EVENT_TYPES = [
   "ROLE_AUTOCREATE", "ROLE_CAPACITY_ALERT", "MODERATION_REPORT", "BOOSTER_SUPPORT_SYNC",
 ] as const;
 
-const OPT_IN_ROLE_PING_EVENT_TYPES: readonly string[] = [];
+/** Ping du rôle de jeu à la création d'une soirée OUVERTE (Q19) : un seul événement, jamais de MP, mention produite par `buildGameRolePing` seulement. */
+const OPT_IN_ROLE_PING_EVENT_TYPES: readonly string[] = ["SESSION_GAME_PING"];
 
 /** Rangs de MP de secours : `<CATEGORIE>_DM_FALLBACK` est une mention dans le fil, jamais un nouveau message public. */
 const DM_FALLBACK_SUFFIX = "_DM_FALLBACK";

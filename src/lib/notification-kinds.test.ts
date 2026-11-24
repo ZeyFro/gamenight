@@ -64,6 +64,11 @@ describe("politique de livraison (évaluée avant tout envoi)", () => {
     expect(kindOfEvent("__proto__")).toBeNull();
   });
 
+  it("le ping du rôle de jeu (SESSION_GAME_PING, Q19) est un ping de rôle opt-in : salon seulement, jamais de MP", () => {
+    expect(evaluateDeliveryPolicy({ eventType: "SESSION_GAME_PING", channel: "DISCORD_CHANNEL" })).toMatchObject({ allowed: true, kind: "OPT_IN_ROLE_PING" });
+    expect(evaluateDeliveryPolicy({ eventType: "SESSION_GAME_PING", channel: "DISCORD_DM" })).toMatchObject({ allowed: false, reason: "channel_not_allowed_for_kind" });
+  });
+
   it("les sept genres existent et chaque type classé a un genre valide", () => {
     expect([...NOTIFICATION_KINDS].sort()).toEqual(["IN_APP_ONLY", "OPT_IN_ROLE_PING", "PERSONAL_DM", "PUBLIC_MILESTONE", "PUBLIC_UPDATE", "SYSTEM_ACTION", "THREAD_CONTEXT"]);
     for (const kind of Object.values(EVENT_KINDS)) expect(NOTIFICATION_KINDS).toContain(kind as NotificationKind);
