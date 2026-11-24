@@ -44,6 +44,16 @@ export interface GameRolePing {
 }
 
 /**
+ * Mentions de rôle approuvées (lot 5, Q19) : seul `buildGameRolePing` en produit (jeu avec au moins un abonné opt-in, un seul rôle non
+ * sensible). `discord-rest.ts` retire TOUTE mention de rôle qui n'est pas passée par là : un ping de rôle de jeu ne peut donc pas être ajouté
+ * « par accident » ni par un nouvel appelant. L'identité de l'objet fait foi (un objet copié ou reconstruit n'est pas approuvé).
+ */
+const APPROVED_ROLE_MENTIONS = new WeakSet<object>();
+export function isApprovedRolePing(mentions: object): boolean {
+  return APPROVED_ROLE_MENTIONS.has(mentions);
+}
+
+/**
  * Ping du rôle de jeu pour un jeu donné. Retourne `null` (donc aucun ping) sauf si le jeu a au
  * moins un abonné opt-in dans la communauté ET qu'un seul rôle non sensible correspond au nom du
  * jeu (jamais de devinette en cas d'ambiguïté). Seul ce rôle précis est mentionnable.
@@ -57,5 +67,7 @@ export function buildGameRolePing(input: {
   const matches = exactRoleMatches([...input.roles], input.gameName).filter((role) => !isSensitiveRole(role));
   if (matches.length !== 1) return null;
   const role = matches[0];
-  return { content: `<@&${role.id}>`, allowedMentions: { parse: [], roles: [role.id] } };
+  const allowedMentions: GameRolePing["allowedMentions"] = { parse: [], roles: [role.id] };
+  APPROVED_ROLE_MENTIONS.add(allowedMentions);
+  return { content: `<@&${role.id}>`, allowedMentions };
 }

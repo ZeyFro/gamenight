@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   buildGameRolePing,
+  isApprovedRolePing,
   isDirectMessageAllowed,
   isPublicAnnouncementAllowed,
   neutralizeEveryoneText,
@@ -60,5 +61,15 @@ describe("ping de rôle de jeu opt-in", () => {
   });
   it("aucun rôle correspondant : aucun ping", () => {
     expect(buildGameRolePing({ gameName: "Minecraft", roles, optedInCount: 5 })).toBeNull();
+  });
+});
+
+describe("mentions de rôle : seulement celles d'un ping de jeu opt-in (Q19, D09)", () => {
+  it("le ping produit par buildGameRolePing est approuvé ; un objet copié ou reconstruit ne l'est pas", () => {
+    const ping = buildGameRolePing({ gameName: "Valorant", roles: [role("9", "Valorant")], optedInCount: 2 });
+    expect(ping).not.toBeNull();
+    expect(isApprovedRolePing(ping!.allowedMentions)).toBe(true);
+    expect(isApprovedRolePing({ ...ping!.allowedMentions })).toBe(false);
+    expect(isApprovedRolePing({ parse: [], roles: ["9"] })).toBe(false);
   });
 });

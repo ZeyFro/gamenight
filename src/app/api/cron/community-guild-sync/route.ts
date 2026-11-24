@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { syncCommunitiesWithBotGuilds } from "@/lib/community-guild-sync";
 import { logger } from "@/lib/logger";
+import { persistServerError } from "@/lib/error-log";
 import { verifyCronRequest } from "@/lib/cron-auth";
 
 // Budget des appels Discord (2 pages au plus en pratique) : sous les 30 s de
@@ -38,6 +39,7 @@ export async function GET(request: Request) {
   } catch (error) {
     // Même garde-fou que les autres crons : jamais de 500 non capturé
     // (cron-job.org désactiverait le job après des échecs consécutifs).
+    persistServerError("cron:community-guild-sync", error, { route: "cron/community-guild-sync" });
     logger.error("cron:community-guild-sync", error);
     return NextResponse.json({ error: error instanceof Error ? error.message : String(error) }, { status: 200 });
   }

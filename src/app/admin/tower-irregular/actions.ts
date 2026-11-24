@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { getCurrentUser } from "@/lib/current-user";
 import { checkRateLimit } from "@/lib/rate-limit";
+import { recordSensitiveOperation, sensitiveTarget } from "@/lib/sensitive-operation-log";
 import { grantTowerIrregular, revokeTowerIrregular, getTowerIrregularCommunityId } from "@/lib/tower-irregular";
 
 function done(result: string): never {
@@ -22,10 +23,14 @@ async function authorized(action: string) {
 
 export async function grantTowerIrregularAction(formData: FormData): Promise<void> {
   const { user, communityId } = await authorized("grantTowerIrregular");
-  done(await grantTowerIrregular(user.id, communityId, { userId: formData.get("userId") }));
+  const code = await grantTowerIrregular(user.id, communityId, { userId: formData.get("userId") });
+  await recordSensitiveOperation({ actorId: user.id, action: "tower.irregular_grant", communityId, target: sensitiveTarget(formData, "userId"), outcome: code });
+  done(code);
 }
 
 export async function revokeTowerIrregularAction(formData: FormData): Promise<void> {
   const { user, communityId } = await authorized("revokeTowerIrregular");
-  done(await revokeTowerIrregular(user.id, communityId, { userId: formData.get("userId") }));
+  const code = await revokeTowerIrregular(user.id, communityId, { userId: formData.get("userId") });
+  await recordSensitiveOperation({ actorId: user.id, action: "tower.irregular_revoke", communityId, target: sensitiveTarget(formData, "userId"), outcome: code });
+  done(code);
 }
