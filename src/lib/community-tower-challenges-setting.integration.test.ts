@@ -44,13 +44,16 @@ describe.skipIf(!url)("réglage « The Tower (défis) » et écrans staff", () =
     vi.stubEnv("TOWER_IRREGULAR_GRANTS_ENABLED", "true");
     vi.stubGlobal("fetch", vi.fn(() => { throw new Error("Réseau interdit en test"); }));
     await cleanup();
-    await db.user.createMany({ data: ["owner", "admin", "member"].map((name, index) => ({ id: id(name), discordId: scope + index, discordName: name })) });
+    await db.user.createMany({ data: ["owner", "admin", "member", "appadmin", "envadmin"].map((name, index) => ({ id: id(name), discordId: scope + index, discordName: name, ...(name === "appadmin" ? { role: "ADMIN" as const } : {}) })) });
     await db.community.create({ data: { id: communityId, name: communityId, slug: communityId, status: "ACTIVE", discordGuildId: scope + "-g1" } });
     await db.community.create({ data: { id: pendingId, name: pendingId, slug: pendingId, status: "PENDING", discordGuildId: scope + "-g2" } });
     await db.membership.createMany({ data: [
       { communityId, userId: id("owner"), status: "ACTIVE", role: "OWNER" },
       { communityId, userId: id("admin"), status: "ACTIVE", role: "ADMIN" },
       { communityId, userId: id("member"), status: "ACTIVE", role: "MEMBER" },
+      // Administrateurs de l'APPLICATION : rôle de serveur MEMBER (valeur par défaut posée à la connexion, jamais déduite de Discord).
+      { communityId, userId: id("appadmin"), status: "ACTIVE", role: "MEMBER" },
+      { communityId, userId: id("envadmin"), status: "ACTIVE", role: "MEMBER" },
     ] });
   });
 
@@ -95,6 +98,28 @@ describe.skipIf(!url)("réglage « The Tower (défis) » et écrans staff", () =
     }
     expect((await proposals.listPendingTowerProposals({ communityId, userId: id("member") })).status).toBe("FORBIDDEN");
     expect((await irregular.listTowerIrregularForStaff(id("member"), communityId)).status).not.toBe("LISTED");
+  });
+
+  it("un administrateur de l'APPLICATION (User.role ADMIN ou ADMIN_DISCORD_IDS), membre actif au rôle de serveur MEMBER, ouvre les deux files ; un simple membre non ; un admin d'application sans adhésion non plus", async () => {
+    const proposals = await import("./tower-challenge-proposals");
+    const irregular = await import("./tower-irregular");
+    const { setCommunityTowerChallenges } = await import("./community-admin");
+    expect(await setCommunityTowerChallenges({ communityId, enabled: true })).toBe("saved");
+    vi.stubEnv("ADMIN_DISCORD_IDS", scope + "4");
+    for (const user of ["appadmin", "envadmin"]) {
+      expect((await proposals.listPendingTowerProposals({ communityId, userId: id(user) })).status).toBe("PENDING_LIST");
+      expect((await irregular.listTowerIrregularForStaff(id(user), communityId)).status).toBe("LISTED");
+    }
+    expect((await proposals.listPendingTowerProposals({ communityId, userId: id("member") })).status).toBe("FORBIDDEN");
+    expect((await irregular.listTowerIrregularForStaff(id("member"), communityId)).status).toBe("FORBIDDEN");
+    await db.membership.deleteMany({ where: { communityId, userId: id("appadmin") } });
+    expect((await proposals.listPendingTowerProposals({ communityId, userId: id("appadmin") })).status).toBe("UNAVAILABLE");
+    expect((await irregular.listTowerIrregularForStaff(id("appadmin"), communityId)).status).toBe("UNAVAILABLE");
+  });
+
+  it("le rôle de serveur n'est jamais déduit de Discord : la synchronisation de connexion crée des adhésions MEMBER", () => {
+    const sync = readFileSync("src/lib/community-oauth.ts", "utf8");
+    expect(sync).not.toMatch(/role:\s*"(OWNER|ADMIN)"/);
   });
 
   it("la carte « Communautés » porte le formulaire, l'action est journalisée et réservée à requireAdmin", () => {

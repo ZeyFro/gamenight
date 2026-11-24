@@ -8,6 +8,7 @@ import { getTowerChallengeAppealableAttempts, getTowerChallengeState, getTowerSe
 import { getTowerSchoolSeason } from "@/lib/tower-challenge-seasons";
 import { levelProgress, rankForLevel, xpLevelLabel } from "@/lib/xp";
 import { prisma } from "@/lib/prisma";
+import { isAdminUser, parseAdminDiscordIds } from "@/lib/admin-rules";
 import { pageMetadata } from "@/lib/page-title";
 import { getTowerReplacementOffer } from "@/lib/tower-challenge-replacement";
 import { replaceTowerChallengeAction } from "./actions";
@@ -81,7 +82,7 @@ export default async function TowerPage({ searchParams }: { searchParams: Promis
         && <Link href="/admin/tower-appeals" className="mt-3 inline-flex rounded-xl border border-border px-4 py-2 text-sm font-semibold text-foreground hover:bg-surface-hover">Ouvrir la file de modération</Link>}
       {process.env.TOWER_CHALLENGE_PROPOSALS_ENABLED === "true" && <div className="mt-3 flex flex-wrap gap-3 text-sm">
         <Link href="/tower/propositions" className="font-medium text-accent underline-offset-4 hover:underline">Proposer un défi (Ranker et plus)</Link>
-        {membership?.status === "ACTIVE" && (membership.role === "ADMIN" || membership.role === "OWNER")
+        {membership?.status === "ACTIVE" && (membership.role === "ADMIN" || membership.role === "OWNER" || isAdminUser(user, parseAdminDiscordIds(process.env.ADMIN_DISCORD_IDS)))
           && <Link href="/admin/tower-propositions" className="font-medium text-accent underline-offset-4 hover:underline">Valider les propositions</Link>}
       </div>}
     </header>
