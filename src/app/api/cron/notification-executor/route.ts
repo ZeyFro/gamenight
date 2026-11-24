@@ -1,6 +1,7 @@
 import { randomUUID } from "crypto";
 import { NextResponse, after } from "next/server";
 import { logger } from "@/lib/logger";
+import { persistServerError } from "@/lib/error-log";
 import { verifyCronRequest } from "@/lib/cron-auth";
 import { runExecutorBatch } from "@/lib/notification-executor";
 import { DISPATCH_RESOLVER } from "@/lib/notification-dispatch";
@@ -83,6 +84,7 @@ export async function GET(request: Request) {
           const tower = await settleDueTowerChallenges(new Date(startedAt + 15000));
           logger.info("cron:notification-executor", "Clôture Tower.", tower);
         } catch (error) {
+          persistServerError("cron:tower", error, { route: "cron/notification-executor" });
           logger.error("cron:tower", error, { owner });
         }
       }
@@ -92,6 +94,7 @@ export async function GET(request: Request) {
           const awards = await awardTowerSeasonTitles(new Date(), new Date(startedAt + 25000));
           logger.info("cron:notification-executor", "Distinctions de saison Tower.", awards);
         } catch (error) {
+          persistServerError("cron:tower-awards", error, { route: "cron/notification-executor" });
           logger.error("cron:tower-awards", error, { owner });
         }
       }
@@ -105,6 +108,7 @@ export async function GET(request: Request) {
         durationMs: Date.now() - startedAt,
       });
     } catch (error) {
+      persistServerError("cron:notification-executor", error, { route: "cron/notification-executor" });
       logger.error("cron:notification-executor", error, { owner, durationMs: Date.now() - startedAt });
     }
   });

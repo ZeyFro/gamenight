@@ -57,6 +57,9 @@ export default async function AdminPage({
         <Link href="/admin/journal" className="mt-2 mr-4 inline-block text-sm font-medium text-accent hover:underline">
           Journal des opérations sensibles →
         </Link>
+        <Link href="/admin/erreurs" className="mt-2 mr-4 inline-block text-sm font-medium text-accent hover:underline">
+          Erreurs serveur →
+        </Link>
         {/* Pages d’administration livrées sans lien d’accès avant l’audit du 23/11 : état technique, grade Irregular. */}
         <Link href="/admin/sante" className="mt-2 mr-4 inline-block text-sm font-medium text-accent hover:underline">
           État technique →

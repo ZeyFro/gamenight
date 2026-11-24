@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { refreshSteamActivity, type SteamActivityCategory } from "@/lib/steam";
 import { logger } from "@/lib/logger";
+import { persistServerError } from "@/lib/error-log";
 import { verifyCronRequest } from "@/lib/cron-auth";
 import { processInBatches } from "@/lib/cron-batch";
 import { refreshSteamNowPlaying } from "@/lib/steam-now-playing";
@@ -76,6 +77,7 @@ export async function GET(request: Request) {
   // Réutilise cette route déjà déclenchée par le cron externe : aucun
   // nouveau déclencheur Vercel/cron n'est ajouté.
   const wishlistPriceAlertsPromise = checkWishlistSteamPriceAlerts().catch((error) => {
+    persistServerError("cron:steam-library-sync", error, { route: "cron/steam-library-sync" });
     logger.error("cron:steam-library-sync", error, { task: "wishlist-price-alerts" });
     return { checked: 0, notified: 0, skipped: "error" };
   });

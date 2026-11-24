@@ -7,6 +7,7 @@ import { enqueueSessionReminderDelivery } from "@/lib/session-announce";
 import { runProjectLifecycle } from "@/lib/project-space-queue";
 import { scheduleSessionSpaces } from "@/lib/session-space-queue";
 import { logger } from "@/lib/logger";
+import { persistServerError } from "@/lib/error-log";
 import { verifyCronRequest } from "@/lib/cron-auth";
 import { toWallClock, wallClockNow } from "@/lib/wallclock";
 import { acquireCronLock, releaseCronLock } from "@/lib/cron-lock";
@@ -210,6 +211,7 @@ export async function GET(request: Request) {
           // (pas de détail d'erreur potentiellement sensible exposé).
           outcomes.push({ minutes, ok: false });
           failed.push(`${session.id}:${minutes}min`);
+          persistServerError("cron:reminders", error, { route: "cron/reminders" });
           logger.error("cron:reminders", error, { sessionId: session.id, minutes });
         }
       }
@@ -262,6 +264,7 @@ export async function GET(request: Request) {
             );
           }
         } catch (error) {
+          persistServerError("cron:reminders", error, { route: "cron/reminders" });
           logger.error("cron:reminders", error, { sessionId: session.id });
         }
       }
@@ -270,12 +273,14 @@ export async function GET(request: Request) {
     // Espaces Discord de soirée (SESSION_VISIBILITY_ENABLED) : file seulement, jamais d'appel Discord ici.
     // Une erreur ne doit ni masquer les rappels envoyés ni être silencieuse : loggée, rejouée au passage suivant.
     const spaces = await scheduleSessionSpaces(now).catch((error: unknown) => {
+      persistServerError("cron:reminders", error, { route: "cron/reminders" });
       logger.error("cron:reminders", error, { step: "session-spaces" });
       return null;
     });
 
     // Projets à organisateur (PROJECT_ORGANIZER_ENABLED) : clôture à la date de fin, archivage à J+7 (file seulement).
     const projects = await runProjectLifecycle(now).catch((error: unknown) => {
+      persistServerError("cron:reminders", error, { route: "cron/reminders" });
       logger.error("cron:reminders", error, { step: "project-lifecycle" });
       return null;
     });
@@ -296,6 +301,7 @@ export async function GET(request: Request) {
     // (panne avant même la boucle par session, ex. connexion DB) —
     // différent du try/catch par rappel ci-dessus, qui ne renvoie jamais
     // le détail dans le JSON.
+    persistServerError("cron:reminders", error, { route: "cron/reminders" });
     logger.error("cron:reminders", error);
     return NextResponse.json(
       {

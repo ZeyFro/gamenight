@@ -16,7 +16,7 @@ Le dépôt ne définit aucun déclencheur cron dans vercel.json. Le défi d’é
 | `/api/cron/community-guild-sync` | GET | Synchronisation de l’état des communautés Discord |
 | `/api/cron/discord-thread-cleanup` | GET | Nettoyage des fils Discord |
 | `/api/cron/free-game-discord` | GET | Préparation des annonces de jeux gratuits |
-| `/api/cron/monthly-tasks` | GET | Tâches mensuelles |
+| `/api/cron/monthly-tasks` | GET | Tâches mensuelles ; **purge à 30 jours du journal d'erreurs serveur** (`ServerErrorLog`, lu sur `/admin/erreurs`) : ce cron quotidien tourne même interrupteurs éteints, il doit donc rester planifié 1 fois par jour |
 | `/api/cron/notification-executor` | GET | Livraison de la file de notifications |
 | `/api/cron/refresh-discord-profiles` | GET | Rafraîchissement des profils Discord |
 | `/api/cron/reminders` | GET | Rappels de sessions |

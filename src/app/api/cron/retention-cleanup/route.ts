@@ -1,5 +1,6 @@
 import { NextResponse, after } from "next/server";
 import { logger } from "@/lib/logger";
+import { persistServerError } from "@/lib/error-log";
 import { verifyCronRequest } from "@/lib/cron-auth";
 import { runRetentionCleanup } from "@/lib/retention-runner";
 
@@ -74,6 +75,7 @@ export async function GET(request: Request) {
         errorCount: report.errors.length,
       });
     } catch (error) {
+      persistServerError("cron:retention-cleanup", error, { route: "cron/retention-cleanup" });
       logger.error("cron:retention-cleanup", error, { dryRun, durationMs: Date.now() - startedAt });
     }
   });

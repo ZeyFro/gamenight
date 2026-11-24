@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { verifyCronRequest } from "@/lib/cron-auth";
 import { logger } from "@/lib/logger";
+import { persistServerError } from "@/lib/error-log";
 import { evaluateHostingUsage, isHostingAlertEnabled, readDatabaseSizeBytes } from "@/lib/hosting-usage";
 
 export const dynamic = "force-dynamic";
@@ -32,6 +33,7 @@ export async function GET(request: Request) {
   try {
     storageBytes = await readDatabaseSizeBytes();
   } catch (error) {
+    persistServerError("cron:hosting-usage", error, { route: "cron/hosting-usage" });
     logger.error("cron:hosting-usage", error);
     readErrors.push("storage");
   }

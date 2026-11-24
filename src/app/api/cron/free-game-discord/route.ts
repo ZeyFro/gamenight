@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { verifyCronRequest } from "@/lib/cron-auth";
 import { enqueueFreeGameAnnouncements } from "@/lib/free-game-discord";
 import { logger } from "@/lib/logger";
+import { persistServerError } from "@/lib/error-log";
 
 export const maxDuration = 60;
 
@@ -17,6 +18,7 @@ export async function GET(request: Request) {
     logger.info("cron:free-game-discord", "Offres ajoutées à la file Discord.", result);
     return NextResponse.json({ enabled: true, ...result });
   } catch (error) {
+    persistServerError("cron:free-game-discord", error, { route: "cron/free-game-discord" });
     logger.error("cron:free-game-discord", error);
     return NextResponse.json({ error: "announcement_enqueue_failed" }, { status: 500 });
   }
