@@ -13,6 +13,7 @@ vi.mock("@/lib/community-isolation", () => ({ resolveActiveCommunityId }));
 vi.mock("@/lib/community-access", () => ({ findActiveMembership }));
 vi.mock("@/lib/prisma", () => ({ prisma: { community: { updateMany } } }));
 vi.mock("next/cache", () => ({ revalidatePath }));
+vi.mock("@/lib/shared-rate-limit", () => ({ checkSharedRateLimit: vi.fn(async () => true) }));
 
 import { saveFairPlayCharterAction } from "./actions";
 
