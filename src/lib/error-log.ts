@@ -1,6 +1,15 @@
 import { createHash } from "node:crypto";
 import { after } from "next/server";
-import { prisma } from "@/lib/prisma";
+
+/**
+ * Prisma est chargé À L'ÉCRITURE seulement (import dynamique) : les routeurs et les routes qui appellent `persistServerError` restent des
+ * modules « purs » à l'import, comme l'exige le workflow `Tower challenge rules` (tests sans client Prisma généré).
+ */
+let prismaModule: Promise<typeof import("@/lib/prisma")> | undefined;
+async function db() {
+  prismaModule ??= import("@/lib/prisma");
+  return (await prismaModule).prisma;
+}
 
 /**
  * Journal d'erreurs serveur minimal (audit du 23/11/2026, « Journaux ») : Vercel Hobby ne garde que 1 h de journaux, une erreur
@@ -82,7 +91,7 @@ export function resetErrorLogLimiter() {
 /** Écriture réelle (testable) : crée la ligne ou incrémente le compteur de la même empreinte. */
 export async function writeServerError(entry: ServerErrorEntry, now = new Date()): Promise<void> {
   const fingerprint = errorFingerprint(entry);
-  await prisma.serverErrorLog.upsert({
+  await (await db()).serverErrorLog.upsert({
     where: { fingerprint },
     create: { fingerprint, ...entry, createdAt: now, lastAt: now },
     update: { count: { increment: 1 }, lastAt: now, message: entry.message },
@@ -116,12 +125,12 @@ export function persistServerError(context: string, error: unknown, meta?: { cod
 }
 
 /** Les 100 dernières erreurs groupées (une ligne par empreinte), pour /admin/erreurs (l'appelant a vérifié requireAdmin). */
-export function listServerErrors(limit = 100) {
-  return prisma.serverErrorLog.findMany({ orderBy: { lastAt: "desc" }, take: limit });
+export async function listServerErrors(limit = 100) {
+  return (await db()).serverErrorLog.findMany({ orderBy: { lastAt: "desc" }, take: limit });
 }
 
 /** Purge à 30 jours (cron quotidien `monthly-tasks`, qui tourne même interrupteurs éteints). */
 export async function purgeServerErrors(now = new Date(), days = ERROR_RETENTION_DAYS): Promise<number> {
-  const result = await prisma.serverErrorLog.deleteMany({ where: { lastAt: { lt: new Date(now.getTime() - days * 86_400_000) } } });
+  const result = await (await db()).serverErrorLog.deleteMany({ where: { lastAt: { lt: new Date(now.getTime() - days * 86_400_000) } } });
   return result.count;
 }
