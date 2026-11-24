@@ -25,6 +25,7 @@
 - [Procédures de preuve](PROCEDURES_PREUVES.md) — comment prouver, étape par étape et en lecture seule, les 17 éléments du cahier « non vérifiés en réel » ou « côté Discord ».
 - [Défis Discord The Tower](tower-challenges.md) — lot préparé en brouillon, activation et enregistrement des commandes séparés.
 - [Audit final du 23/11/2026](AUDIT_FINAL.md) — constats, corrections, restants et ce qui n'a pas pu être vérifié ; détails dans [`audit/`](audit/01-securite-owasp.md).
+- [Rapport de la nuit du 24/11/2026](RAPPORT_NUIT.md) — PR fusionnées, migrations, restes, tâches ChatGPT et Maxime, décisions à valider.
 - [Audit local du serveur Discord](AUDIT_DISCORD.md) — inventaire REST en lecture seule, sans membres ni messages.
 - [Checklist de préparation](L3-06-preparation-checklist.md) et [galerie vidéo](CLIPS_VIDEO.md).
 - [Architecture The Tower 2.0](TOWER_2_ARCHITECTURE.md) — état vérifié, cible prudente, migration et retour arrière; l’inventaire détaillé reste privé.
@@ -38,7 +39,7 @@
 - [Lancement : la ligne d’arrivée (GO / NO-GO)](LANCEMENT_GO.md) — liste fermée des critères, état réel des 21 constats et des migrations.
 - [Permissions des bots](PERMISSIONS_BOTS.md) — rôle et droits minimaux de chaque bot du serveur, plan pas à pas pour retirer Administrateur (Workshop, AppBot) sans rien casser.
 - [Cahier final : la ligne d’arrivée](CAHIER_FINAL.md) — chaque élément du cahier, son statut réel, ce qu’il reste à faire, le responsable et la preuve.
-- [Plan d’allumage par lots](ALLUMAGES.md) — lots A à H pour ChatGPT : variables exactes, vérifications, retour arrière.
+- [Plan d’allumage par lots](ALLUMAGES.md) — lots A à J pour ChatGPT : variables exactes, vérifications, retour arrière.
 - [Hébergement : rester en gratuit, surveiller, savoir partir](HEBERGEMENT.md) — limites, alerte avant saturation, migration future vers un serveur local ou OVH.
 - [Notifications sur le téléphone : les 3 clés VAPID](WEB_PUSH_VAPID.md) — générer et poser les clés dans Vercel.
 - [Questions pour Maxime](QUESTIONS_MAXIME.md) — les choix à faire, en une seule liste, avec recommandation.

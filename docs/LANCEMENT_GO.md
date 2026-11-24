@@ -1,6 +1,6 @@
 # Lancement — la ligne d'arrivée (GO / NO-GO)
 
-> Relevé du 23 novembre 2026, en lecture seule. Sources : code de `main`, variables de Production lues dans Vercel (valeurs « Sensibles » illisibles), base Neon lue par une requête `SELECT`, exécutions GitHub. Ce document **remplace** pour le jour J : [CHECKLIST_LANCEMENT.md](CHECKLIST_LANCEMENT.md), [PLAN_TESTS.md](PLAN_TESTS.md) (à exécuter), [CONTROLE_SECURITE.md](CONTROLE_SECURITE.md) et les 21 constats « avant ouverture » de [AUDIT_APP_20261120.md](AUDIT_APP_20261120.md).
+> Relevé du 23 novembre 2026, mis à jour dans la nuit du 24 novembre (lignes A1, A2, A3, C1, C5 et section 4 ; voir [RAPPORT_NUIT.md](RAPPORT_NUIT.md)). Le reste est en lecture seule. Sources : code de `main`, variables de Production lues dans Vercel (valeurs « Sensibles » illisibles), base Neon lue par une requête `SELECT`, exécutions GitHub. Ce document **remplace** pour le jour J : [CHECKLIST_LANCEMENT.md](CHECKLIST_LANCEMENT.md), [PLAN_TESTS.md](PLAN_TESTS.md) (à exécuter), [CONTROLE_SECURITE.md](CONTROLE_SECURITE.md) et les 21 constats « avant ouverture » de [AUDIT_APP_20261120.md](AUDIT_APP_20261120.md).
 >
 > **Règle du lancement** (décision de Maxime) : on lance avec les interrupteurs **déjà allumés**, on n'en allume pas d'autres.
 >
@@ -16,9 +16,9 @@
 
 | # | Critère | Responsable | Statut réel | Preuve attendue |
 | --- | --- | --- | --- | --- |
-| A1 | Migrations à jour | Claude Code | ✅ **151 migrations appliquées sur 151** dans `prisma/migrations`, 0 inachevée, 0 annulée, dernière `20261121100000_account_deletion_log`. Dernier run « Migrations Production » : **n° 27, vert**, 21/11 03:24 UTC (27 runs, tous verts). Les migrations s'appliquent **automatiquement à la fusion** dans `main` (aucune approbation : environnement sans relecteur, constaté sur #525 à #527) ; après chaque fusion à migration, vérifier que le run est vert. | Requête `SELECT` sur `_prisma_migrations` (faite) ; GitHub → Actions → « Migrations Production ». |
-| A2 | Production déployée sur le dernier `main`, état READY | Claude Code | ✅ à chaque fusion (dernier relevé : déploiement READY de #517) | Vercel → Deployments : le premier est « Production · Ready ». |
-| A3 | Aucune fusion pendant la semaine du lancement, Dependabot compris | Maxime | ✅ les 5 PR Dependabot (#501, #502, #504, #505, #506) restent ouvertes | Liste des PR ouvertes. |
+| A1 | Migrations à jour | Claude Code | ✅ **159 dossiers de migration dans `prisma/migrations`**, tous appliqués par le workflow « Migrations Production » : **35 runs, tous verts**, dernier n° 35 (24/11 00:28 UTC, commit `4685ceb2`, migration `20261124120000_server_error_log`). Les migrations s'appliquent **automatiquement à la fusion** dans `main` (aucune approbation : environnement sans relecteur) ; après chaque fusion à migration, vérifier que le run est vert. | GitHub → Actions → « Migrations Production ». |
+| A2 | Production déployée sur le dernier `main`, état READY | Claude Code | 🟠 dernier déploiement de Production vu : `5b494446` (#590, 24/11 00:44 UTC). Le commit suivant (`21fbd3ef`, #579) a été **refusé par le quota Vercel gratuit** (100 déploiements par jour, « retry in 24 hours »), pas par le code. Depuis #579, seul `main` déploie (`vercel.json`, motifs `*` et `**`). À revérifier au prochain commit de `main` : un déploiement « Production » doit apparaître. | Vercel → Deployments : le premier est « Production · Ready » sur le dernier commit de `main`. |
+| A3 | Aucune fusion pendant la semaine du lancement | Maxime | ✅ plus aucune PR Dependabot ouverte ; seule la #514 (galerie de preuves) reste en brouillon et ne doit **pas** être fusionnée | Liste des PR ouvertes. |
 | A4 | Sauvegarde : retour arrière possible | Maxime + ChatGPT | 🔴 L'offre Neon gratuite ne garde que **6 heures** d'historique : une erreur vue le lendemain n'est plus réparable. Créer une **branche de sauvegarde** juste avant l'annonce. | Capture de la branche de sauvegarde datée dans la console Neon. |
 
 ### B. Pages légales et données personnelles
@@ -34,11 +34,11 @@
 
 | # | Critère | Responsable | Statut réel | Preuve attendue |
 | --- | --- | --- | --- | --- |
-| C1 | **13 commandes enregistrées** | ChatGPT (guidé) + Maxime | 🔴 l'enregistrement s'arrêtait à 5/13 sur la limite de débit Discord ; corrigé par la **PR #518**. Après fusion : ouvrir `/admin/discord-commands`, « Enregistrer », recliquer tant qu'il reste des lignes « en attente ». | Capture du tableau : 13 lignes « enregistrée » ou « déjà à jour ». Procédure de preuve : [PROCEDURES_PREUVES.md](PROCEDURES_PREUVES.md) § C002. |
+| C1 | **13 commandes enregistrées** | ChatGPT (guidé) + Maxime | 🔴 l'enregistrement s'arrêtait à 5/13 sur la limite de débit Discord ; **corrigé par la PR #518 (fusionnée)**. Reste à faire : ouvrir `/admin/discord-commands`, « Enregistrer », recliquer tant qu'il reste des lignes « en attente ». | Capture du tableau : 13 lignes « enregistrée » ou « déjà à jour ». Procédure de preuve : [PROCEDURES_PREUVES.md](PROCEDURES_PREUVES.md) § C002. |
 | C2 | **Catalogue de défis rempli** | ChatGPT (guidé) | 🔴 **0 défi en base** (relevé du 22/11). Après C1 : `/tower-admin importer` (89 défis solo, dont 2 hors jeu et 1 à preuve ancienne) puis `/tower-admin importer-equipe` (30 défis d'équipe, si les équipes sont activées). Aucune annonce n'est envoyée. | Réponse privée « X défis ajoutés » ; `/tower` montre des défis. |
 | C3 | Bot sans Administrateur | ChatGPT (guidé) | 🔴 le rôle **Workshop** (Administrateur) est porté par 12 bots, et GameNight a Administrateur via **AppBot** : suivre [PERMISSIONS_BOTS.md](PERMISSIONS_BOTS.md) | Capture des rôles de chaque bot, sans Administrateur ; tests de [PERMISSIONS_BOTS.md](PERMISSIONS_BOTS.md) passés. Procédure de preuve : [PROCEDURES_PREUVES.md](PROCEDURES_PREUVES.md) § C011 et § C056. |
 | C4 | Message du guide corrigé | ChatGPT | 🔴 il dit encore « Tes étages actuels restent en place » ; texte de remplacement dans [MESSAGES_LANCEMENT.md](MESSAGES_LANCEMENT.md) | Capture du message édité, datée. |
-| C5 | Salon de retours et de bugs | ChatGPT | 🔴 à créer ou désigner, avec un message épinglé | Lien du salon. |
+| C5 | Salon de retours et de bugs | ChatGPT | 🔴 à créer ou désigner, avec un message épinglé ; texte prêt dans [MESSAGES_SALONS.md](MESSAGES_SALONS.md) (29 salons, 13 commandes) | Lien du salon. |
 | C6 | Portail Discord Developer vérifié | Maxime | ⬜ adresse de retour OAuth, adresse des interactions, scopes | Capture des réglages. |
 | C7 | Annonces et MP partent bien | Maxime | ⬜ `NOTIFICATION_EXECUTOR_ENABLED` présent mais valeur cachée ; dépend aussi de cron-job.org | Une soirée de test crée une annonce dans le bon salon et un MP. Procédure de preuve : [PROCEDURES_PREUVES.md](PROCEDURES_PREUVES.md) § C003 et § C093. |
 
@@ -109,6 +109,8 @@ Le triage de l'audit marque 15 constats « corrigé ». **Mais 5 d'entre eux ne 
 
 ## 3. Ce qui reste rouge (résumé)
 
+> Tout ce qui relève du code est fait. Les points ci-dessous demandent une action humaine ou un geste guidé de ChatGPT : pas à pas dans [ALLUMAGES.md](ALLUMAGES.md) (section « Pour ChatGPT », lots A à J, redéploiements R0 à R5), [PROCEDURES_PREUVES.md](PROCEDURES_PREUVES.md) et [MESSAGES_SALONS.md](MESSAGES_SALONS.md).
+
 1. **C1** : 13 commandes enregistrées (après fusion de #518).
 2. **C2** : catalogue de défis vide.
 3. **C3** : bots et GameNight sans Administrateur.
@@ -120,3 +122,14 @@ Le triage de l'audit marque 15 constats « corrigé ». **Mais 5 d'entre eux ne 
 9. **V3-02, V3-12, V3-15, V3-18** : décision sur `LAUNCH_TEXTS_ENABLED` et `NAV_TOWER_ENABLED`.
 
 **Ordre conseillé** : A4 → E4 → C3 → (fusion #518) C1 → C2 → C4, C5 → D2, D3 → F1 à F3 → décision V3 → annonce.
+
+---
+
+## 4. Ajouts de la nuit du 24 novembre (code terminé)
+
+- **Anti-abus** : plafonds d'XP (présence 3/jour, 10 soirées et 5 tournois par personne et par jour, votes, tournois), 2 h de jeu Steam par jour, votants éligibles après 3 jours, participants d'un défi d'équipe confirmés par le capitaine (3 récompenses d'équipe par jour au plus), quota de MP (20 par jour).
+- **Notifications (lot 5)** : listes fermées des types de notification (`src/lib/notification-kinds.ts`) ; une combinaison inconnue ou interdite est refusée avant l'envoi.
+- **Journal d'erreurs** serveur (30 jours) et page `/admin/erreurs`, migration `server_error_log` (appliquée, run vert).
+- **PWA / iPhone** : icône Apple 180×180 opaque, icône maskable dédiée, aide à l'installation avant les notifications.
+- **Vocabulaire** : plus de « Level up » ni de « deadline », « Qui prévenir ? » vide par défaut (garde `vocabulaire-visible.test.ts`).
+- **Vercel** : seul `main` déploie (#577, #579). À revérifier au prochain commit de `main` (voir A2).
