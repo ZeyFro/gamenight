@@ -24,7 +24,7 @@ export const NOTIFICATION_CATEGORY_DETAILS: Record<
   },
   INSTANT_SESSION: {
     label: "Jouer maintenant",
-    description: "Invitation rapide (MP Discord + notification) quand un pote démarre une session instantanée.",
+    description: "Invitation rapide (MP Discord + notification) quand un pote démarre une soirée instantanée.",
   },
   REWARD: {
     label: "Récompenses de pari",
