@@ -20,6 +20,9 @@ Gravités : 🔴 bloquant lancement · 🟠 important · 🟡 mineur · 🟢 vé
 | 🟠 | « Jouer maintenant » | Un clic envoyait 31 MP | Personne pré-coché quand le centre de notifications est allumé | Corrigé (#552) |
 | 🟡 | Pages sans lien d'accès, pied de page mobile | Pages orphelines, pied de page cassé sur mobile | Liens ajoutés, garde `page-links-coverage.test.ts` | Corrigé (#550, #551) |
 
+| 🔴 | `/sessions?tab=history` vide et accueil « 0 soirée jouée » alors que 28 soirées terminées existent (production du 24/11) | La fenêtre de 7 jours masquait toute soirée terminée depuis plus d'une semaine ; le total de l'accueil ne lisait que le compteur durable du serveur affiché | Historique : soirées jouées 365 jours (annulées et rétention : 7 jours) ; total de l'accueil = le plus grand du compteur et des soirées terminées ; test du cas ; lien « photos » gardé | Corrigé (#600) ; cause exacte en production à confirmer par lecture seule (voir LANCEMENT_GO § 4) |
+| 🟠 | `seed-reconcile` rejoue `backfillXp` chaque jour et recrédite l'XP refusée par les plafonds (#569, #584, #585) | Le backfill écrit dans le ledger sans les plafonds | Backfill limité aux lacunes historiques ; tâche quotidienne à supprimer (ALLUMAGES § Pour ChatGPT) | PR « backfill et plafonds d'XP » en cours |
+
 ## 2. Mineurs du bug 9
 
 | Gravité | Où | Correctif | État |
@@ -38,8 +41,8 @@ Aucun constat 🔴 ni haute gravité. Crons et backfills (`verifyCronRequest`, 5
 | 🟠 | `/api/igdb/search` sans limite de débit | 30 recherches par minute et par membre (429 au-delà) | Corrigé (#573) |
 | 🟠 | `/api/push/subscription` sans limite ni plafond | 10 appels par minute et par membre en plus du plafond de 5 appareils | Corrigé (#573) |
 | 🟠 | `/api/discord/interactions` : corps lu en entier avant la signature | 413 au-delà de 64 Ko (Content-Length puis corps lu) | Corrigé (#573) |
-| 🟡 | Actions de délégation (équipes, tournois, calendrier, charte) | Test d'accès d'un tiers non membre, sur le modèle de `admin-guards.test.ts` | Restant |
-| 🟡 | Écritures sans limite de débit visible | Limite générique par utilisateur (`checkSharedRateLimit` sur les créations) | Restant |
+| 🟡 | Actions de délégation (équipes, tournois, calendrier, charte) | Test d'accès d'un tiers non membre, sur le modèle de `admin-guards.test.ts` | Corrigé (#599) : `delegation-access.integration.test.ts`, aucun accès indu trouvé |
+| 🟡 | Écritures sans limite de débit visible | Limite générique par utilisateur (`checkSharedRateLimit`) | Corrigé (#599) : calendrier, charte, import familial ; les autres écritures avaient déjà une limite |
 
 ## 4. Bot Discord, tâches planifiées, sauvegarde ([détail](audit/02-bot-cron-sauvegarde.md))
 

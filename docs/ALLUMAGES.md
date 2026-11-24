@@ -103,7 +103,7 @@
 - **Potes = amis** (`POTES_FRIENDS_ENABLED`) : `/potes` ne montre plus que les amis (au début : « Tu n’as pas encore d’ami »). Chercher un pseudo (2 lettres minimum) : un membre du serveur apparaît avec « Demander en ami » ; un profil masqué n’apparaît jamais. Avec un second compte : « Demandes reçues » → Accepter ; les deux se voient alors dans `/potes` et ouvrent leurs fiches. Un non-ami ouvert par lien (`/potes/[id]`) montre une fiche réduite (pseudo, bouton, soirées « publique » ou « privée, sur invitation » sans détail), jamais son niveau, ses badges ni sa bibliothèque.
 - `/profil/parametres` : remplir « Pour trouver des partenaires » ; `/potes` : filtrer par langue, et voir « Partenaires compatibles » (jamais un profil masqué).
 
-**Retour arrière** : supprimer les 9 variables, Redeploy.
+**Retour arrière** : supprimer les 10 variables, Redeploy.
 
 ---
 
@@ -236,7 +236,7 @@
 
 ## Regroupement en 6 redéploiements, R0 à R5 (moins de codes 2FA)
 
-Principe : une même fenêtre de redéploiement peut porter plusieurs lots **tant qu'ils ne partagent pas de risque** ; chaque redéploiement est suivi de 30 minutes de contrôles (les « À vérifier » de chaque lot). Une vérification en échec retire **seulement les variables de ce lot** (retour arrière ci-dessus), jamais tout. Une **branche de sauvegarde Neon** (nom `avant-RX-AAAAMMJJ`) est créée juste avant R2, R3, R4 et R5, qui écrivent en base ou dans Discord. Le quota de déploiements de Vercel est de 100 par jour : aucun souci avec 5.
+Principe : une même fenêtre de redéploiement peut porter plusieurs lots **tant qu'ils ne partagent pas de risque** ; chaque redéploiement est suivi de 30 minutes de contrôles (les « À vérifier » de chaque lot). Une vérification en échec retire **seulement les variables de ce lot** (retour arrière ci-dessus), jamais tout. Une **branche de sauvegarde Neon** (nom `sauvegarde-avant-rX-AAAAMMJJ`, par exemple `sauvegarde-avant-r2-20261125`) est créée juste avant R2, R3, R4 et R5, qui écrivent en base ou dans Discord. Le quota de déploiements de Vercel est de 100 par jour : aucun souci avec 5.
 
 | Redéploiement | Contenu | Pourquoi ensemble | Contrôle avant de passer au suivant |
 | --- | --- | --- | --- |
@@ -306,7 +306,11 @@ Le dépôt ne déclare **aucune** tâche planifiée dans `vercel.json` : tout le
 | 18 | `/api/cron/team-captain-handover` | 1 fois par jour à 05:00 | Proposition (simulation tant que le mode n'est pas `execute`) | Si passation allumée |
 | 19 | `/api/cron/tower-team-daily` | **18:00 Europe/Paris** (jamais avant) | Décision du 17/11/2026 ; déjà assuré par le workflow GitHub `tower-team-daily.yml` (créneaux 16 h et 17 h UTC, garde « heure ≥ 18 ») : **ne créer cette tâche que si on abandonne le workflow**, jamais les deux sans le savoir (le second appel du soir est sans effet : clé `team-<jour>`) | Si `TOWER_TEAM_DAILY_ENABLED` |
 
-**À ne PAS planifier** : les routes `/api/backfill/*` (déclenchement manuel, une fois) et `/api/admin/force-relogin` (manuel, secret dédié du (a)).
+**Backfill (décision du 24/11/2026, lecture du code)** : `game-news` (POST seulement) = **1 fois par jour à 05:30** (10 appels Steam publics, alimente « Actu gaming ») ; `steam-store` (POST seulement) = **1 fois par semaine, dimanche 04:30** ; `igdb-coop` = **supprimer la tâche quotidienne** (jusqu'à 4 minutes de base réveillée à chaque passage), à lancer à la main après un gros ajout de jeux ; `seed-reconcile` = **supprimer la tâche quotidienne** (jusqu'à 240 secondes de requêtes ; rejoue `backfillXp`, voir PR « backfill et plafonds d'XP »), à lancer à la main après un déploiement qui ajoute des badges, tags, superlatifs ou messages. `game-news` et `steam-store` n'acceptent que **POST** : une tâche en GET reçoit 405. Jamais `/api/admin/force-relogin` (manuel, secret dédié du (a)).
+
+**Prompt prêt à copier pour R2 (lots B et C)** : [PROMPT_R2_CHATGPT.md](PROMPT_R2_CHATGPT.md).
+
+**Défi de 18 h (workflow GitHub)** : variables d'Actions `GAMENIGHT_CRON_BASE_URL` = `https://gamenight-zeyfro.vercel.app` (origine seule) et `TOWER_TEAM_DAILY_ENABLED` = `true` (à poser en dernier, après le redéploiement), secret d'Actions `CRON_SECRET` (même valeur que Vercel) ; aucun bouton « Run workflow ».
 
 **Contrôle de planification (à refaire après création)** : lister les 18 ou 19 tâches ; vérifier que chacune porte l'en-tête `Authorization`, le fuseau Europe/Paris et l'e-mail d'échec ; déclencher chacune à la main ; le lendemain du changement d'heure (29/03/2027 et 31/10/2027), vérifier qu'une seule ligne `team-<jour>` existe pour le défi de 18 h.
 
