@@ -181,8 +181,11 @@ export async function getGroupStats(viewerId: string): Promise<GroupStats> {
   const communityId = await writeCommunityIdForUser(viewerId);
   const progressCommunity = { communityId: { in: communityId ? [communityId] : [] } };
 
-  const [sessionStats, topGameStats, playTimeStats, gamePlayTimes, bestStreakUser, activePlayers, memberCounts] = await Promise.all([
+  const [sessionStats, liveDoneSessions, topGameStats, playTimeStats, gamePlayTimes, bestStreakUser, activePlayers, memberCounts] = await Promise.all([
     scopedDb.groupSessionStats.aggregate({ where: progressCommunity, _sum: { totalSessionsPlayed: true } }),
+    // Production du 24/11/2026 : « 0 soirée jouée » alors que 28 soirées terminées existaient. Le compteur durable peut être absent ou en
+    // retard pour la communauté affichée ; les soirées terminées encore présentes sont la seconde source (jamais additionnées : on garde le plus grand).
+    scopedDb.session.count({ where: { status: "DONE" } }),
     scopedDb.groupGameStat.groupBy({
       where: progressCommunity,
       by: ["gameId"],
@@ -218,7 +221,7 @@ export async function getGroupStats(viewerId: string): Promise<GroupStats> {
 
   // Une seule lecture cohérente : jamais « 0 soirée jouée » à côté d’un jeu joué 8 fois, jamais plus de joueurs actifs que de membres.
   const coherent = reconcileGroupStats(
-    { totalSessionsPlayed: sessionStats._sum.totalSessionsPlayed ?? 0, mostPlayedCount: topGameStats[0]?._sum.playCount ?? null, activePlayers },
+    { totalSessionsPlayed: Math.max(sessionStats._sum.totalSessionsPlayed ?? 0, liveDoneSessions), mostPlayedCount: topGameStats[0]?._sum.playCount ?? null, activePlayers },
     memberCounts.members,
   );
   return {
