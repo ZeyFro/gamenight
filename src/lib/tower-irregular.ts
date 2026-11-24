@@ -1,3 +1,4 @@
+import { effectiveCommunityRole } from "@/lib/community-staff-role";
 import { prisma } from "@/lib/prisma";
 import { scopedTransactionPrisma } from "@/lib/community-scoped-client";
 import { resolveActiveCommunityId } from "@/lib/community-isolation";
@@ -27,7 +28,7 @@ async function actorRole(tx: Tx, actorId: string, communityId: string): Promise<
       AND c.status = 'ACTIVE' AND c."towerChallengesEnabled" = true
     FOR SHARE OF m, c
   `;
-  return row?.role ?? null;
+  return row ? effectiveCommunityRole(tx, actorId, row.role) : null;
 }
 
 async function change(actorId: string, communityId: string, input: unknown, grant: boolean): Promise<TowerIrregularResult> {

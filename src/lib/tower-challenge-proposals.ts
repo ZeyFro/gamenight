@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { effectiveCommunityRole } from "@/lib/community-staff-role";
 import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { scopedTransactionPrisma } from "@/lib/community-scoped-client";
@@ -38,7 +39,7 @@ async function withMember<T>(communityId: string, userId: string, lock: boolean,
           AND c.status = 'ACTIVE' AND c."towerChallengesEnabled" = true
         FOR SHARE OF m, c`;
     if (!member) return { status: "UNAVAILABLE" } as const;
-    return work(scopedTransactionPrisma(tx, { communityIds: [communityId], includesDefault: false }), tx, member);
+    return work(scopedTransactionPrisma(tx, { communityIds: [communityId], includesDefault: false }), tx, { role: await effectiveCommunityRole(tx, userId, member.role) });
   }, TX);
 }
 
