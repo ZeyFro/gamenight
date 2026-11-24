@@ -17,7 +17,7 @@
 | # | Critère | Responsable | Statut réel | Preuve attendue |
 | --- | --- | --- | --- | --- |
 | A1 | Migrations à jour | Claude Code | ✅ **159 dossiers de migration dans `prisma/migrations`**, tous appliqués par le workflow « Migrations Production » : **35 runs, tous verts**, dernier n° 35 (24/11 00:28 UTC, commit `4685ceb2`, migration `20261124120000_server_error_log`). Les migrations s'appliquent **automatiquement à la fusion** dans `main` (aucune approbation : environnement sans relecteur) ; après chaque fusion à migration, vérifier que le run est vert. | GitHub → Actions → « Migrations Production ». |
-| A2 | Production déployée sur le dernier `main`, état READY | Claude Code | 🟠 dernier déploiement de Production vu : `5b494446` (#590, 24/11 00:44 UTC). Le commit suivant (`21fbd3ef`, #579) a été **refusé par le quota Vercel gratuit** (100 déploiements par jour, « retry in 24 hours »), pas par le code. Depuis #579, seul `main` déploie (`vercel.json`, motifs `*` et `**`). À revérifier au prochain commit de `main` : un déploiement « Production » doit apparaître. | Vercel → Deployments : le premier est « Production · Ready » sur le dernier commit de `main`. |
+| A2 | Production déployée sur le dernier `main`, état READY | Claude Code | ✅ vérifié le 24/11 à 06:12 UTC : déploiement de Production réussi sur `94b9bce6` (#596). Les refus vus la veille venaient du quota gratuit de Vercel (100 déploiements par jour). Seul `main` déploie (`vercel.json`, motifs `*` et `**`). | Vercel → Deployments : le premier est « Production · Ready » sur le dernier commit de `main`. |
 | A3 | Aucune fusion pendant la semaine du lancement | Maxime | ✅ plus aucune PR Dependabot ouverte ; seule la #514 (galerie de preuves) reste en brouillon et ne doit **pas** être fusionnée | Liste des PR ouvertes. |
 | A4 | Sauvegarde : retour arrière possible | Maxime + ChatGPT | 🔴 L'offre Neon gratuite ne garde que **6 heures** d'historique : une erreur vue le lendemain n'est plus réparable. Créer une **branche de sauvegarde** juste avant l'annonce. | Capture de la branche de sauvegarde datée dans la console Neon. |
 
@@ -132,4 +132,4 @@ Le triage de l'audit marque 15 constats « corrigé ». **Mais 5 d'entre eux ne 
 - **Journal d'erreurs** serveur (30 jours) et page `/admin/erreurs`, migration `server_error_log` (appliquée, run vert).
 - **PWA / iPhone** : icône Apple 180×180 opaque, icône maskable dédiée, aide à l'installation avant les notifications.
 - **Vocabulaire** : plus de « Level up » ni de « deadline », « Qui prévenir ? » vide par défaut (garde `vocabulaire-visible.test.ts`).
-- **Vercel** : seul `main` déploie (#577, #579). À revérifier au prochain commit de `main` (voir A2).
+- **Vercel** : seul `main` déploie (#577, #579), vérifié en production le 24/11 (voir A2).
