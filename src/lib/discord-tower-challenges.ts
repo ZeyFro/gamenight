@@ -189,6 +189,25 @@ const feedback: Record<string, string> = {
   ARCHIVED: "Cette preuve est archivée et ne peut plus être modifiée.",
 };
 
+const SNOWFLAKE = /^\d{16,20}$/;
+/** Salon des épreuves (#⚡・épreuves) : toujours autorisé ; les preuves y sont déposées et votées. */
+const towerChallengeChannel = () => process.env.TOWER_DISCORD_CHANNEL_ID?.trim() ?? "";
+/**
+ * Salons où les commandes /tower et leurs boutons répondent : #⚡・épreuves (TOWER_DISCORD_CHANNEL_ID) ET, si la variable
+ * optionnelle TOWER_DISCORD_COMMANDS_CHANNEL_ID est un identifiant valide, #🤖・commandes-bot. Absente ou invalide : comportement
+ * historique (épreuves seulement).
+ */
+export function towerAllowedChannelIds(env: Record<string, string | undefined> = process.env): string[] {
+  const main = env.TOWER_DISCORD_CHANNEL_ID?.trim() ?? "";
+  const commands = env.TOWER_DISCORD_COMMANDS_CHANNEL_ID?.trim() ?? "";
+  return [main, ...(SNOWFLAKE.test(commands) && commands !== main ? [commands] : [])].filter(Boolean);
+}
+export function towerWrongChannelMessage(env: Record<string, string | undefined> = process.env): string {
+  return towerAllowedChannelIds(env).length > 1
+    ? "Utilise cette commande dans #⚡・épreuves ou dans #🤖・commandes-bot."
+    : "Utilise cette commande dans le salon #⚡・épreuves.";
+}
+
 /** Exclusivement appelé après la vérification Ed25519 du corps brut dans discord-interactions. */
 export function handleSignedTowerInteraction(body: unknown, timestamp: string | null): InteractionOutput {
   const parsed = inputSchema.safeParse(body);
@@ -197,8 +216,8 @@ export function handleSignedTowerInteraction(body: unknown, timestamp: string | 
   const seconds = Number(timestamp);
   if (!timestamp || !Number.isFinite(seconds) || Math.abs(Date.now() / 1000 - seconds) > 300
     || i.application_id !== process.env.DISCORD_CLIENT_ID || (i.type !== 2 && i.message.author.id !== i.application_id)
-    || i.guild_id !== process.env.TOWER_DISCORD_GUILD_ID || (i.type !== 2 && i.channel_id !== process.env.TOWER_DISCORD_CHANNEL_ID)) return { status: 400 };
-  if (i.channel_id !== process.env.TOWER_DISCORD_CHANNEL_ID) return quiet("Utilise cette commande dans le salon des défis de la Tour.");
+    || i.guild_id !== process.env.TOWER_DISCORD_GUILD_ID || (i.type !== 2 && !towerAllowedChannelIds().includes(i.channel_id))) return { status: 400 };
+  if (!towerAllowedChannelIds().includes(i.channel_id)) return quiet(towerWrongChannelMessage());
   const commandName = i.type === 2 ? i.data.options[0].name : null;
   const customId = i.type === 2 ? "gn:tower:" + (commandName === "defi" ? "claim" : commandName === "progression" ? "mine" : commandName === "vote" ? "season-vote" : commandName === "equipe" ? "teams" : "leaderboard") : i.data.custom_id;
   const action = /^gn:tower:(claim|mine|leaderboard|season-vote|teams)$/.exec(customId);
@@ -215,7 +234,7 @@ export function handleSignedTowerInteraction(body: unknown, timestamp: string | 
   if (process.env.TOWER_CHALLENGES_ENABLED !== "true") return quiet("Les défis de la Tour ne sont pas encore ouverts.");
   if (i.type === 3 && proof) return { status: 200, body: proofModal(proof[1]) };
   const messageId = i.type === 3 ? i.message.id : null;
-  const submittedProof = i.type === 5 ? proofInput(i.data, i.guild_id, i.channel_id) : null;
+  const submittedProof = i.type === 5 ? proofInput(i.data, i.guild_id, towerChallengeChannel()) : null;
   if (i.type === 5 && !submittedProof) return { status: 400 };
   return { status: 200, body: { type: 5, data: { flags: 64 } }, runTower: async () => {
     let response: { content: string; components?: DiscordActionRow[] } = { content: "Les défis ne sont pas accessibles pour ton compte sur ce serveur." };
