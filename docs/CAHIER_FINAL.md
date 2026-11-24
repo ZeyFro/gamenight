@@ -12,8 +12,8 @@
 | --- | ---: |
 | ✅ Fait | 58 |
 | Codé, non vérifié en réel | 11 |
-| Codé, éteint | 40 |
-| Partiel | 1 |
+| Codé, éteint | 41 |
+| Partiel | 0 |
 | Partiel (côté Discord) | 5 |
 | Non fait | 0 |
 | Sans code (action humaine ou Discord) | 24 |
@@ -51,7 +51,7 @@
 | C026 | 9.4 | Aucune IA ne valide une preuve | aucun | ✅ Fait | — | — | Scénario exécuté : dépendances IA dans package.json : « aucune » ; fichiers de src/ (hors  |
 | C027 | 10.1 | Annonce automatique des réussites (joueur ou équipe, défi, preuve publiable, difficulté, récompense, étage) | `TOWER_DISCORD_ANNOUNCE_ENABLED` (allumé) | ✅ Fait | — | — | Tests verts : `lib/tower-challenge-announcements.test.ts` |
 | C028 | 10.2 | Information de publication au dépôt, données personnelles non exposées | `TOWER_DISCORD_ANNOUNCE_ENABLED` (allumé) | ✅ Fait | — | — | Tests verts : `lib/tower-challenges.integration.test.ts` |
-| C029 | 10.3 | Animation : réussites marquantes, exploits insolites, distinctions humoristiques, résultats de compétitions, r | `COMMUNITY_HIGHLIGHTS_ENABLED` (éteint) | Partiel | Liste fermée des moments marquants PUBLICS faite (D10) ; reste : exploits insolites et distinctions humoristiques (`COMMUNITY_HIGHLIGHTS_ENABLED`), à allumer (lot F) puis tester | ChatGPT (Vercel) + Maxime | Tests verts : `lib/notification-kinds.test.ts` (liste des moments marquants), `lib/notification-executor.integration.test.ts` (refus avant envoi) |
+| C029 | 10.3 | Animation : réussites marquantes, exploits insolites, distinctions humoristiques, résultats de compétitions, r | `COMMUNITY_HIGHLIGHTS_ENABLED` (éteint) | Codé, éteint | Fait en code : moments marquants publics (liste fermée D10), récapitulatif hebdomadaire de The Tower et mise en avant des joueurs actifs (carte « La semaine à The Tower » sur `/tower/palmares`, sans interrupteur, lecture seule), distinctions humoristiques (votes de superlatifs). Reste à allumer `COMMUNITY_HIGHLIGHTS_ENABLED` (exploits insolites, lot F) puis tester | ChatGPT (Vercel) + Maxime | Tests verts : `lib/tower-weekly-recap.integration.test.ts`, `app/tower/palmares/page.test.tsx`, `lib/notification-kinds.test.ts`, `lib/community-highlights.test.ts` |
 | C030 | 11.1 | Découvrir, créer, rejoindre une équipe, candidater, recruter | `TEAM_APPLICATIONS_ENABLED` (éteint), `TEAM_RECRUITERS_ENABLED` (éteint) | Codé, éteint | Allumer (lot E) + tester | ChatGPT (Vercel) + Maxime | Tests verts : `lib/team-recruiters-rules.test.ts` ; capture après allumage |
 | C031 | 11.2 | Fiche d'équipe : nom, présentation, capitaine, membres, jeux, objectifs, critères de recrutement, rendez-vous | `TEAM_RECRUITMENT_CRITERIA_ENABLED` (éteint) | Codé, éteint | Allumer (lot E) + tester | ChatGPT (Vercel) + Maxime | Tests verts : `lib/community-teams-rules.test.ts` ; capture après allumage |
 | C032 | 11.2 | Identité visuelle d'une équipe | aucun | ✅ Fait | — | — | PR #526 fusionnée, migration `team_identity` appliquée ; capture sur /equipes/gestion à la prochaine vérification |
