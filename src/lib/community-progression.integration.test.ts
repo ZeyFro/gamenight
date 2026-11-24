@@ -297,6 +297,7 @@ describe.skipIf(!TEST_DATABASE_URL)("progression par communauté, mutations Post
   });
   it("backfill rejoué : ne duplique pas un gain historique migré default dans son autre serveur", async () => {
     const s = await session("a");
+    await db.session.update({ where: { id: s.id }, data: { createdAt: new Date("2026-10-01T00:00:00Z") } }); // lacune historique : avant XP_CAPS_START
     await db.xpEvent.create({ data: { communityId: ids.default, userId: ids.both, reason: "CREATE_SESSION", sourceId: s.id, amount: 30 } });
     const { backfillXp } = await import("./backfill-xp");
     await backfillXp(); await backfillXp();

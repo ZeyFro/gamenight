@@ -4,6 +4,13 @@
  * actions dispos/Steam, et le script de backfill) parte de la même
  * source — jamais un nombre magique dupliqué à chaque appel.
  */
+/**
+ * Début des plafonds d'XP (#569, #584, #585). Le backfill (`backfill-xp.ts`, rejoué chaque jour) ne sert qu'aux lacunes HISTORIQUES : un
+ * gain refusé par un plafond ne laisse aucune ligne de ledger, donc le backfill le recréditerait. Il ignore les soirées créées à partir de
+ * cette date (leurs gains passent seulement par `awardXp`).
+ */
+export const XP_CAPS_START = new Date("2026-11-23T00:00:00Z");
+
 export const XP_AMOUNTS = {
   CREATE_SESSION: 30,
   VOTE: 5,

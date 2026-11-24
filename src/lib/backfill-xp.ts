@@ -1,5 +1,5 @@
 import { prisma } from "@/lib/prisma";
-import { XP_AMOUNTS } from "@/lib/xp";
+import { XP_AMOUNTS, XP_CAPS_START } from "@/lib/xp";
 import { getDefaultCommunityId } from "@/lib/default-community";
 import { statsCommunityIdForSession } from "@/lib/community-stats";
 import { scopedPrisma, scopedTransactionPrisma } from "@/lib/community-scoped-client";
@@ -29,6 +29,10 @@ import type { XpReason } from "@prisma/client";
  * `awardXp` (chemin live), écrit directement en base sans passer par la
  * détection de passage de niveau — un backfill qui spammerait le salon de
  * dizaines de "level up" rétroactifs serait absurde.
+ *
+ * Plafonds d'XP (#569, #584, #585) : un gain refusé par un plafond ne laisse aucune ligne de ledger ; rejoué chaque jour, ce
+ * backfill le recréditerait et annulerait les plafonds. Il ne traite donc QUE les soirées créées avant `XP_CAPS_START` (lacunes
+ * historiques) : création, votes de leurs propositions et participation. Les gains récents passent seulement par `awardXp`.
  *
  * Limite assumée et documentée (pas de contournement possible sans
  * historiser les votes, hors scope) : seuls les votes ENCORE PRÉSENTS en
@@ -62,15 +66,19 @@ async function awardXpRaw(userId: string, communityId: string | null, reason: Xp
 }
 
 async function backfillCreateSession(
-  sessions: { id: string; createdById: string; communityId: string | null }[]
+  sessions: { id: string; createdById: string; communityId: string | null; createdAt: Date }[]
 ): Promise<void> {
   for (const s of sessions) {
+    if (s.createdAt >= XP_CAPS_START) continue;
     await awardXpRaw(s.createdById, s.communityId, "CREATE_SESSION", s.id, XP_AMOUNTS.CREATE_SESSION);
   }
 }
 
 async function backfillVotes(): Promise<void> {
-  const votes = await prisma.vote.findMany({ select: { userId: true, proposalId: true, proposal: { select: { session: { select: { communityId: true } } } } } });
+  const votes = await prisma.vote.findMany({
+    where: { proposal: { session: { createdAt: { lt: XP_CAPS_START } } } },
+    select: { userId: true, proposalId: true, proposal: { select: { session: { select: { communityId: true } } } } },
+  });
   for (const v of votes) {
     // sourceId = proposalId (pas l'id du Vote) : même convention que le
     // chemin live, cf. src/app/sessions/actions.ts.
@@ -79,10 +87,10 @@ async function backfillVotes(): Promise<void> {
 }
 
 async function backfillParticipation(
-  sessions: { id: string; status: string; decidedGameId: string | null; communityId: string | null }[]
+  sessions: { id: string; status: string; decidedGameId: string | null; communityId: string | null; createdAt: Date }[]
 ): Promise<void> {
   const decided = sessions.filter(
-    (s) => (s.status === "SCHEDULED" || s.status === "DONE") && s.decidedGameId
+    (s) => (s.status === "SCHEDULED" || s.status === "DONE") && s.decidedGameId && s.createdAt < XP_CAPS_START
   );
   for (const s of decided) {
     const winningProposal = await prisma.proposal.findFirst({
@@ -124,7 +132,7 @@ async function backfillSteamLinkFirst(): Promise<void> {
 export async function backfillXp(): Promise<void> {
   const scopedDb = scopedPrisma(await cronCommunityScope());
   const sessions = await scopedDb.session.findMany({
-    select: { id: true, communityId: true, createdById: true, status: true, decidedGameId: true },
+    select: { id: true, communityId: true, createdById: true, status: true, decidedGameId: true, createdAt: true },
   });
 
   await backfillCreateSession(sessions);
