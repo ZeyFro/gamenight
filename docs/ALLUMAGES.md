@@ -369,6 +369,7 @@ Avec Melah<3 (Régulars) dans `#🤖・commandes-bot`, `/aide`, `/profil`, `/boo
 ### Essai réel C045 — 25 novembre 2026
 
 Melah (Régulars), qui a indiqué être nouvelle dans The Tower, voit « Classement The Tower — S3 · 2026 » et `/tower defi` lui attribue « Le défi de patience raisonnée ». L'accès tardif à la saison courante fonctionne. Le défi reste un test ; aucune preuve n’a été déposée.
+
 ### Audit cron-job.org — 25 novembre 2026, lecture seule
 
 La liste des tâches montre **17 cronjobs activés et 0 désactivé** ; le tableau de bord affichait 17 réussites et 0 échec au dernier passage. Ce constat ne valide ni la méthode HTTP ni les alertes e-mail, qui demandent l'ouverture du détail des tâches.
@@ -384,3 +385,7 @@ La liste des tâches montre **17 cronjobs activés et 0 désactivé** ; le table
 | Clôture sessions | Dernier passage 14:15, prochain 14:30 | Toutes les 5 minutes, e-mail en cas d'échec | Fréquence à corriger ; e-mail non vérifié |
 
 Aucune tâche n'a été modifiée, déclenchée ni supprimée pendant cet audit. Le détail d'édition peut exposer l'en-tête d'authentification : la lecture de cet écran a été refusée par le contrôle automatique. Il faut reprendre les réglages sans afficher ni recopier ce secret, avec une sauvegarde Neon préalable aux changements de fréquence qui déclencheraient des écritures.
+
+### Contrôle du workflow de défi quotidien — 25 novembre 2026
+
+Le run GitHub Actions `Tower team daily challenge` n° `45518287188` (25/11 à 00:27 UTC) a échoué avant l'appel HTTP : le secret `CRON_SECRET` est absent de l'environnement de ce workflow. La tâche cron-job.org « Défi d'équipe 18 h » est active, a réussi le 24/11 à 18:05 et annonce son prochain passage le 25/11 à 18:05. Décider quel ordonnanceur conserver selon la section (b), puis vérifier une seule attribution quotidienne. Aucun secret n'a été lu ni modifié.
