@@ -360,3 +360,8 @@ Compte `Melah<3` (Régulars) dans `#🤖・commandes-bot`. **Sous-tests verts ob
 ### Preuve complémentaire C009 — contrôle Discord du 25 novembre 2026
 
 Compte `!!ZeyFro`, serveur The Tower. En lecture seule, dans Paramètres du serveur → Rôles → Permissions, le bouton « Administrateur » est désactivé pour chacun des quatre grades : Régulars, Irregular, Ranker et High Ranker. Aucun réglage n’a été modifié. Cette observation complète la preuve existante de C009 ; elle ne valide pas C056, dont la procédure exige aussi l’inventaire des rôles et le contrôle de Gérer les rôles, Gérer les salons, Gérer les messages, Exclure et Bannir.
+
+
+### Essai ciblé C059 — 25 novembre 2026
+
+Avec Melah<3 (Régulars) dans `#🤖・commandes-bot`, `/aide`, `/profil`, `/boost`, `/tower defi`, `/tower progression` et `/tower classement` ont répondu en privé et en français. Le formulaire « Déposer ma preuve » s'est ouvert et a montré les champs lien, code/description et consentement. Il a été fermé sans envoi. Aucun défi n'a été réalisé, aucune preuve/vote n'a été soumis ; le parcours C059 reste partiel. Les captures ne sont pas conservées dans le dépôt.
