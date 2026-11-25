@@ -10,13 +10,13 @@
 
 | Statut | Nombre |
 | --- | ---: |
-| ✅ Fait | 69 |
-| Codé, non vérifié en réel | 8 |
-| Codé, éteint | 41 |
+| ✅ Fait | 74 |
+| Codé, non vérifié en réel | 6 |
+| Codé, éteint | 40 |
 | Partiel | 0 |
-| Partiel (côté Discord) | 6 |
+| Partiel (côté Discord) | 5 |
 | Non fait | 0 |
-| Sans code (action humaine ou Discord) | 15 |
+| Sans code (action humaine ou Discord) | 14 |
 | Reporté | 9 |
 
 ## Les éléments, un par ligne
@@ -32,7 +32,7 @@
 | C007 | 4.4 | Sélection de jeux et d'intérêts modernisée plutôt que dupliquée (/role) | `DISCORD_ROLE_COMMAND_ENABLED` (éteint) | Codé, éteint | Allumer (lot G) + tester | ChatGPT (Vercel) + Maxime | Tests verts : `lib/discord-role-command.test.ts` ; capture après allumage |
 | C008 | 6.1 | Grades Régulars / Irregular / Ranker / High Ranker | `TOWER_CHALLENGES_ENABLED` (allumé), `TOWER_IRREGULAR_GRANTS_ENABLED` (éteint) | Codé, éteint | Allumer (lot B) + tester | ChatGPT (Vercel) + Maxime | Tests verts : `lib/tower-ranks.test.ts` ; capture après allumage |
 | C009 | 6.2 | Séparation des pouvoirs : un grade ne donne aucun droit d'administration | aucun | ✅ Fait | — | — | Tests et scénario d'accès `/admin` déjà consignés ; contrôle Discord du 25/11/2026 : « Administrateur » désactivé pour Régulars, Irregular, Ranker et High Ranker (session `!!ZeyFro`) |
-| C010 | 6.3 | Aucun nouveau rôle Discord permanent par étage | aucun | Codé, non vérifié en réel | Procédure prête (PROCEDURES_PREUVES.md § C010), preuve à capturer par Maxime | Maxime | Tests verts : `lib/tower-etage-roles.test.ts` ; capture en Production ; procédure : PROCEDURES_PREUVES.md § C010 |
+| C010 | 6.3 | Aucun nouveau rôle Discord permanent par étage | aucun | ✅ Fait | — | — | Contrôle du 25/11 : 46 rôles, zéro « Étage » ; un étage gagné par `settleTowerChallenge` est observé (`tower-challenges.integration.test.ts`) et aucun des sept appels de création de rôle du dépôt n'est dans un module d'étage (`tower-no-floor-roles.test.ts`). |
 | C011 | 6.4 | Examen distinct des rôles techniques et historiques (admins, modération, jeux, bots, équipes, sanctions, notif | aucun | Partiel (côté Discord) | Procédure prête (PROCEDURES_PREUVES.md § C011), preuve à capturer par ChatGPT + Maxime | ChatGPT + Maxime | Capture Discord datée ; procédure : PROCEDURES_PREUVES.md § C011 |
 | C012 | 7.1 | Étages infinis, stockés en base, affichés par le bot | `TOWER_CHALLENGES_ENABLED` (allumé) | ✅ Fait | — | — | Tests verts : `lib/tower-challenges.integration.test.ts` |
 | C013 | 7.2 | Le compteur démarre de zéro sans effacer les profils ni les historiques | `TOWER_CHALLENGES_ENABLED` (allumé) | ✅ Fait | — | — | Scénario exécuté : capture docs/preuves/captures/nouveau-bureau-tower.png (HTTP 200) ; ext |
@@ -114,8 +114,8 @@
 | C089 | 27 M | Boosters : rôle « Soutien de la Tour », mur des soutiens, salons boosters, retrait automatique [#483] | `DISCORD_BOOSTERS_ENABLED` (éteint) | Codé, éteint | Allumer (lot G) + tester | ChatGPT (Vercel) + Maxime | Tests verts : `lib/booster-support.test.ts` ; capture après allumage |
 | C090 | 27 N | Personnalisation du profil (couleurs, thèmes, cadres, effets, vitrine, entitlement sans paiement) [#477] | `PROFILE_CUSTOMIZATION_ENABLED` (éteint) | Codé, éteint | Allumer (lot C) + tester | ChatGPT (Vercel) + Maxime | Tests verts : `lib/profile-customization.test.ts` ; capture après allumage |
 | C091 | 27 O | Tableau de bord staff v2 en lecture seule [#486] | `ADMIN_DASHBOARD_V2_ENABLED` (éteint) | Codé, éteint | Allumer (lot A) + tester | ChatGPT (Vercel) + Maxime | Capture après allumage |
-| C092 | 27.6 | Tous les interrupteurs sont OFF par défaut | `DISCORD_ROLE_SELF_CREATION_ENABLED` (éteint) | Codé, éteint | Allumer (lot G) + tester | ChatGPT (Vercel) + Maxime | Tests verts : `lib/discord-role-command.test.ts` ; capture après allumage |
-| C093 | 27.6 | Les écritures Discord passent par la file et l'executor, jamais en direct | `DISCORD_ROLE_COMMAND_ENABLED` (éteint) | Partiel (côté Discord) | Procédure prête (PROCEDURES_PREUVES.md § C093), preuve à capturer par ChatGPT + Maxime | ChatGPT + Maxime | Capture Discord datée ; procédure : PROCEDURES_PREUVES.md § C093 |
+| C092 | 27.6 | Tous les interrupteurs sont OFF par défaut | `DISCORD_ROLE_SELF_CREATION_ENABLED` (éteint) | ✅ Fait | — | — | Contrôle du 25/11 : `.env.example` n'allume aucun `*_ENABLED` et chaque lecture exige la chaîne exacte `true` ; `flags-default-off.test.ts` couvre tous les interrupteurs documentés et échoue sur toute lecture par truthiness. |
+| C093 | 27.6 | Les écritures Discord passent par la file et l'executor, jamais en direct | `DISCORD_ROLE_COMMAND_ENABLED` (éteint) | ✅ Fait | — | — | Contrôle du 25/11 : inventaire des surfaces d'écriture à jour (`inventory-write-surface.mjs --check`) ; `write-surface-inventory.test.ts` refuse tout import d'un executor/adaptateur REST hors file ; `session-announce.integration.test.ts` vérifie la mise en file sans `fetch`, puis l'envoi par l'executor. |
 | C094 | 27.6 | Aucune IA ne valide une preuve ; récompenses cosmétiques | aucun | ✅ Fait | — | Maxime | Tests verts : `lib/no-ai-validation.test.ts` (aucune IA générative dans le code), `lib/tower-challenge-voting.test.ts` ; procédure : PROCEDURES_PREUVES.md § C094 |
 | C095 | 1.3 | Internationalisation (étapes à 10 000 puis 50 000 membres actifs) | aucun | Feuille de route, après le lancement (décision du 23/11) | Rien avant le lancement | Maxime | — |
 | C096 | 20.1 | Concierge IA | aucun | Feuille de route, après le lancement (décision du 23/11) | Rien avant le lancement | Maxime | — |
@@ -147,7 +147,7 @@
 | C121 | 18.5 | Appy : conserver son rôle dans les candidatures | aucun | Sans code (action humaine ou Discord) | Rendre vérifiable (procédure de capture) | Maxime + ChatGPT | Capture datée (procédure : PLAN_TESTS.md) |
 | C122 | 18.6 | Modération : auditer avant de choisir les mécanismes | aucun | ✅ Fait | — | — | Audit Discord préalable du 27/10, 03_AUDIT_BOTS_ROLES_PERMISSIONS.md §5 : journaux Atlas, YAGPDB dans le salon de sanctions, rôles mute/blacklist et examen AutoMod. Les réglages non déterminés sont identifiés. GUIDE_MODERATION.md distingue les capacités observées des sanctions encore proposées. |
 | C123 | 19.1 | Protection anti-raid, anti-spam serveur et contrôle des bots et applications | aucun | Sans code (action humaine ou Discord) | Rendre vérifiable (procédure de capture) | Maxime + ChatGPT | Capture datée (procédure : PLAN_TESTS.md) |
-| C124 | 21.1 | Pas de système parallèle de profils, équipes ou progression | aucun | Sans code (action humaine ou Discord) | Rendre vérifiable (procédure de capture) | Maxime + ChatGPT | Capture datée (procédure : PLAN_TESTS.md) |
+| C124 | 21.1 | Pas de système parallèle de profils, équipes ou progression | aucun | ✅ Fait | — | — | Test d'intégration du 25/11 sur base jetable : une équipe créée par le service du site est retrouvée par `/profil` Discord avec le même nom, jeu et nombre de membres ; XP et étage identiques (`community-single-source.integration.test.ts`). |
 | C125 | 22.1 | Exigences générales (testable, documenté, vérifiable, mobile, sans effet sur les autres communautés) | aucun | Sans code (action humaine ou Discord) | Rendre vérifiable (procédure de capture) | Maxime + ChatGPT | Capture datée (procédure : PLAN_TESTS.md) |
 | C126 | 22.3 | Vérification sur le résultat réel (code ≠ fonction active, déploiement ≠ commande Discord) | aucun | ✅ Fait | — | — | PR #612 : essais Discord en Production avec Melah (commandes et ouverture du formulaire de preuve). PR #615 : lecture des pages rendues, défaut de doublons reproduit et parcours non exécutés laissés ouverts. Méthode de vérification appliquée. |
 | C127 | 24 | Développement communautaire (soirées hebdomadaires, créateurs, partenariats, réseaux sociaux) | aucun | Sans code (action humaine ou Discord) | Rendre vérifiable (procédure de capture) | Maxime + ChatGPT | Capture datée (procédure : PLAN_TESTS.md) |
@@ -168,7 +168,7 @@
 | D15 | 27 M | Boosters : rôle « Soutien de la Tour » sans permission, badge, mur des soutiens, salons réservés, retrait auto | aucun | Codé, non vérifié en réel | Procédure prête (PROCEDURES_PREUVES.md § D15), preuve à capturer par Maxime | Maxime | Tests verts : `lib/booster-support.test.ts` ; capture en Production ; procédure : PROCEDURES_PREUVES.md § D15 |
 | D16 | 27.3 | V2 : bot gateway permanent et rangs importés (documentation seulement) | aucun | Codé, non vérifié en réel | Procédure prête (PROCEDURES_PREUVES.md § D16), preuve à capturer par Maxime | Maxime | Capture en Production ; procédure : PROCEDURES_PREUVES.md § D16 |
 | D17 | 27.4 | Plus tard : VIP payant cosmétique ; champ d'entitlement sans aucun paiement implémenté | aucun | ✅ Fait | — | — | Tests verts : `lib/profile-customization.test.ts` |
-| D18 | 27.5 | Rappel : suppression des 134 rôles Étage avant la création automatique de rôles (action manuelle) | aucun | Codé, non vérifié en réel | Procédure prête (PROCEDURES_PREUVES.md § D18), preuve à capturer par Maxime | Maxime | Tests verts : `lib/tower-etage-roles.test.ts` ; capture en Production ; procédure : PROCEDURES_PREUVES.md § D18. Le 25/11 : 46 rôles et zéro rôle Étage dans Discord. Ordre par rapport à l’allumage à confirmer. |
+| D18 | 27.5 | Rappel : suppression des 134 rôles Étage avant la création automatique de rôles (action manuelle) | aucun | ✅ Fait | — | — | Inventaire du 25/11 : 46 rôles, zéro « Étage » ; l'auto-création n'a jamais été activée (journal des allumages, lot G vide) et `DISCORD_ROLE_AUTOCREATE_ENABLED` reste fermé par défaut (`discord-role-command.test.ts`). |
 | D19 | 27.6 | Principe : tous les interrupteurs OFF par défaut, écritures Discord par la file et l'executor | aucun | Codé, non vérifié en réel | Procédure prête (PROCEDURES_PREUVES.md § D19), preuve à capturer par Maxime | Maxime | Tests verts : `lib/discord-role-command.test.ts`, `lib/notification-executor.integration.test.ts` ; capture en Production ; procédure : PROCEDURES_PREUVES.md § D19 |
 | D20 | 27.6 | Principe : aucune IA ne valide une preuve ; récompenses cosmétiques | aucun | ✅ Fait | — | — | Contrôle statique : dépendances IA dans package.json : « aucune » ; fichiers de src/ (hors |
 
