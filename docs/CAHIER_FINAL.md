@@ -10,8 +10,8 @@
 
 | Statut | Nombre |
 | --- | ---: |
-| ✅ Fait | 59 |
-| Codé, non vérifié en réel | 10 |
+| ✅ Fait | 60 |
+| Codé, non vérifié en réel | 9 |
 | Codé, éteint | 41 |
 | Partiel | 0 |
 | Partiel (côté Discord) | 5 |
@@ -67,7 +67,7 @@
 | C042 | 13.2 | Calendrier communautaire sans second bot | `CALENDAR_SUBSCRIPTIONS_ENABLED` (éteint) | Codé, éteint | Allumer (lot D) + tester | ChatGPT (Vercel) + Maxime | Tests verts : `lib/calendar-feed.integration.test.ts` ; capture après allumage |
 | C043 | 13.3 | Tournois : inscriptions, règles, participants, résultats, annonces, classements | `TOURNAMENT_SCORES_ENABLED` (éteint) | Codé, éteint | Allumer (lot E) + tester | ChatGPT (Vercel) + Maxime | Tests verts : `lib/tournament-announce.integration.test.ts` ; capture après allumage |
 | C044 | 13.4 | Interfaces : « Ce soir », fiches de soirée, recherche de partie, roulette, calendrier, notifications personnal | `WHO_PLAYS_TONIGHT_ENABLED` (éteint), `NOTIFICATION_CENTER_ENABLED` (éteint) | Codé, éteint | Allumer `NOTIFICATION_CENTER_ENABLED` (lot G) + tester les interfaces avec un compte réel | ChatGPT (Vercel) + Maxime | Tests verts : `lib/notification-kinds.test.ts`, `app/notifications/page.test.tsx` |
-| C045 | 14.1 | Saisons accessibles aux arrivants tardifs | `TOWER_CHALLENGES_ENABLED` (allumé) | Codé, non vérifié en réel | Procédure prête (PROCEDURES_PREUVES.md § C045), preuve à capturer par Maxime | Maxime | Capture en Production ; procédure : PROCEDURES_PREUVES.md § C045 |
+| C045 | 14.1 | Saisons accessibles aux arrivants tardifs | `TOWER_CHALLENGES_ENABLED` (allumé) | ✅ Fait | — | — | Essai réel Production le 25/11 avec Melah (Régulars), nouvelle membre déclarée : le classement affiche S3 et `/tower defi` lui attribue un défi sans blocage. |
 | C046 | 14.2 | Calendrier scolaire et saison d'été (S1 du 1er décembre au 31 mars, avril–juin, été, septembre–novembre) | aucun | ✅ Fait | — | — | Tests verts : `lib/tower-challenge-seasons.test.ts` |
 | C047 | 14.3 | Classements individuel, saisonnier, permanent, historique, distinctions | `TOWER_CHALLENGES_ENABLED` (allumé) | ✅ Fait | — | — | Tests verts : `lib/tower-standings.test.ts` |
 | C048 | 14.3 | Classement d'équipes | `TOWER_CHALLENGES_ENABLED` (allumé) | ✅ Fait | — | — | Tests verts : `lib/tower-team-standings-rules.test.ts`, `lib/tower-team-standings.integration.test.ts` (PR #526 fusionnée) |
@@ -176,7 +176,7 @@
 
 - **GameNight — Historique :** sur le compte connecté à The Tower, `Soirées → Historique` affiche des soirées terminées. Contrôle visuel en lecture seule ; aucun nouveau parcours de création, invitation, vote ou clôture n’a été exécuté pendant ce contrôle.
 - **Discord — compte Melah :** la commande `/tower progression` n’a pas été validée. Une tentative a envoyé par erreur le texte libre « `/equipe/tower progression m` » dans `#🤖・commandes-bot` ; aucune réponse de commande n’a été obtenue. Le brouillon a ensuite été vidé. La suppression de ce message attend l’accord de Maxime.
-- **Effet sur le décompte :** C002 passe au vert après observation en Production des quatre commandes prévues, de leur réponse privée et du formulaire de preuve. Le total passe à **59/148**. C041 garde sa preuve existante ; C059 reste partiel car le dépôt réel et le vote n’ont pas été parcourus.
+- **Effet sur le décompte :** C002 passe au vert après observation en Production des quatre commandes prévues, de leur réponse privée et du formulaire de preuve. Le total passe à **60/148**. C045 est également validé avec une nouvelle membre qui accède à la saison en cours et reçoit un défi. C041 garde sa preuve existante ; C059 reste partiel car le dépôt réel et le vote n’ont pas été parcourus.
 
 
 ## Lots de code (Claude Code, une PR par lot, CI verte obligatoire)
