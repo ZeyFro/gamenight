@@ -17,8 +17,8 @@
 | # | Critère | Responsable | Statut réel | Preuve attendue |
 | --- | --- | --- | --- | --- |
 | A1 | Migrations à jour | Claude Code | ✅ **159 dossiers de migration dans `prisma/migrations`**, tous appliqués par le workflow « Migrations Production » : **35 runs, tous verts**, dernier n° 35 (24/11 00:28 UTC, commit `4685ceb2`, migration `20261124120000_server_error_log`). Les migrations s'appliquent **automatiquement à la fusion** dans `main` (aucune approbation : environnement sans relecteur) ; après chaque fusion à migration, vérifier que le run est vert. | GitHub → Actions → « Migrations Production ». |
-| A2 | Production déployée sur le dernier `main`, état READY | Claude Code | ✅ vérifié le 24/11 à 06:12 UTC : déploiement de Production réussi sur `94b9bce6` (#596). Les refus vus la veille venaient du quota gratuit de Vercel (100 déploiements par jour). Seul `main` déploie (`vercel.json`, motifs `*` et `**`). | Vercel → Deployments : le premier est « Production · Ready » sur le dernier commit de `main`. |
-| A3 | Aucune fusion pendant la semaine du lancement | Maxime | ✅ plus aucune PR Dependabot ouverte ; seule la #514 (galerie de preuves) reste en brouillon et ne doit **pas** être fusionnée | Liste des PR ouvertes. |
+| A2 | Production déployée sur le dernier `main`, état READY | Claude Code | ✅ Vérifié le 25/11 : déploiement Production `dpl_8aqUmjR9VU3G9qv51dnN3iaPUC4N`, READY sur le commit `ccbba827` de `main` (#621). Recontrôler après toute nouvelle fusion. | Vercel → Deployments : Production READY sur le dernier `main`. |
+| A3 | Aucune fusion pendant la semaine du lancement | Maxime | 🟠 Des PR ont encore été fusionnées le 25/11 pendant la recette ; geler les fusions une fois le cahier et les tests verts, juste avant l'annonce unique. | Liste des PR et date du gel avant le message de lancement. |
 | A4 | Sauvegarde : retour arrière possible | Maxime + ChatGPT | 🔴 L'offre Neon gratuite ne garde que **6 heures** d'historique : une erreur vue le lendemain n'est plus réparable. Créer une **branche de sauvegarde** juste avant l'annonce. | Capture de la branche de sauvegarde datée dans la console Neon. |
 
 ### B. Pages légales et données personnelles
@@ -35,7 +35,7 @@
 | # | Critère | Responsable | Statut réel | Preuve attendue |
 | --- | --- | --- | --- | --- |
 | C1 | **13 commandes enregistrées** | ChatGPT (guidé) + Maxime | 🔴 l'enregistrement s'arrêtait à 5/13 sur la limite de débit Discord ; **corrigé par la PR #518 (fusionnée)**. Reste à faire : ouvrir `/admin/discord-commands`, « Enregistrer », recliquer tant qu'il reste des lignes « en attente ». | Capture du tableau : 13 lignes « enregistrée » ou « déjà à jour ». Procédure de preuve : [PROCEDURES_PREUVES.md](PROCEDURES_PREUVES.md) § C002. |
-| C2 | **Catalogue de défis rempli** | ChatGPT (guidé) | 🔴 **0 défi en base** (relevé du 22/11). Après C1 : `/tower-admin importer` (89 défis solo, dont 2 hors jeu et 1 à preuve ancienne) puis `/tower-admin importer-equipe` (30 défis d'équipe, si les équipes sont activées). Aucune annonce n'est envoyée. | Réponse privée « X défis ajoutés » ; `/tower` montre des défis. |
+| C2 | **Catalogue de défis rempli** | ChatGPT (guidé) | ✅ Vérifié en Production le 25/11 : 90 définitions solo actives et 30 définitions d'équipe actives pour The Tower ; un défi attribué est visible sur `/tower`. | Requête `SELECT mode, active, count(*)` sur `TowerChallengeDefinition` filtrée par `Community.discordGuildId` (lecture seule), plus affichage réel de `/tower`. |
 | C3 | Bot sans Administrateur | ChatGPT (guidé) | 🔴 le rôle **Workshop** (Administrateur) est porté par 12 bots, et GameNight a Administrateur via **AppBot** : suivre [PERMISSIONS_BOTS.md](PERMISSIONS_BOTS.md) | Capture des rôles de chaque bot, sans Administrateur ; tests de [PERMISSIONS_BOTS.md](PERMISSIONS_BOTS.md) passés. Procédure de preuve : [PROCEDURES_PREUVES.md](PROCEDURES_PREUVES.md) § C011 et § C056. |
 | C4 | Message du guide corrigé | ChatGPT | 🔴 il dit encore « Tes étages actuels restent en place » ; texte de remplacement dans [MESSAGES_LANCEMENT.md](MESSAGES_LANCEMENT.md) | Capture du message édité, datée. |
 | C5 | Salon de retours et de bugs | ChatGPT | 🔴 à créer ou désigner, avec un message épinglé ; texte prêt dans [MESSAGES_SALONS.md](MESSAGES_SALONS.md) (29 salons, 13 commandes) | Lien du salon. |
@@ -46,7 +46,7 @@
 
 | # | Critère | Responsable | Statut réel | Preuve attendue |
 | --- | --- | --- | --- | --- |
-| D1 | Tâches automatiques actives | Maxime | ⬜ aucune n'est créée par le code ; à vérifier sur cron-job.org, au minimum `notification-executor`, `reminders`, `close-sessions` | Capture de la liste des tâches et de leur dernier résultat (200 ou 202). |
+| D1 | Tâches automatiques actives | Maxime | ✅ 17 tâches cron-job.org activées, 0 désactivée ; le tableau de bord du 25/11 affichait 17 succès et 0 échec. Les journaux Vercel du 25/11 confirment l'exécution de notifications, rappels, Steam, boosters et effacement Discord en simulation. Les cadences, méthodes HTTP et alertes e-mail encore erronées restent à corriger selon ALLUMAGES.md ; ne pas considérer la recette des tâches comme achevée. | Audit de la liste des tâches et journaux Production du 25/11 ; écarts consignés dans ALLUMAGES.md. |
 | D2 | Alerte de panne | Maxime | 🔴 aucune surveillance prouvée ; un moniteur doit appeler `/api/health` avec l'en-tête `Authorization: Bearer <CRON_SECRET>` | Capture du moniteur et d'une alerte de test reçue. |
 | D3 | Capacité suffisante pour l'afflux | Maxime | 🔴 voir [CAPACITE.md](CAPACITE.md) : l'offre gratuite de Vercel (4 h de calcul par mois) et celle de Neon peuvent **couper le site** au-delà d'une centaine de membres actifs | Décision écrite : offres payantes prises, ou plafond d'invitations fixé. |
 | D4 | Runbook prêt | Maxime | 🟠 [RUNBOOK.md](RUNBOOK.md) : tableau « Qui contacter » à remplir | Tableau rempli. |
@@ -59,8 +59,8 @@
 | E2 | Aucun secret dans le code ni dans le navigateur | Claude Code | ✅ | Idem. |
 | E3 | Double authentification sur Vercel, Neon, Discord, GitHub | Maxime | ⬜ | Capture de chaque page « Sécurité » du compte. |
 | E4 | Preview isolée de la Production (constat V4-15) | Maxime + ChatGPT | 🔴 **écart trouvé** : `AUTH_SECRET`, `DISCORD_CLIENT_SECRET`, `DISCORD_WEBHOOK_URL`, `STEAM_API_KEY`, `IGDB_*` et `DEEPL_API_KEY` sont partagés entre Production et Preview. Un même `AUTH_SECRET` rend les sessions d'une Preview valables en Production. Donner à Preview son propre `AUTH_SECRET` et retirer `DISCORD_WEBHOOK_URL` de Preview. | Capture des variables : ces clés en « Production » seulement, ou avec une valeur propre à Preview. |
-| E5 | En-têtes de sécurité réels | Maxime | ⬜ vérifiés dans le code seulement | Rapport de securityheaders.com sur l'adresse du site. |
-| E6 | Politique de sécurité du navigateur (CSP) bloquante | Claude Code | 🟠 en mode « observation » : à durcir après le lancement | — |
+| E5 | En-têtes de sécurité réels | Maxime | ✅ Réponses HTTP 200 de `/` et `/mentions-legales` vérifiées le 25/11 : HSTS, X-Content-Type-Options, X-Frame-Options, Referrer-Policy, Permissions-Policy et Content-Security-Policy sont présents. | En-têtes des réponses Production relevés via Vercel ; les routes API protégées ne sont pas couvertes par cet essai public. |
+| E6 | Politique de sécurité du navigateur (CSP) bloquante | Claude Code | ✅ `/` et `/mentions-legales` renvoient `Content-Security-Policy` en Production, et non un en-tête `Report-Only` ; `object-src 'none'` et `frame-ancestors 'none'` sont appliqués. La directive `script-src` autorise encore `'unsafe-inline'` : durcissement à suivre après lancement. | Contrôle des réponses HTTP 200 en Production le 25/11 ; vérification ultérieure des chemins connectés à prévoir. |
 
 ### F. Tests humains ([PLAN_TESTS.md](PLAN_TESTS.md))
 

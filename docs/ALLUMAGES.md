@@ -2,6 +2,8 @@
 
 > Relevé du 23 novembre 2026. Objectif : **un seul lancement, cahier entièrement terminé** (voir [CAHIER_FINAL.md](CAHIER_FINAL.md)). Les allumages se font **par ChatGPT dans Vercel**, guidé par ce document. Claude Code n'écrit jamais dans Vercel.
 
+> **Relevé Production du 25/11/2026, 19 h 45 (Paris)** : R5 a commencé à être configuré, mais n'est pas validé. Vercel liste en Production `RETENTION_CLEANUP_ENABLED`, `RETENTION_CLEANUP_MODE`, `VOICE_PRESENCE_ENABLED`, `HOSTING_ALERT_ENABLED`, `DISCORD_THREAD_CLEANUP_ENABLED` et `DISCORD_THREAD_CLEANUP_MODE` ; leurs valeurs Sensitive sont cachées. Sur le déploiement `dpl_8aqUmjR9VU3G9qv51dnN3iaPUC4N` (READY, commit `ccbba827`), le cron `discord-thread-cleanup` s'est exécuté à 19 h 15, 19 h 30 et 19 h 45 en `dryRun: true`, avec zéro fil archivé ou supprimé. Les journaux montrent aussi des passages sans erreur pour Steam (7 comptes traités), boosters (15 membres contrôlés), rappels (une soirée vérifiée), notifications (aucun envoi en attente) et vérification Steam des défis (zéro défi à vérifier). Ces six passages prouvent que les tâches s'exécutent ; ils ne valident ni les parcours de joueurs, ni l'effacement après une semaine, ni les push, le vocal ou l'alerte d'hébergement. Aucune nouvelle écriture ou activation ne découle de ce constat. La branche Neon `avant-R5-20261125` existe (créée le 25/11 à 00 h 55, heure de Paris) ; le projet compte 10 branches sur 10. Vérifier les valeurs effectives et préserver cette sauvegarde avant tout autre geste.
+
 ## Règles pour chaque lot
 
 1. **Un lot à la fois.** Le lot suivant ne commence que lorsque **toutes** les vérifications du lot précédent sont cochées.
@@ -369,3 +371,29 @@ Avec Melah<3 (Régulars) dans `#🤖・commandes-bot`, `/aide`, `/profil`, `/boo
 ### Essai réel C045 — 25 novembre 2026
 
 Melah (Régulars), qui a indiqué être nouvelle dans The Tower, voit « Classement The Tower — S3 · 2026 » et `/tower defi` lui attribue « Le défi de patience raisonnée ». L'accès tardif à la saison courante fonctionne. Le défi reste un test ; aucune preuve n’a été déposée.
+
+### Audit cron-job.org — 25 novembre 2026, lecture seule
+
+La liste des tâches montre **17 cronjobs activés et 0 désactivé** ; le tableau de bord affichait 17 réussites et 0 échec au dernier passage. Ce constat ne valide ni la méthode HTTP ni les alertes e-mail, qui demandent l'ouverture du détail des tâches.
+
+| Tâche | Observé dans la liste | Attendu selon la section (b) | Verdict |
+| --- | --- | --- | --- |
+| Backfill IGDB Coop | Absente des 17 tâches | Tâche quotidienne supprimée | Conforme à la liste |
+| Seed reconcile | Présente, succès le 25/11 à 02:30, prochain passage le 26/11 à 02:30 | Supprimer la tâche quotidienne | À corriger |
+| Actus jeux | Succès le 25/11 à 02:15, prochain passage le 26/11 à 02:15 | Tous les jours à 05:30, POST | Horaire à corriger ; méthode non vérifiée |
+| Backfill Steam Store | Succès le 25/11 à 02:00, prochain passage le 26/11 à 02:00 | Dimanche à 04:30, POST | Fréquence et horaire à corriger ; méthode non vérifiée |
+| Notifications Discord | Dernier passage 14:15, prochain 14:30 | Toutes les 5 minutes, e-mail en cas d'échec | Fréquence à corriger ; e-mail non vérifié |
+| Rappels | Dernier passage 14:15, prochain 14:30 | Toutes les 5 minutes, e-mail en cas d'échec | Fréquence à corriger ; e-mail non vérifié |
+| Clôture sessions | Dernier passage 14:15, prochain 14:30 | Toutes les 5 minutes, e-mail en cas d'échec | Fréquence à corriger ; e-mail non vérifié |
+
+Aucune tâche n'a été modifiée, déclenchée ni supprimée pendant cet audit. Le détail d'édition peut exposer l'en-tête d'authentification : la lecture de cet écran a été refusée par le contrôle automatique. Il faut reprendre les réglages sans afficher ni recopier ce secret, avec une sauvegarde Neon préalable aux changements de fréquence qui déclencheraient des écritures.
+
+### Contrôle du workflow de défi quotidien — 25 novembre 2026
+
+Le run GitHub Actions `Tower team daily challenge` n° `45518287188` (25/11 à 00:27 UTC) a échoué avant l'appel HTTP : le secret `CRON_SECRET` est absent de l'environnement de ce workflow. La tâche cron-job.org « Défi d'équipe 18 h » est active, a réussi le 24/11 à 18:05 et annonce son prochain passage le 25/11 à 18:05. Décider quel ordonnanceur conserver selon la section (b), puis vérifier une seule attribution quotidienne. Aucun secret n'a été lu ni modifié.
+
+### Contrôle de la file Discord — 25 novembre 2026, lecture seule
+
+La requête « Doublons d'envoi » de `PROCEDURES_PREUVES.md` retourne **9 targetSlot** (au lieu de 0). Trois groupes ont plusieurs lignes `SEND/SENT` : deux sessions datées du 23/09 et un tournoi daté du 12 au 14/10. Ces anciennes lignes n'ont pas d'identifiant de message Discord enregistré : elles ne prouvent pas, seules, plusieurs messages réellement visibles. Le test récent « créer → éditer → participer » de C003 reste nécessaire.
+
+La file contient **215 livraisons FAILED** au total (139 envois salon, 5 éditions salon, 71 MP). Depuis le 23/11, 10 nouveaux échecs : 8 invitations « Jouer maintenant » classées `resolver:not_configured` lorsque `DISCORD_BOT_INSTANT_SESSION_INVITE_ENABLED` n'est pas actif, 1 MP indisponible et 1 cible Discord introuvable. Le code enfile ces invitations même si l'option d'envoi est désactivée, puis le résolveur les marque FAILED ; il faut vérifier l'intention du produit et la configuration avant de qualifier ce point de bug. Aucune livraison n'a été relancée ni modifiée.
