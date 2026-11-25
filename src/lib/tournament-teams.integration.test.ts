@@ -58,6 +58,8 @@ describe.skipIf(!TEST_DATABASE_URL)("tournois par équipes inscrites : PostgreSQ
     const created = await tt.createTeamTournament(ids.org, ids.community, { name: "Coupe Deadlock", gameId: ids.game, maxTeams, isPrivate: false, registrationClosesAt: null, ...extra });
     if (created.result !== "created") throw new Error(created.result);
     ids.tournament = created.tournamentId;
+    // Le jeu choisi dans le sélecteur est celui réellement écrit : aucun repli sur un autre id.
+    expect(await db.tournament.findUniqueOrThrow({ where: { id: created.tournamentId }, select: { gameId: true } })).toEqual({ gameId: ids.game });
     return created.tournamentId;
   };
   const enter = (letter: string, captain: string) => tt.enterTeamInTournament(ids[captain], ids.community, { tournamentId: ids.tournament, teamId: ids[`team${letter}`] });

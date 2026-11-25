@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { captainIdOf, captainSelect } from "@/lib/tournament-team-captain";
 import { privateTeamTournamentWhere } from "@/lib/tournament-team-guards";
 import { getTournamentTeamsCommunityId } from "@/lib/tournament-teams";
+import { uniqueGameOptions } from "@/lib/game-search";
 
 /** Tournois d'équipes visibles par `userId` (publics, ou privés qu'il organise ou où l'une de ses équipes est invitée/inscrite). */
 export async function listTeamTournaments(userId: string, communityId: string) {
@@ -41,9 +42,22 @@ export async function listInvitableTeams(userId: string, communityId: string) {
   });
 }
 
-/** Jeux proposables à la création. */
+/**
+ * Jeux proposables à la création, sans doublon visible dans le `<select>`.
+ * Un même jeu peut exister en deux lignes (import Steam sans `igdbId`, puis
+ * ajout IGDB/manuel portant le même nom) : le sélecteur natif affichait alors
+ * deux fois le même titre. On replie sur la première ligne (ordre stable nom
+ * puis id) : c'est son `id` qui part dans le formulaire, donc
+ * `createTeamTournament` enregistre bien le jeu affiché. Les jeux réellement
+ * distincts et les éditions différentes gardent chacun leur entrée.
+ */
 export async function listTournamentGames() {
-  return prisma.game.findMany({ select: { id: true, name: true }, orderBy: { name: "asc" }, take: 500 });
+  const games = await prisma.game.findMany({
+    select: { id: true, name: true, igdbId: true, steamAppId: true },
+    orderBy: [{ name: "asc" }, { id: "asc" }],
+    take: 500,
+  });
+  return uniqueGameOptions(games).map(({ id, name }) => ({ id, name }));
 }
 
 /**
