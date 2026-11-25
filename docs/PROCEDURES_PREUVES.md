@@ -259,14 +259,14 @@ Remplacer `<ID_COMMUNAUTE>` par l'identifiant de la communauté The Tower (colon
 
 ## D19 : tous les interrupteurs éteints par défaut ; écritures Discord par la file et l'executor
 
-- **Tests existants (preuve dans le dépôt)** : `src/lib/env-example-no-secrets.test.ts` (`.env.example` : aucune valeur allumée hors liste), `src/lib/claude-md-switches.test.ts`, `src/lib/discord-role-command.test.ts`, `src/lib/notification-executor.integration.test.ts`, `src/lib/write-surface-inventory.test.ts`.
-- **Prérequis** : Vercel en lecture (ChatGPT).
+- **Tests existants (preuve dans le dépôt)** : `src/lib/flags-default-off.test.ts` (tous les `*_ENABLED` sont éteints par défaut), `src/lib/env-example-no-secrets.test.ts`, `src/lib/claude-md-switches.test.ts`, `src/lib/discord-role-command.test.ts`, `src/lib/notification-executor.integration.test.ts`, `src/lib/write-surface-inventory.test.ts`.
+- **Prérequis** : Vercel en lecture pour la liste des variables ; le relevé du 25/11 est consigné dans [ALLUMAGES.md](ALLUMAGES.md) et en tête de [CAHIER_FINAL.md](CAHIER_FINAL.md).
 - **Actions** :
-  1. `npx vitest run src/lib/env-example-no-secrets.test.ts src/lib/write-surface-inventory.test.ts` : verts.
-  2. Dans Vercel → Settings → Environment Variables (Production), lister les variables `*_ENABLED` présentes et leur état « valeur cachée » : comparer avec le lot allumé le plus récent du journal des allumages ([ALLUMAGES.md](ALLUMAGES.md)). Toute variable allumée hors lot est KO.
-  3. Pour l'écriture par la file : section C093.
-- **Résultat attendu** : seuls les interrupteurs des lots allumés sont présents.
-- **Critère OK** : tests verts et liste Vercel conforme au journal ; KO si une variable inconnue est allumée.
+  1. `TEST_DATABASE_URL=… npx vitest run src/lib/flags-default-off.test.ts src/lib/notification-executor.integration.test.ts src/lib/discord-role-command.test.ts src/lib/write-surface-inventory.test.ts --maxWorkers=1` : 61 tests verts.
+  2. Le test d'intégration exécute le cycle réel file → réservation → appel Discord simulé → `SENT`, ainsi que la concurrence, les reprises et les refus ; l'inventaire vérifie qu'aucune route ou action n'importe un exécuteur ou un adaptateur REST en direct.
+  3. La liste Vercel du 25/11 (15 variables `*_ENABLED` allumées, toutes rattachées aux lots du journal) sert de référence ; toute variable inconnue reste un KO lors d'un prochain relevé.
+- **Résultat attendu** : principe statique prouvé ; seuls les interrupteurs des lots allumés sont présents.
+- **Critère OK** : 61 tests verts et liste Vercel conforme au journal ; KO si une variable inconnue est allumée. **C093 reste la preuve séparée d'une écriture réelle en Production**, pas ce principe.
 - **Retour arrière** : retirer la variable fautive et redéployer.
 
 ---

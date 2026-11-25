@@ -11,8 +11,8 @@
 
 | Statut | Nombre |
 | --- | ---: |
-| ✅ Fait | 76 |
-| Codé, non vérifié en réel | 5 |
+| ✅ Fait | 77 |
+| Codé, non vérifié en réel | 4 |
 | Codé, éteint | 24 |
 | Codé, allumé, non vérifié en réel | 16 |
 | Partiel | 0 |
@@ -171,7 +171,7 @@
 | D16 | 27.3 | V2 : bot gateway permanent et rangs importés (documentation seulement) | aucun | ✅ Fait | — | — | Contrôle statique du 25/11 : `v2-documentation-only.test.ts` vérifie que les documents situent la V2 après le lancement, qu'aucun interrupteur ou clé Riot/Hypixel n'existe et que la seule passerelle du dépôt (vocale v1.1, éteinte par défaut) s'identifie avec `GUILDS` + `GUILD_VOICE_STATES`, jamais les intents privilégiés `GUILD_MEMBERS`/`GUILD_PRESENCES`. |
 | D17 | 27.4 | Plus tard : VIP payant cosmétique ; champ d'entitlement sans aucun paiement implémenté | aucun | ✅ Fait | — | — | Tests verts : `lib/profile-customization.test.ts` |
 | D18 | 27.5 | Rappel : suppression des 134 rôles Étage avant la création automatique de rôles (action manuelle) | aucun | ✅ Fait | — | — | Inventaire du 25/11 : 46 rôles, zéro « Étage », total sous 200 ; `DISCORD_ROLE_AUTOCREATE_ENABLED` n'a jamais été activé et reste fermé par défaut (`discord-role-command.test.ts`). |
-| D19 | 27.6 | Principe : tous les interrupteurs OFF par défaut, écritures Discord par la file et l'executor | aucun | Codé, non vérifié en réel | Procédure prête (PROCEDURES_PREUVES.md § D19), preuve à capturer par Maxime | Maxime | Tests verts : `lib/discord-role-command.test.ts`, `lib/notification-executor.integration.test.ts` ; capture en Production ; procédure : PROCEDURES_PREUVES.md § D19 |
+| D19 | 27.6 | Principe : tous les interrupteurs OFF par défaut, écritures Discord par la file et l'executor | aucun | ✅ Fait | — | — | Contrôle statique du 25/11 : 61 tests verts (`flags-default-off`, `notification-executor.integration`, `discord-role-command`, `write-surface-inventory`). Le cycle file → executor → `SENT`, la concurrence et les reprises sont prouvés avec PostgreSQL et un Discord HTTP simulé ; aucune route/action n'importe un exécuteur ou un adaptateur REST. C093 reste la preuve distincte d'une écriture réelle en Production. |
 | D20 | 27.6 | Principe : aucune IA ne valide une preuve ; récompenses cosmétiques | aucun | ✅ Fait | — | — | Contrôle statique : dépendances IA dans package.json : « aucune » ; fichiers de src/ (hors |
 
 ## Vérification de recette — 25 novembre 2026
