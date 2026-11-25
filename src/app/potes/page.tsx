@@ -17,6 +17,7 @@ import { levelForXp, rankForLevel } from "@/lib/xp";
 import { getActiveDebtorIds } from "@/lib/debts";
 import { tagColor } from "@/lib/tags";
 import { Card } from "@/components/ui/Card";
+import { PageHeader } from "@/components/ui/PageHeader";
 import { Badge } from "@/components/ui/Badge";
 import { Avatar } from "@/components/ui/Avatar";
 import { BannerImage } from "@/components/BannerImage";
@@ -145,12 +146,11 @@ export default async function PotesPage({ searchParams }: { searchParams?: Promi
   return (
     <PullToRefresh>
     <div className="mx-auto flex w-full max-w-2xl flex-col gap-6 px-4 py-8 sm:px-6 sm:py-12 lg:max-w-6xl">
-      <div>
-        <h1 className="text-xl font-semibold text-foreground sm:text-2xl">Potes</h1>
-        <p className="mt-1 text-sm text-muted">
-          {friendsEnabled ? `${potes.length} ${plural(potes.length, "ami")}.` : `${otherMembersLabel(potes.length)} dans le groupe${memberCounts.members > 0 ? ` (${memberCounts.members} avec toi)` : ""}.`}
-        </p>
-      </div>
+      <PageHeader
+        eyebrow="La communauté"
+        title="Potes"
+        description={friendsEnabled ? `${potes.length} ${plural(potes.length, "ami")}.` : `${otherMembersLabel(potes.length)} dans le groupe${memberCounts.members > 0 ? ` (${memberCounts.members} avec toi)` : ""}.`}
+      />
 
       {visibility && (
         <Card>

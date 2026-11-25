@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { getCurrentUser } from "@/lib/current-user";
 import { LibraryTabs } from "@/components/LibraryTabs";
+import { PageHeader } from "@/components/ui/PageHeader";
 import { ToVerifierList } from "@/components/ToVerifierList";
 import { pageMetadata } from "@/lib/page-title";
 
@@ -30,9 +31,11 @@ export default async function AVerifierPage() {
 
   return (
     <div className="mx-auto flex w-full max-w-4xl flex-col gap-6 px-4 py-8 sm:px-6 sm:py-12">
-      <h1 className="text-xl font-semibold text-foreground sm:text-2xl">
-        Ma bibliothèque
-      </h1>
+      <PageHeader
+        eyebrow="À vérifier"
+        title="Ma bibliothèque"
+        description="Les jeux dont le mode coopératif reste à confirmer."
+      />
 
       {/* Pas de `toVerifyCount` ici : la liste ci-dessous affiche déjà son
           propre compteur, toujours à jour côté client au fil du

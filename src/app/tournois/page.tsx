@@ -15,6 +15,7 @@ import { Stagger, StaggerItem } from "@/components/motion";
 import { PullToRefresh } from "@/components/PullToRefresh";
 import { SegmentedControl } from "@/components/ui/SegmentedControl";
 import { EmptyState } from "@/components/ui/EmptyState";
+import { PageHeader } from "@/components/ui/PageHeader";
 import { pageMetadata } from "@/lib/page-title";
 import { plural } from "@/lib/plural";
 
@@ -77,13 +78,17 @@ export default async function TournoisPage({
   return (
     <PullToRefresh>
       <div className="mx-auto flex w-full max-w-5xl flex-col gap-6 px-4 py-8 sm:px-6 sm:py-12">
-        <div className="flex items-center justify-between gap-3">
-          <h1 className="text-xl font-semibold text-foreground sm:text-2xl">🏆 Tournois</h1>
-          {isTournamentTeamsEnabled() && <ButtonLink href="/tournois/equipes" size="sm">Tournois d’équipes</ButtonLink>}
-          <ButtonLink href="/tournois/creer" variant="primary" size="sm">
-            + Créer
-          </ButtonLink>
-        </div>
+        <PageHeader
+          eyebrow="La compétition"
+          title="Tournois"
+          description="Crée un tournoi, inscris les équipes et suis les matchs jusqu’à la finale."
+          actions={<>
+            {isTournamentTeamsEnabled() && <ButtonLink href="/tournois/equipes" size="sm">Tournois d’équipes</ButtonLink>}
+            <ButtonLink href="/tournois/creer" variant="primary" size="sm">
+              + Créer
+            </ButtonLink>
+          </>}
+        />
 
         <SegmentedControl
           groupId="tournois-tabs"

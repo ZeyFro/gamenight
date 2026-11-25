@@ -21,6 +21,7 @@ import {
 } from "@/lib/wallclock";
 import { createSession } from "./actions/session-lifecycle";
 import { Card } from "@/components/ui/Card";
+import { PageHeader } from "@/components/ui/PageHeader";
 import { Button, ButtonLink } from "@/components/ui/Button";
 import { projectOrganizerEnabled } from "@/lib/projects-rules";
 import { SegmentedControl } from "@/components/ui/SegmentedControl";
@@ -196,11 +197,11 @@ export default async function SessionsPage({
   return (
     <PullToRefresh>
     <div className="mx-auto flex w-full max-w-5xl flex-col gap-6 px-4 py-8 sm:px-6 sm:py-12 lg:max-w-6xl">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <h1 className="text-xl font-semibold text-foreground sm:text-2xl">
-          Soirées
-        </h1>
-        <div className="flex min-w-0 flex-wrap gap-2">
+      <PageHeader
+        eyebrow="Organise ta prochaine soirée"
+        title="Soirées"
+        description="Crée une soirée, invite tes potes et choisissez ensemble à quoi jouer."
+        actions={<>
           <ButtonLink href="/sessions/sondages" variant="secondary" size="sm">
             Préparer une soirée
           </ButtonLink>
@@ -228,8 +229,8 @@ export default async function SessionsPage({
               📁 Projets
             </ButtonLink>
           )}
-        </div>
-      </div>
+        </>}
+      />
 
       {errorMessage && (
         <p className="rounded-lg bg-destructive/10 p-3 text-sm text-destructive">

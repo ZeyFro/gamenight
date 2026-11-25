@@ -6,6 +6,7 @@ import { collectAvailableGenres, matchesGameFilters, parseGameFilters } from "@/
 import { LibraryTabs } from "@/components/LibraryTabs";
 import { GameFilterDrawer } from "@/components/GameFilterDrawer";
 import { TierlistBoard } from "@/components/TierlistBoard";
+import { PageHeader } from "@/components/ui/PageHeader";
 import { pageMetadata } from "@/lib/page-title";
 import { plural } from "@/lib/plural";
 
@@ -48,9 +49,11 @@ export default async function TierlistPage({
 
   return (
     <div className="mx-auto flex w-full max-w-4xl flex-col gap-6 px-4 py-8 sm:px-6 sm:py-12">
-      <h1 className="text-xl font-semibold text-foreground sm:text-2xl">
-        Ma tierlist
-      </h1>
+      <PageHeader
+        eyebrow="Vos goûts"
+        title="Ma tierlist"
+        description="Classe les jeux de ta bibliothèque du meilleur au moins bon."
+      />
 
       <LibraryTabs active="tierlist" />
 

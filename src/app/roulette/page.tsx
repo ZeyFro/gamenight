@@ -25,6 +25,7 @@ import { RouletteWizard } from "@/components/roulette/RouletteWizard";
 import { isRoulettePlayerFilterEnabled } from "@/lib/roulette-draw";
 import { SegmentedControl } from "@/components/ui/SegmentedControl";
 import { EmptyState } from "@/components/ui/EmptyState";
+import { PageHeader } from "@/components/ui/PageHeader";
 import { createRouletteAction } from "./actions";
 import { pageMetadata } from "@/lib/page-title";
 
@@ -65,7 +66,11 @@ export default async function RoulettePage({
   return (
     <PullToRefresh>
       <div className="mx-auto flex w-full max-w-5xl flex-col gap-6 px-4 py-8 sm:px-6 sm:py-12">
-        <h1 className="text-xl font-semibold text-foreground sm:text-2xl">🎰 Roulette</h1>
+        <PageHeader
+          eyebrow="Un jeu au hasard"
+          title="Roulette"
+          description="Chacun propose ses jeux avant la date choisie, ou tire un jeu maintenant."
+        />
 
         {errorMessage && (
           <p className="rounded-lg bg-destructive/10 p-3 text-sm text-destructive">
