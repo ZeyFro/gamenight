@@ -11,21 +11,21 @@
 
 | Statut | Nombre |
 | --- | ---: |
-| ✅ Fait | 69 |
+| ✅ Fait | 71 |
 | Codé, non vérifié en réel | 8 |
-| Codé, éteint | 26 |
-| Codé, allumé, non vérifié en réel | 15 |
+| Codé, éteint | 25 |
+| Codé, allumé, non vérifié en réel | 16 |
 | Partiel | 0 |
 | Partiel (côté Discord) | 6 |
 | Non fait | 0 |
-| Sans code (action humaine ou Discord) | 15 |
+| Sans code (action humaine ou Discord) | 13 |
 | Reporté | 9 |
 
 ## Les éléments, un par ligne
 
 | Id | § | Élément | Interrupteur (état en Production) | Statut réel | Ce qu'il reste à faire | Responsable | Preuve attendue |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| C001 | 1.4 | Budget gratuit : fonctions essentielles sans Nitro, boost ni service payant | `DISCORD_BOOSTERS_ENABLED` (éteint) | Codé, éteint | Allumer (lot G) + tester | ChatGPT (Vercel) + Maxime | Capture après allumage |
+| C001 | 1.4 | Budget gratuit : fonctions essentielles sans Nitro, boost ni service payant | `DISCORD_BOOSTERS_ENABLED` (allumé, Vercel 25/11) | Codé, allumé, non vérifié en réel | Tester les autres fonctions essentielles avec un compte sans Nitro ni boost, puis vérifier l'absence de paiement exigé | ChatGPT + Maxime | Melah<3 : MEMBER et non booster dans Neon ; le 25/11 `/aide`, `/profil`, `/boost` et `/tower` ont répondu dans Discord sans paiement. Ce contrôle partiel ne couvre pas les parcours de soirée, équipe et tournoi. |
 | C002 | 2.1 | Expérience quotidienne accessible depuis Discord (commandes, boutons, modales) | `TOWER_CHALLENGES_ENABLED` (allumé) | ✅ Fait | — | — | Essai réel Production le 25/11 avec Melah (Régulars) : `/aide`, `/tower defi`, `/tower progression`, `/tower classement`, `/profil`, `/boost` répondent en privé ; le formulaire de preuve s’ouvre et présente les champs attendus. Épreuve de test attribuée, sans dépôt de preuve. |
 | C003 | 2.2 | Actions GameNight → Discord sans doublon, interactions Discord → GameNight | `NOTIFICATION_EXECUTOR_ENABLED` (présent (valeur cachée)) | Codé, non vérifié en réel | Procédure prête (PROCEDURES_PREUVES.md § C003), preuve à capturer par Maxime | Maxime | Tests verts : `lib/notification-executor.integration.test.ts` ; contrôle SQL en Production du 25/11 : 9 groupes historiques de SEND répétés, dont 3 avec plusieurs lignes SENT (créés en septembre/octobre) ; un essai récent de création puis édition reste requis ; procédure : PROCEDURES_PREUVES.md § C003 |
 | C004 | 2.3 | Connexion non obligatoire pour Discord, obligatoire pour les fonctions avancées | aucun | ✅ Fait | — | — | Tests verts : `lib/s0-access-controls.integration.test.ts` |
@@ -41,7 +41,7 @@
 | C014 | 7.3 | Étages obtenus par défis, barème +1 / +2 / +3, pas de double attribution | `TOWER_CHALLENGES_ENABLED` (allumé) | ✅ Fait | — | — | Tests verts : `lib/tower-s1-catalogue.test.ts`, `lib/tower-challenges.integration.test.ts` |
 | C015 | 7.4 | Progression permanente entre saisons, arrivants tardifs sans rattrapage | `TOWER_CHALLENGES_ENABLED` (allumé) | ✅ Fait | — | — | Tests verts : `lib/tower-standings.test.ts` |
 | C016 | 8.2 | Bouton « Mon défi », 1 attribution toutes les 12 h, 48 h pour réaliser | `TOWER_CHALLENGES_ENABLED` (allumé) | ✅ Fait | — | — | Tests verts : `lib/tower-challenge-rules.test.ts` |
-| C017 | 8.3 | Défi d'équipe quotidien automatique, éligibilité et anti-abus | `TOWER_TEAM_DAILY_ENABLED` (éteint), `TOWER_CHALLENGES_ENABLED` (allumé) | Codé, éteint | Allumer (lot B) + tester | ChatGPT (Vercel) + Maxime | Tests verts : `lib/tower-team-daily.regression.integration.test.ts` ; capture après allumage |
+| C017 | 8.3 | Défi d'équipe quotidien automatique, éligibilité et anti-abus | `TOWER_TEAM_DAILY_ENABLED` (éteint), `TOWER_CHALLENGES_ENABLED` (allumé) | Codé, éteint | Allumer (lot B) + tester | ChatGPT (Vercel) + Maxime | Tests verts : `lib/tower-team-daily.regression.integration.test.ts` ; deux attributions d'équipe constatées dans Neon les 24 et 25/11, sans preuve qu'elles viennent du cron ; vérifier l'automatisation et l'éligibilité. |
 | C018 | 8.4 | Deux réussites validées par jour au plus, même sous validations simultanées | `TOWER_CHALLENGES_ENABLED` (allumé) | ✅ Fait | — | — | Tests verts : `lib/tower-challenge-rules.test.ts`, `lib/tower-challenges.integration.test.ts` |
 | C019 | 8.5 | Variété des défis (gaming, créatifs, absurdes, coopération, hors jeu…) | aucun | ✅ Fait | — | — | Tests verts : `lib/tower-challenge-categories.test.ts`, `lib/tower-challenges.integration.test.ts` (PR #525 fusionnée, migration `tower_challenge_variety` appliquée) |
 | C020 | 8.6 | Remplacement d'un défi si le jeu n'est pas possédé ; aucun achat obligatoire | `TOWER_CHALLENGE_REPLACEMENT_ENABLED` (éteint) | Codé, éteint | Allumer (lot B) + tester | ChatGPT (Vercel) + Maxime | Tests verts : `lib/tower-challenge-replacement.integration.test.ts` ; capture après allumage |
@@ -117,7 +117,7 @@
 | C090 | 27 N | Personnalisation du profil (couleurs, thèmes, cadres, effets, vitrine, entitlement sans paiement) [#477] | `PROFILE_CUSTOMIZATION_ENABLED` (éteint) | Codé, éteint | Allumer (lot C) + tester | ChatGPT (Vercel) + Maxime | Tests verts : `lib/profile-customization.test.ts` ; capture après allumage |
 | C091 | 27 O | Tableau de bord staff v2 en lecture seule [#486] | `ADMIN_DASHBOARD_V2_ENABLED` (éteint) | Codé, éteint | Allumer (lot A) + tester | ChatGPT (Vercel) + Maxime | Capture après allumage |
 | C092 | 27.6 | Tous les interrupteurs sont OFF par défaut | `DISCORD_ROLE_SELF_CREATION_ENABLED` (éteint) | Codé, éteint | Allumer (lot G) + tester | ChatGPT (Vercel) + Maxime | Tests verts : `lib/discord-role-command.test.ts` ; capture après allumage |
-| C093 | 27.6 | Les écritures Discord passent par la file et l'executor, jamais en direct | `DISCORD_ROLE_COMMAND_ENABLED` (éteint) | Partiel (côté Discord) | Procédure prête (PROCEDURES_PREUVES.md § C093), preuve à capturer par ChatGPT + Maxime | ChatGPT + Maxime | Capture Discord datée ; procédure : PROCEDURES_PREUVES.md § C093 |
+| C093 | 27.6 | Les écritures Discord passent par la file et l'executor, jamais en direct | `DISCORD_ROLE_COMMAND_ENABLED` (éteint) | Partiel (côté Discord) | Procédure prête (PROCEDURES_PREUVES.md § C093), preuve à capturer par ChatGPT + Maxime | ChatGPT + Maxime | PR #613 : garde de non-contournement des imports Discord ; livraisons SENT dans Neon ; journal Vercel d'une nouvelle écriture encore nécessaire ; procédure : PROCEDURES_PREUVES.md § C093 |
 | C094 | 27.6 | Aucune IA ne valide une preuve ; récompenses cosmétiques | aucun | ✅ Fait | — | Maxime | Tests verts : `lib/no-ai-validation.test.ts` (aucune IA générative dans le code), `lib/tower-challenge-voting.test.ts` ; procédure : PROCEDURES_PREUVES.md § C094 |
 | C095 | 1.3 | Internationalisation (étapes à 10 000 puis 50 000 membres actifs) | aucun | Feuille de route, après le lancement (décision du 23/11) | Rien avant le lancement | Maxime | — |
 | C096 | 20.1 | Concierge IA | aucun | Feuille de route, après le lancement (décision du 23/11) | Rien avant le lancement | Maxime | — |
@@ -132,10 +132,10 @@
 | C104 | 1.1 | Vision : parcours complet du joueur (découvrir, partenaires, soirées, équipes, Tour, défis, grades, compétitio | aucun | Sans code (action humaine ou Discord) | Rendre vérifiable (procédure de capture) | Maxime + ChatGPT | Capture datée (procédure : PLAN_TESTS.md) |
 | C105 | 1.2 | Multigaming : aucun jeu imposé | aucun | ✅ Fait | — | — | Production le 25/11 : `/ce-soir` propose une liste de jeux sans choix prérempli (919 options observées) et laisse les jeux supplémentaires facultatifs ; aucune plateforme ni licence payante n’est imposée. |
 | C106 | 1.3 | Lancement prioritairement francophone | aucun | ✅ Fait | — | — | Contrôle Production le 25/11 : navigation et contenus GameNight vérifiés en français ; les noms des jeux restent dans leur titre officiel. Les panneaux et salons The Tower consultés sont également en français. |
-| C107 | 1.3 | Ne pas annoncer le lancement comme terminé avant validation | aucun | Sans code (action humaine ou Discord) | Rendre vérifiable (procédure de capture) | Maxime + ChatGPT | Capture datée (procédure : PLAN_TESTS.md) |
+| C107 | 1.3 | Ne pas annoncer le lancement comme terminé avant validation | aucun | ✅ Fait | Règle appliquée ; recontrôler juste avant le message de lancement | — | Décision de Maxime : un seul lancement, aucun message aux amis ni invitation tant que CAHIER_FINAL.md et LANCEMENT_GO.md ne sont pas entièrement verts ; aucune annonce de lancement n'a été envoyée dans cette recette. |
 | C108 | 3.2 | Principes d'organisation (noms, emojis, mobile, pas de salons vides, fils et panneaux) | aucun | Sans code (action humaine ou Discord) | Rendre vérifiable (procédure de capture) | Maxime + ChatGPT | Capture datée (procédure : PLAN_TESTS.md) |
 | C109 | 4.3 | Règlement et validation d'accès : vérifier le rôle Régulars, tester comme un vrai nouveau membre | aucun | Sans code (action humaine ou Discord) | Rendre vérifiable (procédure de capture) | Maxime + ChatGPT | Capture datée (procédure : PLAN_TESTS.md) |
-| C110 | 4.4 | Onboarding natif Discord (option) | aucun | Sans code (action humaine ou Discord) | Rendre vérifiable (procédure de capture) | Maxime + ChatGPT | Capture datée (procédure : PLAN_TESTS.md) |
+| C110 | 4.4 | Onboarding natif Discord (option) | aucun | ✅ Fait | Option d'accueil natif activée ; parcours d'un nouveau membre à recontrôler en C109 | — | Contrôle Discord du 25/11 dans les paramètres du serveur : « Processus d’accueil » affiché activé. L'essai d'un nouveau membre reste couvert par C109. |
 | C111 | 5.1 | Direction artistique (Tower of God, science-fiction, holographique, humour) | aucun | Sans code (action humaine ou Discord) | Rendre vérifiable (procédure de capture) | Maxime + ChatGPT | Capture datée (procédure : PLAN_TESTS.md) |
 | C112 | 5.2 | Éléments visuels à harmoniser (icône, bannière, cartes, classements, annonces) | aucun | Sans code (action humaine ou Discord) | Rendre vérifiable (procédure de capture) | Maxime + ChatGPT | Capture datée (procédure : PLAN_TESTS.md) |
 | C113 | 5.3 | Ton communautaire (convivial, bienveillant, sans humiliation) | aucun | ✅ Fait | — | — | Contrôle Production le 25/11 : le guide emploie des formulations d’entraide et de remerciement (« préviens les potes », « bien joué », « remercier les potes ») ; le salon des épreuves appelle au fair-play et à l’entraide. |
