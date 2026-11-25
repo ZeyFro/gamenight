@@ -88,12 +88,22 @@ export const LEVERS = {
   autre: "Rien à retirer : les écritures échouent avec la barrière ; les lectures échouent aussi pour l'ancien rôle.",
 };
 
+// Garde réellement appliquée quand la détection automatique ne peut pas la distinguer d'un commentaire.
+// `/api/admin/force-relogin` explique dans son en-tête que `CRON_SECRET` n'ouvre PLUS cette route : la détection
+// par expression régulière verrait ce commentaire et écrirait le contraire de la vérité dans un document d'incident.
+// Une ligne fausse est pire que pas de ligne : on la remplace par la garde effective.
+export const GUARD_OVERRIDES = {
+  "/api/admin/force-relogin": ["FORCE_RELOGIN_SECRET (Bearer, dédié, jamais CRON_SECRET)"],
+};
+
 export function buildInventory() {
   const api = walk(join(ROOT, "src/app/api")).filter((file) => /route\.ts$/.test(file)).sort();
   const routes = api.map((file) => {
     const route = relative(join(ROOT, "src/app/api"), file).replace(/\\/g, "/").replace(/\/route\.ts$/, "");
     const methods = [...read(file).matchAll(/export\s+(?:async\s+function|const)\s+(GET|POST|PUT|PATCH|DELETE)\b/g)].map((m) => m[1]);
-    return { route: `/api/${route}`, kind: kindOf(route), methods: [...new Set(methods)], ...analyse(file) };
+    const analysis = analyse(file);
+    const guards = GUARD_OVERRIDES[`/api/${route}`] ?? analysis.guards;
+    return { route: `/api/${route}`, kind: kindOf(route), methods: [...new Set(methods)], ...analysis, guards };
   });
   const actions = walk(join(ROOT, "src")).filter((file) => /\.(ts|tsx)$/.test(file) && !isTest(file))
     .filter((file) => /^\s*(?:["']use server["'])/m.test(read(file).slice(0, 400)))
