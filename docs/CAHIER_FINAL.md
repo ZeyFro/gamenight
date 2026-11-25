@@ -178,6 +178,14 @@
 - **Discord — compte Melah :** la commande `/tower progression` n’a pas été validée. Une tentative a envoyé par erreur le texte libre « `/equipe/tower progression m` » dans `#🤖・commandes-bot` ; aucune réponse de commande n’a été obtenue. Le brouillon a ensuite été vidé. La suppression de ce message attend l’accord de Maxime.
 - **Effet sur le décompte :** C002 passe au vert après observation en Production des quatre commandes prévues, de leur réponse privée et du formulaire de preuve. Le total passe à **60/148**. C045 est également validé avec une nouvelle membre qui accède à la saison en cours et reçoit un défi. C041 garde sa preuve existante ; C059 reste partiel car le dépôt réel et le vote n’ont pas été parcourus.
 
+### Contrôles complémentaires — 25 novembre 2026
+
+- **Potes / critères joueurs (C036, C038, C039, C128) :** depuis la session GameNight de !!ZeyFro, la recherche de « Melah » retourne le compte comme amie ; sa fiche affiche le rang The Tower Régulars, son niveau GameNight et ses disponibilités. Le filtre de langue « Français » s’applique, mais ne retourne aucun membre. Le parcours de demande/acceptation d’ami et la comparaison avec un résultat attendu n’ont pas été exécutés ; ces exigences restent non vertes.
+- **Équipes (C030, C031) :** la page affiche le formulaire de création et l’équipe de recette existante (2/6, recrutement ouvert, responsable, membres, jeu, objectif et critères). Aucune création, candidature, validation, invitation ou action Discord n’a été soumise ; ces exigences restent non vertes.
+- **Tournois (C043, C081) :** les pages de liste et de tournois d’équipe s’ouvrent ; elles affichent zéro tournoi. Le formulaire d’équipe expose le jeu, le nombre d’équipes, le mode privé et l’échéance d’inscription. Le sélecteur contient des titres en double, notamment « 60 Parsecs! » et « 60 Seconds! Reatomized ». Aucun tournoi n’a été créé, inscrit, joué ou clôturé ; recette incomplète et doublons à diagnostiquer.
+- **Sécurité des tests :** contrôles en lecture seule uniquement ; aucune donnée, option Production, commande Discord ou tâche cron n’a été modifiée. Aucun statut n’est passé au vert sur la base de ces seuls écrans.
+
+
 
 ## Lots de code (Claude Code, une PR par lot, CI verte obligatoire)
 
