@@ -351,6 +351,12 @@ Avant de commencer, relever le quota Vercel (100 déploiements par jour en offre
 | I | | — | ☐ | |
 
 
+### Tests réels Discord C002 — 25 novembre 2026
+
+Compte `Melah<3` (Régulars) dans `#🤖・commandes-bot`. **Sous-tests verts observés** : `/aide`, `/tower defi`, `/tower progression`, `/tower classement`, `/profil` et `/boost` ont répondu en privé et en français. Le bouton « Déposer ma preuve » a ouvert le formulaire avec les champs lien, code/description et consentement de partage ; formulaire fermé sans envoi.
+
+**État C002 : incomplet.** `/tower defi` a attribué une épreuve à Melah (aucune preuve soumise). L'ancienneté de trois jours du compte membre n'est pas confirmée et les captures ne sont pas conservées dans le dépôt ; la ligne C002 reste donc non verte.
+
 ### Preuve complémentaire C009 — contrôle Discord du 25 novembre 2026
 
 Compte `!!ZeyFro`, serveur The Tower. En lecture seule, dans Paramètres du serveur → Rôles → Permissions, le bouton « Administrateur » est désactivé pour chacun des quatre grades : Régulars, Irregular, Ranker et High Ranker. Aucun réglage n’a été modifié. Cette observation complète la preuve existante de C009 ; elle ne valide pas C056, dont la procédure exige aussi l’inventaire des rôles et le contrôle de Gérer les rôles, Gérer les salons, Gérer les messages, Exclure et Bannir.
