@@ -11,12 +11,14 @@ describe.skipIf(!TEST_DATABASE_URL)("candidatures d'équipe : PostgreSQL isolé"
   let db: import("@prisma/client").PrismaClient;
   let apps: typeof import("./team-applications");
   let teams: typeof import("./community-teams");
+  let criteria: typeof import("./team-recruitment-criteria");
   const ids: Record<string, string> = {};
 
   beforeAll(async () => {
     db = (await import("@/lib/prisma")).prisma as unknown as typeof db;
     apps = await import("./team-applications");
     teams = await import("./community-teams");
+    criteria = await import("./team-recruitment-criteria");
   });
   afterAll(async () => { await db?.$disconnect(); vi.unstubAllEnvs(); });
   beforeEach(async () => {
@@ -106,6 +108,51 @@ describe.skipIf(!TEST_DATABASE_URL)("candidatures d'équipe : PostgreSQL isolé"
     expect(await apps.listPendingApplicationsForLeader(ids.outsider, ids.community)).toEqual([]);
     const [pending] = await apps.listPendingApplicationsForLeader(ids.leader, ids.community);
     expect(await apps.decideTeamApplication(ids.outsider, ids.community, pending.id, true)).toBe("unavailable");
+  });
+
+  it("parcours C030/C031 : créer, découvrir, candidater, accepter et lire une fiche complète", async () => {
+    vi.stubEnv("TEAM_RECRUITMENT_CRITERIA_ENABLED", "true");
+    expect(await teams.setCommunityTeamIdentity(ids.leader, ids.community, ids.team, { color: "#123456", emblem: "🛡️" })).toBe("saved");
+    expect(await criteria.saveTeamRecruitmentCriteria(ids.leader, ids.community, {
+      teamId: ids.team,
+      goals: ["DETENTE", "PROGRESSION"],
+      minLevel: "INTERMEDIAIRE",
+      mic: "PREFERRED",
+      slots: ["WEEKDAY_EVENING", "WEEKEND_EVENING"],
+      platforms: ["PC", "PS5"],
+      note: "Deux soirs par semaine, ambiance détendue.",
+    })).toBe("saved");
+
+    const discovered = await teams.listCommunityTeams(ids.ana, ids.community);
+    const card = discovered.find((team) => team.id === ids.team)!;
+    expect(card).toMatchObject({
+      name: "Expédition",
+      description: "Construire et explorer ensemble.",
+      platform: "PC",
+      maxMembers: 3,
+      color: "#123456",
+      emblem: "🛡️",
+      captainId: ids.leader,
+      game: { name: "Valheim" },
+    });
+    expect(card.members.map((member) => member.user.discordName)).toEqual(["leader"]);
+    expect(card._count.members).toBe(1);
+    const view = (await criteria.listTeamRecruitmentCriteria(ids.ana, ids.community, [ids.team])).get(ids.team)!;
+    expect(view).toMatchObject({
+      goals: ["DETENTE", "PROGRESSION"],
+      minLevel: "INTERMEDIAIRE",
+      mic: "PREFERRED",
+      slots: ["WEEKDAY_EVENING", "WEEKEND_EVENING"],
+      platforms: ["PC", "PS5"],
+      note: "Deux soirs par semaine, ambiance détendue.",
+    });
+
+    expect(await apps.applyToTeam(ids.ana, ids.community, { teamId: ids.team, message: "Dispo le soir, micro ok." })).toBe("applied");
+    const [pending] = await apps.listPendingApplicationsForLeader(ids.leader, ids.community);
+    expect(await apps.decideTeamApplication(ids.leader, ids.community, pending.id, true)).toBe("accepted");
+    const after = await teams.listCommunityTeams(ids.ana, ids.community);
+    expect(after.find((team) => team.id === ids.team)?._count.members).toBe(2);
+    expect(await db.communityTeamMember.findFirstOrThrow({ where: { teamId: ids.team, userId: ids.ana } })).toBeTruthy();
   });
 
   it("une candidature d'un membre qui a quitté la communauté n'est plus proposée au responsable", async () => {

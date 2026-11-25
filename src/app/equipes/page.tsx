@@ -84,6 +84,7 @@ export default async function CommunityTeamsPage({ searchParams }: { searchParam
             <p className="whitespace-pre-wrap text-sm text-foreground">{team.description}</p>
             <TeamCriteriaSummary criteria={criteriaByTeam.get(team.id)} />
             <p className="text-xs text-muted">Responsable : {leaderName}</p>
+            <p className="text-xs text-muted">Membres ({team._count.members}) : {team.members.map((member) => member.user.discordName).join(", ")}</p>
             {teamRivalriesEnabled() && <Link href={`/equipes/${team.id}/rivalites`} className="text-sm text-accent underline-offset-4 hover:underline">⚔️ Rivalités et historique</Link>}
             {isMember && <div className="grid gap-2 border-t border-border pt-3">
               <div className="flex items-center justify-between gap-3">
