@@ -389,3 +389,9 @@ Aucune tâche n'a été modifiée, déclenchée ni supprimée pendant cet audit.
 ### Contrôle du workflow de défi quotidien — 25 novembre 2026
 
 Le run GitHub Actions `Tower team daily challenge` n° `45518287188` (25/11 à 00:27 UTC) a échoué avant l'appel HTTP : le secret `CRON_SECRET` est absent de l'environnement de ce workflow. La tâche cron-job.org « Défi d'équipe 18 h » est active, a réussi le 24/11 à 18:05 et annonce son prochain passage le 25/11 à 18:05. Décider quel ordonnanceur conserver selon la section (b), puis vérifier une seule attribution quotidienne. Aucun secret n'a été lu ni modifié.
+
+### Contrôle de la file Discord — 25 novembre 2026, lecture seule
+
+La requête « Doublons d'envoi » de `PROCEDURES_PREUVES.md` retourne **9 targetSlot** (au lieu de 0). Trois groupes ont plusieurs lignes `SEND/SENT` : deux sessions datées du 23/09 et un tournoi daté du 12 au 14/10. Ces anciennes lignes n'ont pas d'identifiant de message Discord enregistré : elles ne prouvent pas, seules, plusieurs messages réellement visibles. Le test récent « créer → éditer → participer » de C003 reste nécessaire.
+
+La file contient **215 livraisons FAILED** au total (139 envois salon, 5 éditions salon, 71 MP). Depuis le 23/11, 10 nouveaux échecs : 8 invitations « Jouer maintenant » classées `resolver:not_configured` lorsque `DISCORD_BOT_INSTANT_SESSION_INVITE_ENABLED` n'est pas actif, 1 MP indisponible et 1 cible Discord introuvable. Le code enfile ces invitations même si l'option d'envoi est désactivée, puis le résolveur les marque FAILED ; il faut vérifier l'intention du produit et la configuration avant de qualifier ce point de bug. Aucune livraison n'a été relancée ni modifiée.
