@@ -40,6 +40,10 @@ Remplacer `<ID_COMMUNAUTE>` par l'identifiant de la communauté The Tower (colon
   5. Vérifier qu'aucune réponse n'est publique par erreur : les réponses de ces commandes sont visibles du seul demandeur (« Visible uniquement par toi »).
 - **Résultat attendu** : chaque commande répond en moins de 3 secondes (réponse différée « … réfléchit » puis résultat), en français, sans message d'erreur technique.
 - **Critère OK** : les quatre réponses capturées et cohérentes ; KO si « L'application ne répond pas », une réponse publique, ou un texte d'erreur brut.
+
+**Observations en direct — 25/11/2026, compte Melah<3 (Régulars, The Tower).** Sous-tests passés : `/aide` liste les commandes ; `/tower defi` attribue une épreuve ; `/tower progression` renvoie la progression ; `/tower classement` affiche S3 et le classement ; les cinq réponses sont privées. Vérifications complémentaires : `/profil` renvoie le profil et `/boost` indique l'absence de boost ; le bouton « Déposer ma preuve » ouvre le formulaire avec les champs attendus, puis le formulaire est fermé sans envoi. Le test de `/tower defi` a créé une attribution pour Melah ; aucune preuve n'a été déposée.
+
+**Verdict global C002 : reste à confirmer.** L'ancienneté d'au moins trois jours du compte membre n'est pas établie et aucune capture n'a été enregistrée dans le dépôt. Ces sous-tests verts ne valident donc pas la ligne C002 entière.
 - **Journal Vercel** (facultatif) : Request Path `/api/discord/interactions`, statuts 200 attendus.
 - **Retour arrière** : sans objet (lecture seule pour `/aide`, `/tower classement` ; `/tower defi` attribue un défi au compte de test, sans conséquence).
 
