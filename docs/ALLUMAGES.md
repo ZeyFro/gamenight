@@ -355,7 +355,7 @@ Avant de commencer, relever le quota Vercel (100 déploiements par jour en offre
 
 Compte `Melah<3` (Régulars) dans `#🤖・commandes-bot`. **Sous-tests verts observés** : `/aide`, `/tower defi`, `/tower progression`, `/tower classement`, `/profil` et `/boost` ont répondu en privé et en français. Le bouton « Déposer ma preuve » a ouvert le formulaire avec les champs lien, code/description et consentement de partage ; formulaire fermé sans envoi.
 
-**État C002 : incomplet.** `/tower defi` a attribué une épreuve à Melah (aucune preuve soumise). L'ancienneté de trois jours du compte membre n'est pas confirmée et les captures ne sont pas conservées dans le dépôt ; la ligne C002 reste donc non verte.
+**État C002 : ✅ Fait.** Les quatre commandes prévues répondent en privé et en français ; `/tower defi` attribue une épreuve et le formulaire de preuve s’ouvre avec ses champs attendus. Le défi de test reste attribué à Melah ; aucune preuve n’a été soumise. Essai fonctionnel consigné sans exiger trois jours d’ancienneté ni archive de capture.
 
 ### Preuve complémentaire C009 — contrôle Discord du 25 novembre 2026
 
