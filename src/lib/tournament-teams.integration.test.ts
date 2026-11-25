@@ -58,8 +58,22 @@ describe.skipIf(!TEST_DATABASE_URL)("tournois par équipes inscrites : PostgreSQ
     const created = await tt.createTeamTournament(ids.org, ids.community, { name: "Coupe Deadlock", gameId: ids.game, maxTeams, isPrivate: false, registrationClosesAt: null, ...extra });
     if (created.result !== "created") throw new Error(created.result);
     ids.tournament = created.tournamentId;
+    // Le jeu choisi dans le sélecteur est celui réellement écrit : aucun repli sur un autre id.
+    expect(await db.tournament.findUniqueOrThrow({ where: { id: created.tournamentId }, select: { gameId: true } })).toEqual({ gameId: ids.game });
     return created.tournamentId;
   };
+  it("sélecteur de jeu : un seul titre par jeu, éditions distinctes conservées, aucune fusion en base", async () => {
+    const steam = await db.game.create({ data: { name: "60 Parsecs!", source: "STEAM", steamAppId: 646810, addedById: ids.org } });
+    await db.game.create({ data: { name: "60 parsecs!", source: "IGDB", igdbId: 112135, addedById: ids.org } });
+    const edition = await db.game.create({ data: { name: "60 Seconds! Reatomized", source: "IGDB", igdbId: 112136, addedById: ids.org } });
+
+    const options = await read.listTournamentGames();
+    expect(options.filter((game) => game.name.toLowerCase() === "60 parsecs!")).toEqual([{ id: steam.id, name: "60 Parsecs!" }]);
+    expect(options.map((game) => game.id)).toContain(edition.id);
+    expect(options.map((game) => game.name)).toContain("Deadlock");
+    expect(await db.game.count()).toBe(4); // Deadlock + les 3 lignes : rien n'est fusionné ni supprimé
+  });
+
   const enter = (letter: string, captain: string) => tt.enterTeamInTournament(ids[captain], ids.community, { tournamentId: ids.tournament, teamId: ids[`team${letter}`] });
   const finalMatch = () => db.tournamentMatch.findFirstOrThrow({ where: { tournamentId: ids.tournament }, orderBy: { round: "desc" } });
 

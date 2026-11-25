@@ -1,3 +1,4 @@
+import type { Prisma } from "@prisma/client";
 import { z } from "zod";
 import { parsePlayerClassifiedDateTime, PLAYER_CLASSIFIED_MICROPHONE_REQUIREMENTS, PLAYER_CLASSIFIED_PARTY_TYPES } from "@/lib/player-classifieds-rules";
 import { PLAYER_PLATFORMS } from "./player-equipment";
@@ -9,6 +10,9 @@ const timeField = z.string().max(5).optional().refine(value => !value || /^([01]
 
 export const playerClassifiedFiltersSchema = z.object({
   gameId: z.string().trim().max(191).optional(),
+  // Lignes équivalentes d'un jeu replié dans le sélecteur : calculées par la
+  // page depuis la biblio, jamais lues depuis l'URL.
+  gameIds: z.array(z.string().trim().min(1).max(191)).max(50).optional(),
   platform: z.enum(["", ...PLAYER_PLATFORMS.map(option => option.key)]).optional(),
   microphone: z.enum(["", "yes", "no", "unknown"]).optional(),
   partyPlatform: z.enum(["", ...PLAYER_PLATFORMS.map(option => option.key)]).optional(),
@@ -63,14 +67,21 @@ export function parsePlayerClassifiedFilters(params: PlayerClassifiedSearchParam
   });
 }
 
+/** `createdBy` est toujours un filtre de champs (jamais une relation complète). */
+export interface PlayerClassifiedFilterWhere
+  extends Omit<Prisma.PlayerClassifiedWhereInput, "createdBy"> {
+  createdBy: Prisma.UserWhereInput;
+}
+
 /** Conditions ajoutées aux gardes communautaires, jamais utilisées seules. */
-export function playerClassifiedFilterWhere(filters: PlayerClassifiedFilters) {
+export function playerClassifiedFilterWhere(filters: PlayerClassifiedFilters): PlayerClassifiedFilterWhere {
   const startsAt = {
     ...(filters.startsAfterDate && filters.startsAfterTime ? { gte: parsePlayerClassifiedDateTime(filters.startsAfterDate, filters.startsAfterTime)! } : {}),
     ...(filters.startsBeforeDate && filters.startsBeforeTime ? { lte: parsePlayerClassifiedDateTime(filters.startsBeforeDate, filters.startsBeforeTime)! } : {}),
   };
+  const gameIds = filters.gameIds?.length ? filters.gameIds : filters.gameId ? [filters.gameId] : [];
   return {
-    ...(filters.gameId ? { gameId: filters.gameId } : {}),
+    ...(gameIds.length === 1 ? { gameId: gameIds[0] } : gameIds.length ? { gameId: { in: gameIds } } : {}),
     ...(filters.partyPlatform ? { platform: filters.partyPlatform } : {}),
     ...(filters.microphoneRequirement ? { microphoneRequirement: filters.microphoneRequirement } : {}),
     ...(filters.partyType ? { partyType: filters.partyType } : {}),

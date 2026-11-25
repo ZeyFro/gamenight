@@ -140,6 +140,8 @@ describe.skipIf(!TEST_DATABASE_URL)("instant-sessions (intégration Postgres iso
       const result = await lib.createInstantSession({ creatorId: creator.id, gameId: game.id, notifiedUserIds: [] });
       expect(result.ok).toBe(true);
       if (!result.ok) return;
+      // Le jeu choisi dans le sélecteur est celui enregistré, jamais un autre id.
+      expect(result.instantSession.gameId).toBe(game.id);
 
       const open = await db.instantSessionPresenceInterval.findFirst({
         where: { instantSessionId: result.instantSession.id, userId: creator.id, endedAt: null },

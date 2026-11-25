@@ -72,6 +72,8 @@ describe.skipIf(!TEST_DATABASE_URL)("Qui joue ce soir ? : Postgres local", () =>
     await expect(actions.declareTonightAction(form([["gameId", ids.valheim], ["gameId", ids.amongus], ["note", "dès 21h"]]))).rejects.toThrow("REDIRECT:/ce-soir?declared=1");
     const first = await tonightRows("alice");
     expect(first).toHaveLength(2);
+    // Les deux jeux choisis dans les sélecteurs sont bien ceux enregistrés.
+    expect(first.map((row) => row.gameId).sort()).toEqual([ids.amongus, ids.valheim].sort());
     for (const row of first) {
       expect(row.message).toBe(rules.buildTonightMessage("dès 21h"));
       expect(row.expiresAt).toEqual(rules.tonightExpiresAt(row.createdAt));

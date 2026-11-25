@@ -43,3 +43,69 @@ export function excludeLocalIgdbIds<T extends { igdbId: number }>(
 ): T[] {
   return candidates.filter((c) => !localIgdbIds.has(c.igdbId));
 }
+
+/** Identifiants externes connus d'une ligne `Game` (tous deux uniques en base, mais chacun peut être nul). */
+export interface GameExternalIds {
+  igdbId?: number | null;
+  steamAppId?: number | null;
+}
+
+/**
+ * Deux lignes de la biblio désignent-elles le même jeu ? Le nom seul ne
+ * tranche jamais : on ne replie que si aucun identifiant externe connu ne
+ * contredit l'autre ligne. Une ligne importée de Steam (`steamAppId`, `igdbId`
+ * nul) et sa fiche IGDB (`igdbId`, `steamAppId` nul) sont donc bien le même
+ * jeu, alors que deux fiches IGDB distinctes portant le même titre (remake,
+ * réédition) restent deux jeux différents.
+ */
+function isSameGame(a: GameExternalIds, b: GameExternalIds): boolean {
+  if (a.igdbId != null && b.igdbId != null) return a.igdbId === b.igdbId;
+  if (a.steamAppId != null && b.steamAppId != null) return a.steamAppId === b.steamAppId;
+  return true;
+}
+
+/** Clé de comparaison d'un titre : casse/accents aplatis, espaces réduits. */
+function gameNameKey(name: string): string {
+  return normalizeForSearch(name).replace(/\s+/g, " ");
+}
+
+/**
+ * Options d'un sélecteur de jeux sans doublon VISIBLE : replie les lignes qui
+ * désignent le même jeu (même nom normalisé, identifiants externes
+ * compatibles) sur la PREMIÈRE rencontrée. C'est son `id` que le formulaire
+ * soumet, donc l'ordre d'entrée doit être stable (nom puis id) pour que la
+ * création garde toujours le même jeu. Ne modifie ni les lignes ni le tableau
+ * reçu : aucune fusion de jeux en base.
+ */
+export function uniqueGameOptions<T extends { name: string } & GameExternalIds>(games: readonly T[]): T[] {
+  const kept: T[] = [];
+  const byName = new Map<string, T[]>();
+  for (const game of games) {
+    const key = gameNameKey(game.name);
+    const sameName = byName.get(key) ?? [];
+    if (sameName.some((existing) => isSameGame(existing, game))) continue;
+    sameName.push(game);
+    byName.set(key, sameName);
+    kept.push(game);
+  }
+  return kept;
+}
+
+/**
+ * Tous les ids qui désignent le même jeu que `selectedId` (même nom normalisé,
+ * identifiants externes compatibles). Sert aux FILTRES : une annonce peut
+ * avoir été publiée sur la ligne que le sélecteur replie ; filtrer sur le seul
+ * id affiché la rendrait invisible. Une ligne inconnue, ou deux éditions
+ * réellement distinctes, ne renvoient que `selectedId` — jamais un autre jeu.
+ */
+export function equivalentGameIds<T extends { id: string; name: string } & GameExternalIds>(
+  games: readonly T[],
+  selectedId: string
+): string[] {
+  const selected = games.find((game) => game.id === selectedId);
+  if (!selected) return [selectedId];
+  const key = gameNameKey(selected.name);
+  return games
+    .filter((game) => gameNameKey(game.name) === key && isSameGame(selected, game))
+    .map((game) => game.id);
+}
