@@ -365,3 +365,7 @@ Compte `!!ZeyFro`, serveur The Tower. En lecture seule, dans Paramètres du serv
 ### Essai ciblé C059 — 25 novembre 2026
 
 Avec Melah<3 (Régulars) dans `#🤖・commandes-bot`, `/aide`, `/profil`, `/boost`, `/tower defi`, `/tower progression` et `/tower classement` ont répondu en privé et en français. Le formulaire « Déposer ma preuve » s'est ouvert et a montré les champs lien, code/description et consentement. Il a été fermé sans envoi. Aucun défi n'a été réalisé, aucune preuve/vote n'a été soumis ; le parcours C059 reste partiel. Les captures ne sont pas conservées dans le dépôt.
+
+### Essai réel C045 — 25 novembre 2026
+
+Melah (Régulars), qui a indiqué être nouvelle dans The Tower, voit « Classement The Tower — S3 · 2026 » et `/tower defi` lui attribue « Le défi de patience raisonnée ». L'accès tardif à la saison courante fonctionne. Le défi reste un test ; aucune preuve n’a été déposée.
