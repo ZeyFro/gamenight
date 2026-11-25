@@ -10,13 +10,13 @@
 
 | Statut | Nombre |
 | --- | ---: |
-| ✅ Fait | 68 |
-| Codé, non vérifié en réel | 9 |
+| ✅ Fait | 69 |
+| Codé, non vérifié en réel | 8 |
 | Codé, éteint | 41 |
 | Partiel | 0 |
-| Partiel (côté Discord) | 5 |
+| Partiel (côté Discord) | 6 |
 | Non fait | 0 |
-| Sans code (action humaine ou Discord) | 19 |
+| Sans code (action humaine ou Discord) | 15 |
 | Reporté | 9 |
 
 ## Les éléments, un par ligne
@@ -78,7 +78,7 @@
 | C053 | 17 | Salons vocaux : groupes de jeu, équipes, événements, vocaux temporaires | `SESSION_VISIBILITY_ENABLED` (éteint), `DISCORD_TEAM_SPACES_ENABLED` (éteint) | Partiel (côté Discord) | Procédure prête (PROCEDURES_PREUVES.md § C053), preuve à capturer par ChatGPT + Maxime | ChatGPT + Maxime | Capture Discord datée ; procédure : PROCEDURES_PREUVES.md § C053 |
 | C054 | 19.1 | Permissions cohérentes, administrateurs vérifiés, salons privés protégés | aucun | ✅ Fait | — | — | Tests verts : `lib/tower-layout-permissions.test.ts`, `lib/s0-access-controls.integration.test.ts` |
 | C055 | 19.1 | Journalisation des opérations sensibles | aucun | ✅ Fait | — | — | Tests verts : `app/admin/sensitive-operations-guard.test.ts` (toute action d'administration qui écrit appelle le journal), `lib/sensitive-operation-log.test.ts`, `tower-challenges.integration.test.ts` (confirmation du capitaine journalisée une fois) |
-| C056 | 19.2 | Rôles de prestige séparés des rôles techniques ; permissions sensibles vérifiées avant application | aucun | Codé, non vérifié en réel | Procédure prête (PROCEDURES_PREUVES.md § C056), preuve à capturer par Maxime | Maxime | Tests verts : `lib/tower-layout-permissions.test.ts` ; capture en Production ; procédure : PROCEDURES_PREUVES.md § C056 |
+| C056 | 19.2 | Rôles de prestige séparés des rôles techniques ; permissions sensibles vérifiées avant application | aucun | Partiel (côté Discord) | Retirer les trois permissions de modération vocale de High Ranker puis revérifier. | ChatGPT + Maxime | Vérification du 25/11 dans Discord avec !!ZeyFro : Administrateur désactivé sur les quatre grades. High Ranker peut rendre muet, mettre en sourdine et déplacer les membres. |
 | C057 | 19.3 | Confidentialité des preuves, tickets et journaux de modération | `DISCORD_REPORT_COMMAND_ENABLED` (éteint), `TOWER_DISCORD_ANNOUNCE_ENABLED` (allumé) | Codé, éteint | Allumer (lot G) + tester | ChatGPT (Vercel) + Maxime | Tests verts : `lib/discord-report-command.test.ts` ; capture après allumage |
 | C058 | 19.4 | Anti-abus : récompenses multiples, votes frauduleux, validations doubles, participation artificielle, exploita | `COMMUNITY_ISOLATION_ENABLED` (présent (valeur cachée)) | ✅ Fait | — | — | Tests verts : `lib/tower-challenges.integration.test.ts`, `lib/community-scope.test.ts` |
 | C059 | 21.2 | Bot : commandes, boutons, menus, défis, preuves, votes, progression, événements, notifications | `TOWER_CHALLENGES_ENABLED` (allumé) | Partiel (côté Discord) | Essai ciblé du 25/11 avec Melah : `/aide`, `/profil`, `/boost`, `/tower defi`, `/tower progression` et `/tower classement` ont répondu en privé ; le formulaire de dépôt de preuve s’ouvre. Le parcours complet de preuve et de vote de PROCEDURES_PREUVES.md § C059 reste à faire ; capture conservée à ajouter | ChatGPT + Maxime | Réponses Discord observées le 25/11 ; procédure : PROCEDURES_PREUVES.md § C059 |
@@ -137,7 +137,7 @@
 | C111 | 5.1 | Direction artistique (Tower of God, science-fiction, holographique, humour) | aucun | Sans code (action humaine ou Discord) | Rendre vérifiable (procédure de capture) | Maxime + ChatGPT | Capture datée (procédure : PLAN_TESTS.md) |
 | C112 | 5.2 | Éléments visuels à harmoniser (icône, bannière, cartes, classements, annonces) | aucun | Sans code (action humaine ou Discord) | Rendre vérifiable (procédure de capture) | Maxime + ChatGPT | Capture datée (procédure : PLAN_TESTS.md) |
 | C113 | 5.3 | Ton communautaire (convivial, bienveillant, sans humiliation) | aucun | ✅ Fait | — | — | Contrôle Production le 25/11 : le guide emploie des formulations d’entraide et de remerciement (« préviens les potes », « bien joué », « remercier les potes ») ; le salon des épreuves appelle au fair-play et à l’entraide. |
-| C114 | 6.3 | Suppression des 134 rôles Étage | aucun | Sans code (action humaine ou Discord) | Rendre vérifiable (procédure de capture) | Maxime + ChatGPT | Capture datée (procédure : PLAN_TESTS.md) |
+| C114 | 6.3 | Suppression des 134 rôles Étage | aucun | ✅ Fait | — | — | Inventaire du 27/10 : 134 anciens rôles. Vérification du 25/11 avec !!ZeyFro dans Paramètres du serveur → Rôles : 46 rôles affichés, aucun résultat pour « Etage » et « Étage ». |
 | C115 | 7.2 | Pas de deux sources concurrentes (arrêt de l'attribution d'étages d'Atlas) | aucun | Sans code (action humaine ou Discord) | Rendre vérifiable (procédure de capture) | Maxime + ChatGPT | Capture datée (procédure : PLAN_TESTS.md) |
 | C116 | 8.1 | Les défis encouragent découverte, coopération, créativité, humour | aucun | ✅ Fait | — | — | Relecture du 25/11 des deux catalogues tower-*-starter-catalogue : « Zoom sur le détail » encourage la découverte, « La légende de l’objet banal » la création humoristique, « Le comité des architectes douteux » et « Le mini-objectif collectif » la coopération. |
 | C117 | 18.1 | Réutiliser et améliorer avant de remplacer | aucun | ✅ Fait | — | — | Audit Discord du 27/10, 03_AUDIT_BOTS_ROLES_PERMISSIONS.md §1–4 : usages observés dans les salons pour GameNight, YAGPDB, Ticket Tool et Atlas. PLAN_SERVEUR_DISCORD.md réutilise les intégrations existantes. GameNight répond toujours aux joueurs (recette Melah, C002). |
@@ -168,7 +168,7 @@
 | D15 | 27 M | Boosters : rôle « Soutien de la Tour » sans permission, badge, mur des soutiens, salons réservés, retrait auto | aucun | Codé, non vérifié en réel | Procédure prête (PROCEDURES_PREUVES.md § D15), preuve à capturer par Maxime | Maxime | Tests verts : `lib/booster-support.test.ts` ; capture en Production ; procédure : PROCEDURES_PREUVES.md § D15 |
 | D16 | 27.3 | V2 : bot gateway permanent et rangs importés (documentation seulement) | aucun | Codé, non vérifié en réel | Procédure prête (PROCEDURES_PREUVES.md § D16), preuve à capturer par Maxime | Maxime | Capture en Production ; procédure : PROCEDURES_PREUVES.md § D16 |
 | D17 | 27.4 | Plus tard : VIP payant cosmétique ; champ d'entitlement sans aucun paiement implémenté | aucun | ✅ Fait | — | — | Tests verts : `lib/profile-customization.test.ts` |
-| D18 | 27.5 | Rappel : suppression des 134 rôles Étage avant la création automatique de rôles (action manuelle) | aucun | Codé, non vérifié en réel | Procédure prête (PROCEDURES_PREUVES.md § D18), preuve à capturer par Maxime | Maxime | Tests verts : `lib/tower-etage-roles.test.ts` ; capture en Production ; procédure : PROCEDURES_PREUVES.md § D18 |
+| D18 | 27.5 | Rappel : suppression des 134 rôles Étage avant la création automatique de rôles (action manuelle) | aucun | Codé, non vérifié en réel | Procédure prête (PROCEDURES_PREUVES.md § D18), preuve à capturer par Maxime | Maxime | Tests verts : `lib/tower-etage-roles.test.ts` ; capture en Production ; procédure : PROCEDURES_PREUVES.md § D18. Le 25/11 : 46 rôles et zéro rôle Étage dans Discord. Ordre par rapport à l’allumage à confirmer. |
 | D19 | 27.6 | Principe : tous les interrupteurs OFF par défaut, écritures Discord par la file et l'executor | aucun | Codé, non vérifié en réel | Procédure prête (PROCEDURES_PREUVES.md § D19), preuve à capturer par Maxime | Maxime | Tests verts : `lib/discord-role-command.test.ts`, `lib/notification-executor.integration.test.ts` ; capture en Production ; procédure : PROCEDURES_PREUVES.md § D19 |
 | D20 | 27.6 | Principe : aucune IA ne valide une preuve ; récompenses cosmétiques | aucun | ✅ Fait | — | — | Contrôle statique : dépendances IA dans package.json : « aucune » ; fichiers de src/ (hors |
 
