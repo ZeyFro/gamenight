@@ -10,6 +10,7 @@ import { isCommunityGameGraveyardEnabled } from "@/lib/community-game-graveyard-
 import { isCommunityExpressionsEnabled } from "@/lib/community-expressions-input";
 import { writeCommunityIdForUser } from "@/lib/community-stats";
 import { prisma } from "@/lib/prisma";
+import { TOWER_FLOORS_RESET_NOTICE, isLaunchTextsEnabled } from "@/lib/launch-texts";
 
 export const metadata = pageMetadata("Guide");
 
@@ -114,6 +115,13 @@ export default async function GuidePage() {
           Un tour rapide des grandes fonctions de GameNight.
         </p>
       </div>
+
+      {isLaunchTextsEnabled() && (
+        <Card className="flex flex-col gap-2">
+          <h2 className="font-semibold text-foreground">The Tower : ce qui repart de zéro</h2>
+          <p className="text-sm text-muted">{TOWER_FLOORS_RESET_NOTICE}</p>
+        </Card>
+      )}
 
       <ButtonLink href="/bienvenue">Reprendre le guide pas à pas</ButtonLink>
       {isCommunityQuickPollsEnabled() && <Card><h2 className="font-semibold">Sondages éclair</h2><p className="mt-2 text-sm text-muted">Dans Profil → Lore → Sondages éclair, pose une question avec 2 à 6 réponses fixes et une durée allant d’une minute à sept jours. Chaque membre actif dispose d’un choix modifiable avant l’échéance. Les résultats agrégés sont visibles immédiatement, sans afficher les noms des votants. Aucun message Discord ni gain d’XP n’est envoyé.</p></Card>}

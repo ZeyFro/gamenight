@@ -16,6 +16,7 @@ import { TowerChallengeAppealForm } from "@/components/tower/TowerChallengeAppea
 import { isTowerChallengeAppealWindowOpen } from "@/lib/tower-challenge-appeal-rules";
 import { TOWER_FLOORS_RESET_NOTICE, isLaunchTextsEnabled } from "@/lib/launch-texts";
 import { towerChallengeCategoryLabel, towerProofRuleNotice } from "@/lib/tower-challenge-categories";
+import { plural } from "@/lib/plural";
 
 export const metadata = pageMetadata("The Tower");
 
@@ -56,6 +57,11 @@ export default async function TowerPage({ searchParams }: { searchParams: Promis
     getTowerReplacementOffer({ communityId, userId: user.id }),
   ]);
   const ascension = levelProgress(stats?.xpTotal ?? 0);
+  // `challenges.floor` est le PROCHAIN étage (gagnés + 1). La carte annonce les
+  // étages réellement remportés, jamais « Étage 1 » quand le compteur est à zéro.
+  const floorsWon = challenges.status === "STATE"
+    ? Math.max(0, Number.parseInt(challenges.floor, 10) - 1)
+    : 0;
   const season = leaderboard.status === "LEADERBOARD" ? leaderboard.season : getTowerSchoolSeason();
   const currentChallenge = challenges.status === "STATE"
     ? challenges.attempts.find(attempt => attempt.status === "ASSIGNED" || attempt.status === "SUBMITTED")
@@ -96,7 +102,7 @@ export default async function TowerPage({ searchParams }: { searchParams: Promis
       </Card>
       <Card className="flex flex-col gap-3">
         <p className="text-sm font-medium text-accent">Étages remportés par les défis</p>
-        <h2 className="text-2xl font-semibold text-foreground">Étage {challenges.status === "STATE" ? challenges.floor : "1"}</h2>
+        <h2 className="text-2xl font-semibold text-foreground">{floorsWon} {plural(floorsWon, "étage gagné", "étages gagnés")}</h2>
         <p className="text-sm text-muted">Ce compteur alimente le classement Tower. Il reste distinct de l’ascension XP afin de ne pas compter deux fois une réussite.</p>
       </Card>
       {isLaunchTextsEnabled() && <p className="text-xs text-muted md:col-span-2">{TOWER_FLOORS_RESET_NOTICE}</p>}
