@@ -369,3 +369,18 @@ Avec Melah<3 (Régulars) dans `#🤖・commandes-bot`, `/aide`, `/profil`, `/boo
 ### Essai réel C045 — 25 novembre 2026
 
 Melah (Régulars), qui a indiqué être nouvelle dans The Tower, voit « Classement The Tower — S3 · 2026 » et `/tower defi` lui attribue « Le défi de patience raisonnée ». L'accès tardif à la saison courante fonctionne. Le défi reste un test ; aucune preuve n’a été déposée.
+### Audit cron-job.org — 25 novembre 2026, lecture seule
+
+La liste des tâches montre **17 cronjobs activés et 0 désactivé** ; le tableau de bord affichait 17 réussites et 0 échec au dernier passage. Ce constat ne valide ni la méthode HTTP ni les alertes e-mail, qui demandent l'ouverture du détail des tâches.
+
+| Tâche | Observé dans la liste | Attendu selon la section (b) | Verdict |
+| --- | --- | --- | --- |
+| Backfill IGDB Coop | Absente des 17 tâches | Tâche quotidienne supprimée | Conforme à la liste |
+| Seed reconcile | Présente, succès le 25/11 à 02:30, prochain passage le 26/11 à 02:30 | Supprimer la tâche quotidienne | À corriger |
+| Actus jeux | Succès le 25/11 à 02:15, prochain passage le 26/11 à 02:15 | Tous les jours à 05:30, POST | Horaire à corriger ; méthode non vérifiée |
+| Backfill Steam Store | Succès le 25/11 à 02:00, prochain passage le 26/11 à 02:00 | Dimanche à 04:30, POST | Fréquence et horaire à corriger ; méthode non vérifiée |
+| Notifications Discord | Dernier passage 14:15, prochain 14:30 | Toutes les 5 minutes, e-mail en cas d'échec | Fréquence à corriger ; e-mail non vérifié |
+| Rappels | Dernier passage 14:15, prochain 14:30 | Toutes les 5 minutes, e-mail en cas d'échec | Fréquence à corriger ; e-mail non vérifié |
+| Clôture sessions | Dernier passage 14:15, prochain 14:30 | Toutes les 5 minutes, e-mail en cas d'échec | Fréquence à corriger ; e-mail non vérifié |
+
+Aucune tâche n'a été modifiée, déclenchée ni supprimée pendant cet audit. Le détail d'édition peut exposer l'en-tête d'authentification : la lecture de cet écran a été refusée par le contrôle automatique. Il faut reprendre les réglages sans afficher ni recopier ce secret, avec une sauvegarde Neon préalable aux changements de fréquence qui déclencheraient des écritures.
