@@ -45,6 +45,12 @@ async function render() {
 afterEach(() => vi.unstubAllEnvs());
 
 describe("/tower : phrase décidée le 18/11 (V3-12)", () => {
+  it("affiche « 0 étage gagné » quand aucun étage n'est remporté", async () => {
+    const html = await render();
+    expect(html).toContain("0 étage gagné");
+    expect(html).not.toContain("Étage 1");
+  });
+
   it("éteint : la phrase est absente", async () => {
     expect(await render()).not.toContain("repartent de zéro");
   });
