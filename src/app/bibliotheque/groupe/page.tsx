@@ -3,6 +3,7 @@ import { getCurrentUser } from "@/lib/current-user";
 import { getGroupLibraryGames, getGroupLibraryMembers, getGameOwnerCounts, getTotalUserCount, toFilterableGame } from "@/lib/game-library";
 import { collectAvailableGenres, matchesGameFilters, parseGameFilters } from "@/lib/game-filters";
 import { ButtonLink } from "@/components/ui/Button";
+import { PageHeader } from "@/components/ui/PageHeader";
 import { LibraryTabs } from "@/components/LibraryTabs";
 import { GameFilterDrawer } from "@/components/GameFilterDrawer";
 import { ReadOnlyGameGrid } from "@/components/ReadOnlyGameGrid";
@@ -57,18 +58,20 @@ export default async function GroupLibraryPage({
 
   return (
     <div className="mx-auto flex w-full max-w-7xl flex-col gap-6 px-4 py-8 sm:px-6 sm:py-12">
-      <div className="flex flex-wrap items-center justify-between gap-4">
-        <h1 className="text-xl font-semibold text-foreground sm:text-2xl">
-          Bibliothèque du groupe
-        </h1>
-        <ButtonLink
-          href="/bibliotheque/ajouter"
-          variant="primary"
-          fullWidthOnMobile
-        >
-          + Ajouter un jeu
-        </ButtonLink>
-      </div>
+      <PageHeader
+        eyebrow="La collection commune"
+        title="Bibliothèque du groupe"
+        description="Les jeux possédés par les membres que tu sélectionnes."
+        actions={
+          <ButtonLink
+            href="/bibliotheque/ajouter"
+            variant="primary"
+            fullWidthOnMobile
+          >
+            + Ajouter un jeu
+          </ButtonLink>
+        }
+      />
 
       <LibraryTabs active="groupe" />
 

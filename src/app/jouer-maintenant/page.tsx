@@ -10,7 +10,7 @@ import { Card } from "@/components/ui/Card";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Avatar } from "@/components/ui/Avatar";
 import { InstantSessionCreateForm } from "@/components/jouer-maintenant/InstantSessionCreateForm";
-import { isNotificationCenterEnabled } from "@/lib/game-ping-optin";
+import { PageHeader } from "@/components/ui/PageHeader";
 import { gameWarningsSelect } from "@/lib/game-warnings";
 import { uniqueGameOptions } from "@/lib/game-search";
 import type { NotifyRecipientCandidate } from "@/components/NotifyRecipientsField";
@@ -64,11 +64,11 @@ export default async function JouerMaintenantPage({
 
   return (
     <div className="mx-auto flex w-full max-w-2xl flex-col gap-6 px-4 py-8 sm:px-6 sm:py-12 lg:max-w-4xl">
-      <h1 className="text-xl font-semibold text-foreground sm:text-2xl">🎮 Jouer maintenant</h1>
-      <p className="text-sm text-muted">
-        Une soirée spontanée, sans planification — démarre un jeu, tes potes rejoignent librement
-        tant qu&apos;elle est active (3h maximum). Distinct des soirées planifiées et de la roulette.
-      </p>
+      <PageHeader
+        eyebrow="Une partie spontanée"
+        title="Jouer maintenant"
+        description="Démarre un jeu, tes potes rejoignent librement tant qu’elle est active (3h maximum). Distinct des soirées planifiées et de la roulette."
+      />
       <div className="flex flex-wrap gap-3">
         <Link href="/joueurs" className="text-sm font-medium text-accent">Il te manque un joueur ? Publie une annonce →</Link>
         <Link href="/equipes" className="text-sm font-medium text-accent">Créer un projet d’équipe durable →</Link>
@@ -87,7 +87,7 @@ export default async function JouerMaintenantPage({
         </Card>
       ) : (
         <Card>
-          <InstantSessionCreateForm localGames={games} potes={potes} defaultSelection={isNotificationCenterEnabled() ? "none" : "all"} />
+          <InstantSessionCreateForm localGames={games} potes={potes} defaultSelection="none" />
         </Card>
       )}
 

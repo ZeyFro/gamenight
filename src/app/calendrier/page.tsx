@@ -5,7 +5,7 @@ import { getCalendarData, type CalendarDay } from "@/lib/calendar";
 import { addDays, buildCalendarHref, getMonthGridRange, getWeekStart, type CalendarMode } from "@/lib/calendar-dates";
 import { parseDateOnly, sameUtcDate, todayDateOnly, toDateInputValue } from "@/lib/wallclock";
 import { EventCalendar } from "@/components/calendar/EventCalendar";
-import { AuroraText } from "@/components/magicui/aurora-text";
+import { PageHeader } from "@/components/ui/PageHeader";
 import { requireCommunityChosen } from "@/lib/community-picker";
 import { withCommunityReadContext } from "@/lib/community-read-context";
 import { DayTimeline } from "@/components/calendar/DayTimeline";
@@ -106,16 +106,17 @@ async function CalendrierContent({
   return (
     <PullToRefresh>
     <div className="mx-auto flex w-full max-w-7xl flex-col gap-7 px-4 py-8 sm:px-6 sm:py-12">
-      <div>
-        <p className="gn-eyebrow mb-3">Les bons moments se préparent ici</p>
-        <h1 className="text-3xl font-semibold tracking-tight"><AuroraText colors={["#b99aff", "#e3cffc", "#d4ef80"]}>Le calendrier</AuroraText></h1>
-        <p className="mt-1 text-sm text-muted">
-          Soirées, roulettes, disponibilités et sorties connues des jeux attendus de la liste « À acheter ».
-        </p>
-        <a href="/api/calendrier/export" download className="mt-3 inline-block text-sm text-accent underline">
-          Télécharger les soirées à venir (.ics)
-        </a>
-      </div>
+      <PageHeader
+        eyebrow="Les bons moments se préparent ici"
+        title="Le calendrier"
+        aurora
+        description="Soirées, roulettes, disponibilités et sorties connues des jeux attendus de la liste « À acheter »."
+        actions={
+          <a href="/api/calendrier/export" download className="inline-flex items-center rounded-lg border-2 border-border bg-surface px-4 py-2.5 text-sm font-semibold text-foreground transition-colors hover:border-border-hover hover:bg-surface-hover">
+            Télécharger les soirées à venir (.ics)
+          </a>
+        }
+      />
 
       {sp.error === "rate" && <p role="alert" className="rounded-xl border border-border p-3 text-sm text-foreground">{RATE_LIMIT_MESSAGE}</p>}
 

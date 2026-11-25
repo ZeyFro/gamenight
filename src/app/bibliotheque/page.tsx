@@ -9,6 +9,7 @@ import { GameFilterDrawer } from "@/components/GameFilterDrawer";
 import { CoopEnrichmentTrigger } from "@/components/CoopEnrichmentTrigger";
 import { MarkAllCoopButton } from "@/components/MarkAllCoopButton";
 import { ButtonLink } from "@/components/ui/Button";
+import { PageHeader } from "@/components/ui/PageHeader";
 import { isGamePlatformsEnabled } from "@/lib/game-platforms";
 import { pageMetadata } from "@/lib/page-title";
 import { plural } from "@/lib/plural";
@@ -80,11 +81,11 @@ export default async function BibliothequePage({
 
   return (
     <div className="mx-auto flex w-full max-w-7xl flex-col gap-6 px-4 py-8 sm:px-6 sm:py-12">
-      <div className="flex flex-wrap items-center justify-between gap-4">
-        <h1 className="text-xl font-semibold text-foreground sm:text-2xl">
-          Ma bibliothèque
-        </h1>
-        <div className="flex flex-wrap gap-2 max-sm:w-full">
+      <PageHeader
+        eyebrow="Ta collection"
+        title="Ma bibliothèque"
+        description="Les jeux que tu possèdes, prêts à être proposés pour la prochaine soirée."
+        actions={<>
           {/* Ajout rapide et populaires par plateforme (GAME_PLATFORMS_ENABLED) : page livrée sans aucun lien d’accès avant l’audit du 23/11. */}
           {isGamePlatformsEnabled() && (
             <ButtonLink href="/bibliotheque/plateformes" variant="secondary" fullWidthOnMobile>
@@ -94,8 +95,8 @@ export default async function BibliothequePage({
           <ButtonLink href="/bibliotheque/ajouter" variant="primary" fullWidthOnMobile>
             + Ajouter un jeu
           </ButtonLink>
-        </div>
-      </div>
+        </>}
+      />
 
       <LibraryTabs active="perso" toVerifyCount={toVerifyCount} />
 

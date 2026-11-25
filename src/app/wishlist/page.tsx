@@ -12,6 +12,7 @@ import { Stagger, StaggerItem } from "@/components/motion";
 import { WishlistProposeForm } from "@/components/wishlist/WishlistProposeForm";
 import { WishlistVoteButtons } from "@/components/wishlist/WishlistVoteButtons";
 import { EmptyState } from "@/components/ui/EmptyState";
+import { PageHeader } from "@/components/ui/PageHeader";
 import { pageMetadata } from "@/lib/page-title";
 import { saveWishlistPurchasePlanAction } from "@/app/wishlist/actions";
 
@@ -46,7 +47,11 @@ export default async function WishlistPage({
 
   return (
     <div className="mx-auto flex w-full max-w-2xl flex-col gap-6 px-4 py-8 sm:px-6 sm:py-12">
-      <h1 className="text-xl font-semibold text-foreground sm:text-2xl">🛒 À acheter</h1>
+      <PageHeader
+        eyebrow="Les envies du groupe"
+        title="À acheter"
+        description="Les jeux que le groupe aimerait avoir, et les meilleures affaires à surveiller."
+      />
 
       <LibraryTabs active="wishlist" />
 

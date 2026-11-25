@@ -24,11 +24,11 @@ import { createInstantSessionAction } from "@/app/jouer-maintenant/actions";
 export function InstantSessionCreateForm({
   localGames,
   potes,
-  defaultSelection = "all",
+  defaultSelection = "none",
 }: {
   localGames: Array<LocalGameOption & GameWarningsData>;
   potes: NotifyRecipientCandidate[];
-  /** `none` : personne n’est pré-coché (centre de notifications allumé). */
+  /** `none` par défaut : personne n’est prévenu sans choix explicite. */
   defaultSelection?: "all" | "none";
 }) {
   const [selected, setSelected] = useState<SelectedGame | null>(null);
