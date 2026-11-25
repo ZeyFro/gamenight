@@ -4,6 +4,14 @@
 >
 > **Limite de ce relevé.** Le réseau de cette session bloque l'accès direct au site. Les requêtes ont donc été faites par un service de lecture de pages (Firecrawl). Il donne le code de réponse et le contenu, mais **pas les en-têtes**. Les en-têtes et les cookies sont vérifiés dans le code, pas sur la réponse réelle.
 
+## Mise à jour du 25 novembre 2026
+
+- **CSP bloquante** : `Content-Security-Policy` remplace `Report-Only` depuis le 23/11 ; le point 1 et le constat T3 sont donc obsolètes. `'unsafe-inline'` reste nécessaire pour les scripts injectés par Next.js.
+- **HSTS** : présent dans `next.config.ts` (`max-age=63072000; includeSubDomains`), le point 2 est obsolète.
+- **Isolation de fenêtre** : `Cross-Origin-Opener-Policy: same-origin` ajouté sur toutes les routes. Pas de `Cross-Origin-Resource-Policy` global, qui aurait bloqué les applications de calendrier lisant `/api/calendrier/feed/[token]`.
+- **Dépendances** : `npm audit --omit=dev` passe de 3 vulnérabilités hautes à **0** après l'override `effect@3.22.1` (GHSA-7589-6fvf-x4pw). `prisma validate` et `prisma generate` restent verts.
+- **Toujours ouvert** : le bot Discord conserve le droit Administrateur (T1, action humaine sur Discord), et les en-têtes réellement servis en Production n'ont pas été relus depuis cette machine.
+
 **Échelle de gravité**
 - **Élevée** : à corriger avant l'ouverture.
 - **Moyenne** : à prévoir rapidement.

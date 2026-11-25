@@ -13,6 +13,7 @@ describe("en-têtes de sécurité (next.config)", () => {
     const h = await headersFor("/:path*");
     expect(h["X-Content-Type-Options"]).toBe("nosniff");
     expect(h["X-Frame-Options"]).toBe("DENY");
+    expect(h["Cross-Origin-Opener-Policy"]).toBe("same-origin");
     expect(h["Referrer-Policy"]).toBe("strict-origin-when-cross-origin");
     expect(h["Permissions-Policy"]).toMatch(/camera=\(\)/);
     expect(h["Permissions-Policy"]).toMatch(/microphone=\(\)/);

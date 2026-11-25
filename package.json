@@ -53,6 +53,7 @@
     "@prisma/config": {
       "deepmerge-ts": "8.0.2"
     },
+    "effect": "3.22.1",
     "@vercel/cli-config": {
       "zod": "$zod"
     }

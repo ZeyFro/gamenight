@@ -12,6 +12,10 @@ const csp = buildCsp({ isDev, reportEnabled: isCspReportEnabled() });
 const securityHeaders = [
   { key: "X-Content-Type-Options", value: "nosniff" },
   { key: "X-Frame-Options", value: "DENY" },
+  // Isole le document des fenêtres cross-origin, en complément de
+  // X-Frame-Options. Pas de CORP global : le flux iCal doit rester lisible
+  // par les applications de calendrier externes.
+  { key: "Cross-Origin-Opener-Policy", value: "same-origin" },
   { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
   { key: "Permissions-Policy", value: "camera=(), microphone=(), geolocation=(), payment=(), usb=()" },
   { key: "Content-Security-Policy", value: csp },
