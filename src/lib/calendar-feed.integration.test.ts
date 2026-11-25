@@ -108,6 +108,35 @@ suite("calendar feed integration", () => {
     expect(await feed.readCalendarFeed(token, "https://gamenight.example")).toBeNull();
   });
 
+  it("reflète une modification de date et de jeu, sans exposer la soirée privée d’un autre membre", async () => {
+    const firstDate = new Date(wallClockNow().getTime() + 2 * 24 * 60 * 60 * 1000);
+    const secondDate = new Date(firstDate.getTime() + 3 * 60 * 60 * 1000);
+    const icsStart = (date: Date) => `DTSTART;TZID=Europe/Paris:${date.toISOString().replace(/[-:]/g, "").slice(0, 15)}`;
+    const firstGame = await db.game.create({ data: { name: "Jeu A", source: "MANUAL", addedById: "owner" } });
+    const secondGame = await db.game.create({ data: { name: "Jeu B", source: "MANUAL", addedById: "owner" } });
+    const session = await db.session.create({
+      data: { id: "owner-private", communityId: "default", createdById: "owner", date: firstDate, status: "SCHEDULED", decidedGameId: firstGame.id },
+    });
+    const { token: ownerToken } = (await feed.createCalendarFeedToken("owner"))!;
+    const { token: guestToken } = (await feed.createCalendarFeedToken("guest"))!;
+
+    const before = (await feed.readCalendarFeed(ownerToken, "https://gamenight.example"))!;
+    expect(before).toContain("/sessions/owner-private");
+    expect(before).toContain("SUMMARY:Soirée GameNight — Jeu A");
+    expect(before).toContain(icsStart(firstDate));
+
+    await db.session.update({ where: { id: session.id }, data: { date: secondDate, decidedGameId: secondGame.id } });
+    const after = (await feed.readCalendarFeed(ownerToken, "https://gamenight.example"))!;
+    expect(after).toContain("SUMMARY:Soirée GameNight — Jeu B");
+    expect(after).toContain(icsStart(secondDate));
+    expect(after).not.toContain("Jeu A");
+
+    // Un autre membre du même serveur garde SON flux : la soirée privée du créateur n’y entre jamais.
+    const guestCalendar = (await feed.readCalendarFeed(guestToken, "https://gamenight.example"))!;
+    expect(guestCalendar).not.toContain("/sessions/owner-private");
+    expect(guestCalendar).not.toContain("Jeu B");
+  });
+
   it("refuse les jetons inconnus et n’émet rien pour un membre retiré", async () => {
     expect(await feed.readCalendarFeed("A".repeat(43), "https://gamenight.example")).toBeNull();
     await db.membership.updateMany({ where: { userId: "owner" }, data: { status: "REMOVED" } });
