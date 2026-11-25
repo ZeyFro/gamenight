@@ -164,6 +164,8 @@ Remplacer `<ID_COMMUNAUTE>` par l'identifiant de la communauté The Tower (colon
 - **Critère OK** : captures 1 à 4 conformes et SQL sans échec ; KO sinon.
 - **Retour arrière** : retirer `TOWER_DISCORD_VOTES_ENABLED` (retour au vote sur le site) ; l'étage de test reste (sans conséquence).
 
+**Essai ciblé en production — 25/11/2026, Melah<3 (Régulars)** : `/aide`, `/profil`, `/boost`, `/tower defi`, `/tower progression` et `/tower classement` ont répondu en privé et en français. Le bouton « Déposer ma preuve » a ouvert le formulaire (lien, code/description, consentement). Le formulaire a été fermé sans envoi ; aucun vote ni preuve n'a été soumis. Cela confirme seulement ces contrôles ciblés, pas le critère C059 : aucun défi n'a été réalisé, et les étapes de preuve publique, vote avec un second membre, résultat et requête SQL restent non vérifiées. Les captures de l'essai ne sont pas conservées dans le dépôt.
+
 ## C093 : écritures Discord par la file et l'executor, jamais en direct
 
 - **Ce qu'on prouve** : aucune action GameNight n'écrit sur Discord sans passer par `NotificationEvent` / `NotificationDelivery`.
