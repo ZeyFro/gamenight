@@ -9,6 +9,8 @@ import { TierlistBoard } from "@/components/TierlistBoard";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { pageMetadata } from "@/lib/page-title";
 import { plural } from "@/lib/plural";
+import { dedupeTierlistGames } from "@/lib/tierlist";
+import { equivalentGameIds } from "@/lib/game-search";
 
 export const metadata = pageMetadata("Classement des jeux");
 
@@ -39,13 +41,19 @@ export default async function TierlistPage({
     getTotalUserCount(user.id),
   ]);
 
-  const initialTiers = Object.fromEntries(entries.map((e) => [e.gameId, e.tier]));
+  // Une seule carte par jeu visible : les imports Steam/IGDB d'un même titre
+  // ne doivent pas apparaître deux fois dans la tierlist.
+  const { games: uniqueGames, initialTiers } = dedupeTierlistGames(allGames, entries);
 
-  const filterableGames = allGames.map((game) => toFilterableGame(game));
+  const filterableGames = uniqueGames.map((game) => toFilterableGame(game));
   const filters = parseGameFilters(await searchParams);
-  const games = allGames.filter((game, index) =>
-    matchesGameFilters(filterableGames[index], ownerCounts.get(game.id) ?? 0, filters)
-  );
+  const games = uniqueGames.filter((game, index) => {
+    const owners = equivalentGameIds(allGames, game.id).reduce(
+      (total, id) => total + (ownerCounts.get(id) ?? 0),
+      0
+    );
+    return matchesGameFilters(filterableGames[index], owners, filters);
+  });
 
   return (
     <div className="mx-auto flex w-full max-w-4xl flex-col gap-6 px-4 py-8 sm:px-6 sm:py-12">
@@ -60,7 +68,7 @@ export default async function TierlistPage({
       <div className="flex items-center justify-between gap-3">
         <p className="text-sm text-muted">
           {games.length} {plural(games.length, "jeu", "jeux")}
-          {games.length !== allGames.length && ` sur ${allGames.length}`}
+          {games.length !== uniqueGames.length && ` sur ${uniqueGames.length}`}
         </p>
         <GameFilterDrawer
           availableGenres={collectAvailableGenres(filterableGames)}
