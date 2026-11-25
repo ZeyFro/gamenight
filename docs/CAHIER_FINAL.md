@@ -10,7 +10,7 @@
 
 | Statut | Nombre |
 | --- | ---: |
-| ✅ Fait | 60 |
+| ✅ Fait | 61 |
 | Codé, non vérifié en réel | 9 |
 | Codé, éteint | 41 |
 | Partiel | 0 |
@@ -128,7 +128,7 @@
 | C103 | 27.4 | VIP payant cosmétique et confort | aucun | Feuille de route, après le lancement (décision du 23/11) | Rien avant le lancement | Maxime | — |
 | C128 | 12.3 | Potes = amis GameNight : demande d’ami à accepter, recherche par pseudo, non-ami : voit si une soirée est publique (rejoindre) ou privée (sur invitation) | `POTES_FRIENDS_ENABLED` (éteint) | Codé, éteint | Allumer `POTES_FRIENDS_ENABLED` (lot C) + tester avec un pote | ChatGPT (Vercel) + Maxime | Tests : `friends-rules.test.ts`, `friends.integration.test.ts`, `friends-actions.limits.integration.test.ts` (migration `friendships` appliquée) |
 | C104 | 1.1 | Vision : parcours complet du joueur (découvrir, partenaires, soirées, équipes, Tour, défis, grades, compétitio | aucun | Sans code (action humaine ou Discord) | Rendre vérifiable (procédure de capture) | Maxime + ChatGPT | Capture datée (procédure : PLAN_TESTS.md) |
-| C105 | 1.2 | Multigaming : aucun jeu imposé | aucun | Sans code (action humaine ou Discord) | Rendre vérifiable (procédure de capture) | Maxime + ChatGPT | Capture datée (procédure : PLAN_TESTS.md) |
+| C105 | 1.2 | Multigaming : aucun jeu imposé | aucun | ✅ Fait | — | — | Production le 25/11 : `/ce-soir` propose une liste de jeux sans choix prérempli (919 options observées) et laisse les jeux supplémentaires facultatifs ; aucune plateforme ni licence payante n’est imposée. |
 | C106 | 1.3 | Lancement prioritairement francophone | aucun | Sans code (action humaine ou Discord) | Rendre vérifiable (procédure de capture) | Maxime + ChatGPT | Capture datée (procédure : PLAN_TESTS.md) |
 | C107 | 1.3 | Ne pas annoncer le lancement comme terminé avant validation | aucun | Sans code (action humaine ou Discord) | Rendre vérifiable (procédure de capture) | Maxime + ChatGPT | Capture datée (procédure : PLAN_TESTS.md) |
 | C108 | 3.2 | Principes d'organisation (noms, emojis, mobile, pas de salons vides, fils et panneaux) | aucun | Sans code (action humaine ou Discord) | Rendre vérifiable (procédure de capture) | Maxime + ChatGPT | Capture datée (procédure : PLAN_TESTS.md) |
@@ -188,6 +188,7 @@
 - **Notifications (C044) et chroniques :** le panneau de notifications affiche des avis de soirées, rappels et événements personnels avec des liens vers leurs pages ; aucun avis n’a été marqué comme lu. La page d’archives des chroniques s’ouvre mais indique qu’il n’y en a aucune pour The Tower ; aucune chronique n’a été créée. Contrôles visuels seulement, critères encore non validés.
 - **Diagnostic du catalogue (lecture seule) :** la même répétition de titres apparaît aussi dans `/profil/tierlist`. Une requête SELECT sur Neon Production confirme que « 60 Parsecs! », « 60 Seconds! Reatomized » et « Aimlabs » existent chacun sous deux entrées distinctes, `STEAM` et `IGDB`, avec leurs identifiants propres. Aucune ligne n’a été modifiée ; ne pas supprimer les entrées sans établir la stratégie de correspondance.
 - **Discord — organisation (C005) :** dans la session `!!ZeyFro`, la liste du serveur affiche les sept catégories attendues : Le Portail, le Hall des Réguliers, Épreuves GameNight, le Hall des équipes, l’Ascension, le Sommet et le Tribunal. L’inventaire sans écart bloquant et la visibilité d’un compte Régulars restent à contrôler selon la procédure ; C005 reste partiel.
+- **Multijoueur/multigaming (C105) :** vérification visuelle de `/ce-soir` en Production : trois emplacements de jeu démarrent sans jeu choisi, avec les options supplémentaires facultatives ; la liste s’étend à 919 titres. Aucun formulaire n’a été envoyé. C105 est validé.
 - **Recherche spontanée et annonces (C037, C038, C128) :** `/jouer-maintenant` affiche le formulaire mais aucune partie active ; le bouton de démarrage reste désactivé sans jeu choisi. `/joueurs` affiche l’annonce et les filtres, mais aucune annonce active. `/ce-soir` affiche les choix de jeu, le bouton de déclaration et des états vides pour les joueurs et soirées. Les sélecteurs de ces pages exposent 919 choix et répètent plusieurs titres, dont « 60 Parsecs! » et « 60 Seconds! Reatomized ». Aucun avis, annonce, déclaration de disponibilité ou démarrage n’a été soumis ; critères non verts.
 - **Nettoyage de la soirée test :** l’événement du 5 décembre 21 h portant la référence demandée apparaît « Annulée » dans le calendrier et sur sa fiche. Le message de test Discord n’a pas été vérifié/supprimé.
 - **Sécurité des tests :** contrôles en lecture seule uniquement ; aucune donnée, option Production, commande Discord ou tâche cron n’a été modifiée. Aucun statut n’est passé au vert sur la base de ces seuls écrans.
