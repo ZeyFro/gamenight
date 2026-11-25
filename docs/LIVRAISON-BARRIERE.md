@@ -51,38 +51,51 @@ Le tableau suivant est **généré** (`node scripts/inventory-write-surface.mjs 
 
 <!-- INVENTAIRE:DEBUT (généré par scripts/inventory-write-surface.mjs) -->
 
-Routes HTTP (28) :
+Routes HTTP (41) :
 
 | Route | Méthodes | Type | Écriture base | Effets externes | `after()` | Garde détectée |
 |---|---|---|---|---|---|---|
-| `/api/admin/force-relogin` | POST | autre | via 2 fichier(s) | oui | non | FORCE_RELOGIN_SECRET (Bearer, dédié, jamais CRON_SECRET) |
-| `/api/auth/[...nextauth]` | ? | authentification | via 4 fichier(s) | oui | non | session utilisateur |
+| `/api/admin/discord-commands` | POST | autre | via 61 fichier(s) | oui | oui | CRON_SECRET (Bearer) ; session utilisateur |
+| `/api/admin/force-relogin` | POST | autre | via 3 fichier(s) | oui | non | FORCE_RELOGIN_SECRET (Bearer, dédié, jamais CRON_SECRET) |
+| `/api/admin/tower-archive` | GET, POST | autre | directe | oui | oui | session utilisateur |
+| `/api/admin/tower-content-audit` | GET | autre | via 60 fichier(s) | oui | oui | session utilisateur |
+| `/api/admin/tower-layout` | GET, POST | autre | via 60 fichier(s) | oui | oui | session utilisateur |
+| `/api/admin/tower-preflight` | GET | autre | via 60 fichier(s) | oui | oui | session utilisateur |
+| `/api/auth/[...nextauth]` | ? | authentification | via 5 fichier(s) | oui | non | session utilisateur |
 | `/api/backfill/game-news` | POST | backfill | via 2 fichier(s) | oui | oui | CRON_SECRET (Bearer) |
 | `/api/backfill/igdb-coop` | GET, POST | backfill | via 3 fichier(s) | oui | oui | CRON_SECRET (Bearer) |
-| `/api/backfill/seed-reconcile` | GET, POST | backfill | via 29 fichier(s) | oui | oui | CRON_SECRET (Bearer) |
+| `/api/backfill/seed-reconcile` | GET, POST | backfill | via 72 fichier(s) | oui | oui | CRON_SECRET (Bearer) |
 | `/api/backfill/steam-store` | POST | backfill | via 2 fichier(s) | oui | oui | CRON_SECRET (Bearer) |
-| `/api/calendrier/export` | GET | autre | via 21 fichier(s) | oui | oui | session utilisateur |
-| `/api/calendrier/feed/[token]` | GET | autre | via 4 fichier(s) | non | non | jeton dans l'URL |
-| `/api/cron/close-sessions` | GET | cron | via 29 fichier(s) | oui | oui | CRON_SECRET (Bearer) |
-| `/api/cron/community-guild-sync` | GET | cron | via 4 fichier(s) | oui | non | CRON_SECRET (Bearer) |
-| `/api/cron/discord-thread-cleanup` | GET | cron | via 18 fichier(s) | oui | oui | CRON_SECRET (Bearer) |
-| `/api/cron/free-game-discord` | GET | cron | via 18 fichier(s) | oui | oui | CRON_SECRET (Bearer) |
-| `/api/cron/monthly-tasks` | GET | cron | via 20 fichier(s) | oui | oui | CRON_SECRET (Bearer) |
-| `/api/cron/notification-executor` | GET | cron | via 18 fichier(s) | oui | oui | CRON_SECRET (Bearer) |
-| `/api/cron/refresh-discord-profiles` | GET | cron | via 3 fichier(s) | oui | non | CRON_SECRET (Bearer) ; jeton dans l'URL |
-| `/api/cron/reminders` | GET | cron | directe | oui | oui | CRON_SECRET (Bearer) |
-| `/api/cron/retention-cleanup` | GET | cron | via 22 fichier(s) | oui | oui | CRON_SECRET (Bearer) |
-| `/api/cron/steam-library-full-sync` | GET, POST | cron | directe | oui | oui | CRON_SECRET (Bearer) |
-| `/api/cron/steam-library-sync` | GET | cron | via 23 fichier(s) | oui | oui | CRON_SECRET (Bearer) |
+| `/api/calendrier/export` | GET | autre | via 60 fichier(s) | oui | oui | session utilisateur |
+| `/api/calendrier/feed/[token]` | GET | autre | via 5 fichier(s) | non | non | jeton dans l'URL |
+| `/api/compte/export` | GET | autre | via 60 fichier(s) | oui | oui | session utilisateur |
+| `/api/cron/booster-sync` | GET | cron | via 61 fichier(s) | oui | oui | CRON_SECRET (Bearer) ; session utilisateur |
+| `/api/cron/close-sessions` | GET | cron | via 70 fichier(s) | oui | oui | CRON_SECRET (Bearer) ; session utilisateur |
+| `/api/cron/community-guild-sync` | GET | cron | via 5 fichier(s) | oui | oui | CRON_SECRET (Bearer) ; session utilisateur |
+| `/api/cron/discord-thread-cleanup` | GET | cron | via 61 fichier(s) | oui | oui | CRON_SECRET (Bearer) |
+| `/api/cron/free-game-discord` | GET | cron | via 61 fichier(s) | oui | oui | CRON_SECRET (Bearer) ; session utilisateur |
+| `/api/cron/hosting-usage` | GET | cron | via 2 fichier(s) | non | oui | CRON_SECRET (Bearer) ; session utilisateur |
+| `/api/cron/monthly-tasks` | GET | cron | via 63 fichier(s) | oui | oui | CRON_SECRET (Bearer) ; session utilisateur |
+| `/api/cron/notification-executor` | GET | cron | via 63 fichier(s) | oui | oui | CRON_SECRET (Bearer) ; session utilisateur |
+| `/api/cron/refresh-discord-profiles` | GET | cron | via 4 fichier(s) | oui | oui | CRON_SECRET (Bearer) ; session utilisateur ; jeton dans l'URL |
+| `/api/cron/reminders` | GET | cron | directe | oui | oui | CRON_SECRET (Bearer) ; session utilisateur |
+| `/api/cron/retention-cleanup` | GET | cron | via 64 fichier(s) | oui | oui | CRON_SECRET (Bearer) ; session utilisateur |
+| `/api/cron/steam-library-full-sync` | GET, POST | cron | directe | oui | oui | CRON_SECRET (Bearer) ; session utilisateur |
+| `/api/cron/steam-library-sync` | GET | cron | via 63 fichier(s) | oui | oui | CRON_SECRET (Bearer) ; session utilisateur |
+| `/api/cron/team-applications` | GET | cron | via 62 fichier(s) | oui | oui | CRON_SECRET (Bearer) |
+| `/api/cron/team-captain-handover` | GET | cron | via 5 fichier(s) | non | non | CRON_SECRET (Bearer) |
+| `/api/cron/tournament-teams` | GET | cron | via 62 fichier(s) | oui | oui | CRON_SECRET (Bearer) |
+| `/api/cron/tower-steam-autovalidate` | GET, POST | cron | via 61 fichier(s) | oui | oui | CRON_SECRET (Bearer) ; session utilisateur |
+| `/api/cron/tower-team-daily` | GET | cron | via 61 fichier(s) | oui | oui | CRON_SECRET (Bearer) |
 | `/api/csp-report` | POST | autre | non | non | non | aucune détectée |
-| `/api/discord/interactions` | POST | webhook-discord | via 28 fichier(s) | oui | oui | signature Ed25519 Discord |
+| `/api/discord/interactions` | POST | webhook-discord | via 60 fichier(s) | oui | oui | signature Ed25519 Discord |
 | `/api/discord/webhook-events` | POST | webhook-discord | via 1 fichier(s) | non | non | signature Ed25519 Discord |
 | `/api/health` | GET | autre | via 1 fichier(s) | non | non | CRON_SECRET (Bearer) |
-| `/api/igdb/search` | GET | autre | via 5 fichier(s) | oui | non | session utilisateur |
+| `/api/igdb/search` | GET | autre | via 6 fichier(s) | oui | non | session utilisateur |
 | `/api/push/subscription` | POST, DELETE | autre | directe | oui | non | session utilisateur |
-| `/api/sessions/[sessionId]/media/[mediaId]` | GET | autre | via 21 fichier(s) | oui | oui | session utilisateur |
+| `/api/sessions/[sessionId]/media/[mediaId]` | GET | autre | via 60 fichier(s) | oui | oui | session utilisateur |
 | `/api/steam/callback` | GET | authentification | directe | oui | oui | session utilisateur |
-| `/api/steam/link` | GET | authentification | via 23 fichier(s) | oui | oui | session utilisateur |
+| `/api/steam/link` | GET | authentification | via 60 fichier(s) | oui | oui | session utilisateur |
 
 Leviers par type (la barrière base s'applique à tous) :
 
@@ -94,70 +107,93 @@ Leviers par type (la barrière base s'applique à tous) :
 | cron | Désactiver le job chez le planificateur externe (cron-job.org) ; retirer `CRON_SECRET` ne vaut que pour un NOUVEAU déploiement (les variables Vercel ne sont pas réinjectées dans un déploiement existant). Sinon : la barrière suffit, les écritures échouent. |
 | webhook-discord | Appelé par Discord : ne pas le désactiver côté Discord sans nécessité ; la barrière fait échouer les écritures (Discord peut retenter). Les réponses sans base restent possibles. |
 
-Server actions (58 fichiers `"use server"`) : exécutées par l'application déployée, donc par le rôle de CE déploiement ; ancien déploiement = ancien rôle = bloqué par la barrière. Aucun levier hors barrière ou pause du projet.
+Server actions (81 fichiers `"use server"`) : exécutées par l'application déployée, donc par le rôle de CE déploiement ; ancien déploiement = ancien rôle = bloqué par la barrière. Aucun levier hors barrière ou pause du projet.
 
 | Fichier | Actions async | Écriture base | Effets externes |
 |---|---|---|---|
 | `src/app/actions.ts` | 6 | directe | oui |
 | `src/app/admin/badges/actions.ts` | 4 | directe | oui |
-| `src/app/admin/communautes/actions.ts` | 9 | via 24 fichier(s) | oui |
+| `src/app/admin/communautes/actions.ts` | 12 | via 62 fichier(s) | oui |
 | `src/app/admin/jeux-gratuits/actions.ts` | 2 | directe | oui |
 | `src/app/admin/jeux-stats/actions.ts` | 6 | directe | oui |
-| `src/app/admin/joueurs/actions.ts` | 1 | via 22 fichier(s) | oui |
+| `src/app/admin/joueurs/actions.ts` | 1 | via 61 fichier(s) | oui |
 | `src/app/admin/messages/actions.ts` | 4 | directe | oui |
-| `src/app/admin/nettoyage/actions.ts` | 2 | via 22 fichier(s) | oui |
-| `src/app/admin/reglages/actions.ts` | 1 | via 21 fichier(s) | oui |
+| `src/app/admin/nettoyage/actions.ts` | 2 | via 61 fichier(s) | oui |
+| `src/app/admin/reglages/actions.ts` | 1 | via 60 fichier(s) | oui |
 | `src/app/admin/superlatifs/actions.ts` | 4 | directe | oui |
+| `src/app/admin/tower-appeals/actions.ts` | 3 | via 60 fichier(s) | oui |
+| `src/app/admin/tower-irregular/actions.ts` | 2 | via 61 fichier(s) | oui |
 | `src/app/bibliotheque/actions.ts` | 4 | directe | oui |
+| `src/app/bibliotheque/plateformes/actions.ts` | 1 | directe | oui |
 | `src/app/calendrier/actions.ts` | 3 | directe | oui |
-| `src/app/calendrier/feed-actions.ts` | 1 | via 22 fichier(s) | oui |
+| `src/app/calendrier/feed-actions.ts` | 1 | via 61 fichier(s) | oui |
+| `src/app/ce-soir/actions.ts` | 2 | directe | oui |
 | `src/app/charte/actions.ts` | 1 | directe | oui |
 | `src/app/chat/actions.ts` | 3 | directe | oui |
 | `src/app/dettes/actions.ts` | 2 | directe | oui |
 | `src/app/disponibilites/actions.ts` | 5 | directe | oui |
-| `src/app/jeux/actions.ts` | 1 | via 22 fichier(s) | oui |
+| `src/app/equipes/[id]/rivalites/actions.ts` | 5 | via 61 fichier(s) | oui |
+| `src/app/equipes/actions.ts` | 8 | via 61 fichier(s) | oui |
+| `src/app/equipes/candidatures/actions.ts` | 3 | via 61 fichier(s) | oui |
+| `src/app/equipes/recruteurs/actions.ts` | 5 | via 62 fichier(s) | oui |
+| `src/app/jeux/actions.ts` | 1 | via 61 fichier(s) | oui |
+| `src/app/jeux/platforms-actions.ts` | 1 | directe | oui |
 | `src/app/jeux/preparation-actions.ts` | 1 | directe | oui |
 | `src/app/jeux/warning-actions.ts` | 1 | directe | oui |
-| `src/app/jouer-maintenant/actions.ts` | 6 | via 25 fichier(s) | oui |
+| `src/app/jouer-maintenant/actions.ts` | 7 | via 61 fichier(s) | oui |
 | `src/app/joueurs/actions.ts` | 2 | directe | oui |
 | `src/app/notifications-actions.ts` | 1 | directe | oui |
+| `src/app/notifications/actions.ts` | 2 | directe | oui |
 | `src/app/onboarding-actions.ts` | 2 | directe | oui |
+| `src/app/potes/friends-actions.ts` | 4 | via 61 fichier(s) | oui |
+| `src/app/potes/visibility-actions.ts` | 1 | via 60 fichier(s) | oui |
 | `src/app/profil/actions.ts` | 6 | directe | oui |
-| `src/app/profil/boutique/actions.ts` | 2 | via 22 fichier(s) | oui |
+| `src/app/profil/boutique/actions.ts` | 2 | via 61 fichier(s) | oui |
+| `src/app/profil/compte/actions.ts` | 1 | via 61 fichier(s) | oui |
+| `src/app/profil/discord-connections-actions.ts` | 2 | directe | oui |
 | `src/app/profil/family-import-actions.ts` | 2 | directe | oui |
+| `src/app/profil/game-level-actions.ts` | 2 | via 61 fichier(s) | oui |
 | `src/app/profil/game-preference-actions.ts` | 2 | directe | oui |
 | `src/app/profil/game-style-actions.ts` | 1 | directe | oui |
 | `src/app/profil/gaming-identifiers-actions.ts` | 1 | directe | oui |
-| `src/app/profil/lore/cimetiere/actions.ts` | 2 | via 22 fichier(s) | oui |
-| `src/app/profil/lore/expressions/actions.ts` | 2 | via 22 fichier(s) | oui |
-| `src/app/profil/lore/musee/actions.ts` | 2 | via 23 fichier(s) | oui |
-| `src/app/profil/lore/sondages/actions.ts` | 2 | via 23 fichier(s) | oui |
+| `src/app/profil/lore/cimetiere/actions.ts` | 2 | via 61 fichier(s) | oui |
+| `src/app/profil/lore/expressions/actions.ts` | 2 | via 61 fichier(s) | oui |
+| `src/app/profil/lore/musee/actions.ts` | 2 | via 61 fichier(s) | oui |
+| `src/app/profil/lore/sondages/actions.ts` | 2 | via 61 fichier(s) | oui |
+| `src/app/profil/notification-channel-actions.ts` | 1 | via 60 fichier(s) | oui |
+| `src/app/profil/personnalisation/actions.ts` | 2 | via 61 fichier(s) | oui |
 | `src/app/profil/player-equipment-actions.ts` | 1 | directe | oui |
+| `src/app/profil/player-matching-actions.ts` | 1 | directe | oui |
+| `src/app/projets/actions.ts` | 5 | via 61 fichier(s) | oui |
 | `src/app/roulette/actions.ts` | 5 | directe | oui |
-| `src/app/serveurs/actions.ts` | 2 | via 21 fichier(s) | oui |
-| `src/app/sessions/actions/availability-polls.ts` | 4 | via 24 fichier(s) | oui |
-| `src/app/sessions/actions/chronicles.ts` | 1 | via 22 fichier(s) | oui |
-| `src/app/sessions/actions/draw.ts` | 1 | via 29 fichier(s) | oui |
+| `src/app/serveurs/actions.ts` | 2 | via 60 fichier(s) | oui |
+| `src/app/sessions/actions/availability-polls.ts` | 4 | via 61 fichier(s) | oui |
+| `src/app/sessions/actions/chronicles.ts` | 1 | via 61 fichier(s) | oui |
+| `src/app/sessions/actions/draw.ts` | 1 | via 67 fichier(s) | oui |
 | `src/app/sessions/actions/gallery.ts` | 2 | directe | oui |
-| `src/app/sessions/actions/invites.ts` | 5 | via 23 fichier(s) | oui |
-| `src/app/sessions/actions/predictions.ts` | 2 | via 30 fichier(s) | oui |
-| `src/app/sessions/actions/preparation.ts` | 1 | via 23 fichier(s) | oui |
+| `src/app/sessions/actions/invites.ts` | 5 | directe | oui |
+| `src/app/sessions/actions/predictions.ts` | 2 | via 68 fichier(s) | oui |
+| `src/app/sessions/actions/preparation.ts` | 1 | via 61 fichier(s) | oui |
 | `src/app/sessions/actions/proposals-votes.ts` | 3 | directe | oui |
 | `src/app/sessions/actions/ratings.ts` | 1 | directe | oui |
 | `src/app/sessions/actions/results.ts` | 1 | directe | oui |
-| `src/app/sessions/actions/seats.ts` | 1 | via 23 fichier(s) | oui |
+| `src/app/sessions/actions/seats.ts` | 1 | via 60 fichier(s) | oui |
 | `src/app/sessions/actions/session-lifecycle.ts` | 8 | directe | oui |
-| `src/app/sessions/actions/suggest-slots.ts` | 1 | via 21 fichier(s) | oui |
+| `src/app/sessions/actions/suggest-slots.ts` | 1 | via 60 fichier(s) | oui |
 | `src/app/sessions/actions/superlatives.ts` | 2 | directe | oui |
 | `src/app/sessions/actions/veto.ts` | 2 | directe | oui |
-| `src/app/sessions/actions/voice-presence.ts` | 2 | via 24 fichier(s) | oui |
+| `src/app/sessions/actions/visibility.ts` | 6 | via 61 fichier(s) | oui |
+| `src/app/sessions/actions/voice-presence.ts` | 2 | via 63 fichier(s) | oui |
 | `src/app/tags-actions.ts` | 2 | directe | oui |
 | `src/app/tierlist/actions.ts` | 1 | directe | oui |
 | `src/app/tournois/actions.ts` | 8 | directe | oui |
-| `src/app/tournois/prediction-actions.ts` | 1 | via 22 fichier(s) | oui |
+| `src/app/tournois/equipes/actions.ts` | 7 | via 61 fichier(s) | oui |
+| `src/app/tournois/prediction-actions.ts` | 1 | via 61 fichier(s) | oui |
+| `src/app/tower/actions.ts` | 2 | via 61 fichier(s) | oui |
+| `src/app/tower/propositions/actions.ts` | 2 | via 61 fichier(s) | oui |
 | `src/app/wishlist/actions.ts` | 3 | directe | oui |
 
-Fichiers utilisant `after()` (tâches différées qui survivent à la réponse, donc aux crons et actions qui les lancent) : `src/app/api/backfill/game-news/route.ts`, `src/app/api/backfill/igdb-coop/route.ts`, `src/app/api/backfill/seed-reconcile/route.ts`, `src/app/api/backfill/steam-store/route.ts`, `src/app/api/cron/steam-library-full-sync/route.ts`, `src/app/api/discord/interactions/route.ts`, `src/app/layout.tsx`, `src/lib/discord-interactions.ts`, `src/lib/notification-executor-kick.ts`.
+Fichiers utilisant `after()` (tâches différées qui survivent à la réponse, donc aux crons et actions qui les lancent) : `src/app/api/backfill/game-news/route.ts`, `src/app/api/backfill/igdb-coop/route.ts`, `src/app/api/backfill/seed-reconcile/route.ts`, `src/app/api/backfill/steam-store/route.ts`, `src/app/api/cron/booster-sync/route.ts`, `src/app/api/cron/notification-executor/route.ts`, `src/app/api/cron/refresh-discord-profiles/route.ts`, `src/app/api/cron/retention-cleanup/route.ts`, `src/app/api/cron/steam-library-full-sync/route.ts`, `src/app/api/cron/tower-steam-autovalidate/route.ts`, `src/app/api/discord/interactions/route.ts`, `src/app/layout.tsx`, `src/lib/discord-interactions.ts`, `src/lib/error-log.ts`, `src/lib/notification-executor-kick.ts`.
 
 <!-- INVENTAIRE:FIN -->
 
