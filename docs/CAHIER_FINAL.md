@@ -10,13 +10,13 @@
 
 | Statut | Nombre |
 | --- | ---: |
-| ✅ Fait | 63 |
+| ✅ Fait | 68 |
 | Codé, non vérifié en réel | 9 |
 | Codé, éteint | 41 |
 | Partiel | 0 |
 | Partiel (côté Discord) | 5 |
 | Non fait | 0 |
-| Sans code (action humaine ou Discord) | 24 |
+| Sans code (action humaine ou Discord) | 19 |
 | Reporté | 9 |
 
 ## Les éléments, un par ligne
@@ -139,17 +139,17 @@
 | C113 | 5.3 | Ton communautaire (convivial, bienveillant, sans humiliation) | aucun | ✅ Fait | — | — | Contrôle Production le 25/11 : le guide emploie des formulations d’entraide et de remerciement (« préviens les potes », « bien joué », « remercier les potes ») ; le salon des épreuves appelle au fair-play et à l’entraide. |
 | C114 | 6.3 | Suppression des 134 rôles Étage | aucun | Sans code (action humaine ou Discord) | Rendre vérifiable (procédure de capture) | Maxime + ChatGPT | Capture datée (procédure : PLAN_TESTS.md) |
 | C115 | 7.2 | Pas de deux sources concurrentes (arrêt de l'attribution d'étages d'Atlas) | aucun | Sans code (action humaine ou Discord) | Rendre vérifiable (procédure de capture) | Maxime + ChatGPT | Capture datée (procédure : PLAN_TESTS.md) |
-| C116 | 8.1 | Les défis encouragent découverte, coopération, créativité, humour | aucun | Sans code (action humaine ou Discord) | Rendre vérifiable (procédure de capture) | Maxime + ChatGPT | Capture datée (procédure : PLAN_TESTS.md) |
-| C117 | 18.1 | Réutiliser et améliorer avant de remplacer | aucun | Sans code (action humaine ou Discord) | Rendre vérifiable (procédure de capture) | Maxime + ChatGPT | Capture datée (procédure : PLAN_TESTS.md) |
+| C116 | 8.1 | Les défis encouragent découverte, coopération, créativité, humour | aucun | ✅ Fait | — | — | Relecture du 25/11 des deux catalogues tower-*-starter-catalogue : « Zoom sur le détail » encourage la découverte, « La légende de l’objet banal » la création humoristique, « Le comité des architectes douteux » et « Le mini-objectif collectif » la coopération. |
+| C117 | 18.1 | Réutiliser et améliorer avant de remplacer | aucun | ✅ Fait | — | — | Audit Discord du 27/10, 03_AUDIT_BOTS_ROLES_PERMISSIONS.md §1–4 : usages observés dans les salons pour GameNight, YAGPDB, Ticket Tool et Atlas. PLAN_SERVEUR_DISCORD.md réutilise les intégrations existantes. GameNight répond toujours aux joueurs (recette Melah, C002). |
 | C118 | 18.2 | YAGPDB : préserver et moderniser la validation et la sélection de rôles | aucun | Sans code (action humaine ou Discord) | Rendre vérifiable (procédure de capture) | Maxime + ChatGPT | Capture datée (procédure : PLAN_TESTS.md) |
-| C119 | 18.3 | Atlas : préparer le remplacement de l'attribution des étages | aucun | Sans code (action humaine ou Discord) | Rendre vérifiable (procédure de capture) | Maxime + ChatGPT | Capture datée (procédure : PLAN_TESTS.md) |
+| C119 | 18.3 | Atlas : préparer le remplacement de l'attribution des étages | aucun | ✅ Fait | — | — | Préparation vérifiée le 25/11 : TOWER_ATLAS_ARRET.md et PLAN_SERVEUR_DISCORD.md décrivent inventaire, dépendances, pause ciblée, observation et retour arrière. Les journaux et a!mute observés le 27/10 sont des fonctions distinctes. L’arrêt effectif relève de C115. |
 | C120 | 18.4 | Ticket Tool : réparer et réutiliser le panneau d'assistance | aucun | Sans code (action humaine ou Discord) | Rendre vérifiable (procédure de capture) | Maxime + ChatGPT | Capture datée (procédure : PLAN_TESTS.md) |
 | C121 | 18.5 | Appy : conserver son rôle dans les candidatures | aucun | Sans code (action humaine ou Discord) | Rendre vérifiable (procédure de capture) | Maxime + ChatGPT | Capture datée (procédure : PLAN_TESTS.md) |
-| C122 | 18.6 | Modération : auditer avant de choisir les mécanismes | aucun | Sans code (action humaine ou Discord) | Rendre vérifiable (procédure de capture) | Maxime + ChatGPT | Capture datée (procédure : PLAN_TESTS.md) |
+| C122 | 18.6 | Modération : auditer avant de choisir les mécanismes | aucun | ✅ Fait | — | — | Audit Discord préalable du 27/10, 03_AUDIT_BOTS_ROLES_PERMISSIONS.md §5 : journaux Atlas, YAGPDB dans le salon de sanctions, rôles mute/blacklist et examen AutoMod. Les réglages non déterminés sont identifiés. GUIDE_MODERATION.md distingue les capacités observées des sanctions encore proposées. |
 | C123 | 19.1 | Protection anti-raid, anti-spam serveur et contrôle des bots et applications | aucun | Sans code (action humaine ou Discord) | Rendre vérifiable (procédure de capture) | Maxime + ChatGPT | Capture datée (procédure : PLAN_TESTS.md) |
 | C124 | 21.1 | Pas de système parallèle de profils, équipes ou progression | aucun | Sans code (action humaine ou Discord) | Rendre vérifiable (procédure de capture) | Maxime + ChatGPT | Capture datée (procédure : PLAN_TESTS.md) |
 | C125 | 22.1 | Exigences générales (testable, documenté, vérifiable, mobile, sans effet sur les autres communautés) | aucun | Sans code (action humaine ou Discord) | Rendre vérifiable (procédure de capture) | Maxime + ChatGPT | Capture datée (procédure : PLAN_TESTS.md) |
-| C126 | 22.3 | Vérification sur le résultat réel (code ≠ fonction active, déploiement ≠ commande Discord) | aucun | Sans code (action humaine ou Discord) | Rendre vérifiable (procédure de capture) | Maxime + ChatGPT | Capture datée (procédure : PLAN_TESTS.md) |
+| C126 | 22.3 | Vérification sur le résultat réel (code ≠ fonction active, déploiement ≠ commande Discord) | aucun | ✅ Fait | — | — | PR #612 : essais Discord en Production avec Melah (commandes et ouverture du formulaire de preuve). PR #615 : lecture des pages rendues, défaut de doublons reproduit et parcours non exécutés laissés ouverts. Méthode de vérification appliquée. |
 | C127 | 24 | Développement communautaire (soirées hebdomadaires, créateurs, partenariats, réseaux sociaux) | aucun | Sans code (action humaine ou Discord) | Rendre vérifiable (procédure de capture) | Maxime + ChatGPT | Capture datée (procédure : PLAN_TESTS.md) |
 | D01 | 27 J | Console : scope OAuth `connections` demandé seulement avec consentement explicite, facultatif | aucun | Codé, non vérifié en réel | Procédure prête (PROCEDURES_PREUVES.md § D01), preuve à capturer par Maxime | Maxime | Tests verts : `lib/discord-connections.test.ts`, `auth.connections.test.ts` ; capture en Production ; procédure : PROCEDURES_PREUVES.md § D01 |
 | D02 | 27 J | Console : plateformes et identifiants préremplis depuis Discord, modifiables | aucun | ✅ Fait | — | — | Tests verts : `lib/discord-connections.test.ts`, `lib/game-platforms.test.ts` |
