@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/current-user";
 import { prisma } from "@/lib/prisma";
 import { getInstantSessionView, toInstantSessionViewDTO } from "@/lib/instant-sessions";
+import { uniqueGameOptions } from "@/lib/game-search";
 import { InstantSessionDetail } from "@/components/jouer-maintenant/InstantSessionDetail";
 import { pageMetadata } from "@/lib/page-title";
 import { signIn } from "@/auth";
@@ -34,10 +35,12 @@ export default async function InstantSessionPage({
   // Biblio complète pour le contrôle "changer de jeu" (créateur
   // uniquement, mais chargée pour tout le monde ici — coût négligeable,
   // le composant lui-même n'affiche le contrôle qu'au créateur).
-  const games = await prisma.game.findMany({
-    select: { id: true, name: true, igdbId: true },
-    orderBy: { name: "asc" },
-  });
+  const games = uniqueGameOptions(
+    await prisma.game.findMany({
+      select: { id: true, name: true, igdbId: true, steamAppId: true },
+      orderBy: [{ name: "asc" }, { id: "asc" }],
+    })
+  );
 
   return (
     <div className="mx-auto w-full max-w-2xl px-4 py-8 sm:px-6 sm:py-12">

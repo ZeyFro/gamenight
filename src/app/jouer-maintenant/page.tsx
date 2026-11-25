@@ -12,6 +12,7 @@ import { Avatar } from "@/components/ui/Avatar";
 import { InstantSessionCreateForm } from "@/components/jouer-maintenant/InstantSessionCreateForm";
 import { isNotificationCenterEnabled } from "@/lib/game-ping-optin";
 import { gameWarningsSelect } from "@/lib/game-warnings";
+import { uniqueGameOptions } from "@/lib/game-search";
 import type { NotifyRecipientCandidate } from "@/components/NotifyRecipientsField";
 import { pageMetadata } from "@/lib/page-title";
 import { plural } from "@/lib/plural";
@@ -43,10 +44,13 @@ export default async function JouerMaintenantPage({
   const { error } = await searchParams;
   const errorMessage = error ? (ERROR_MESSAGES[error] ?? null) : null;
 
-  const [activeSessions, myActiveSession, games, potesRaw] = await Promise.all([
+  const [activeSessions, myActiveSession, gamesRaw, potesRaw] = await Promise.all([
     listActiveInstantSessions(user.id),
     getActiveInstantSessionForUser(user.id),
-    prisma.game.findMany({ select: { id: true, name: true, igdbId: true, ...gameWarningsSelect }, orderBy: { name: "asc" } }),
+    prisma.game.findMany({
+      select: { id: true, name: true, igdbId: true, steamAppId: true, ...gameWarningsSelect },
+      orderBy: [{ name: "asc" }, { id: "asc" }],
+    }),
     prisma.user.findMany({
       where: { id: { not: user.id }, ...(await creationMemberUserWhere(user.id)) },
       select: { id: true, discordName: true, discordAvatar: true, color: true },
@@ -54,6 +58,9 @@ export default async function JouerMaintenantPage({
     }),
   ]);
   const potes: NotifyRecipientCandidate[] = potesRaw.map((p) => ({ ...p, tagIds: [] }));
+  // Sélecteur (recherche locale + IGDB) sans doublon visible ; les éditions
+  // distinctes restent deux choix, aucune ligne n'est fusionnée en base.
+  const games = uniqueGameOptions(gamesRaw);
 
   return (
     <div className="mx-auto flex w-full max-w-2xl flex-col gap-6 px-4 py-8 sm:px-6 sm:py-12 lg:max-w-4xl">

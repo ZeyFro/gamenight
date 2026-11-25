@@ -7,6 +7,7 @@ import Link from "next/link";
 import { getCurrentUser } from "@/lib/current-user";
 import { prisma } from "@/lib/prisma";
 import { getPlayerClassifiedCommunityId, listPlayerClassifieds } from "@/lib/player-classifieds";
+import { equivalentGameIds, uniqueGameOptions } from "@/lib/game-search";
 import { formatDateTimeFr, formatDurationFr, wallClockNow } from "@/lib/wallclock";
 import { isAdminUser, parseAdminDiscordIds } from "@/lib/admin-rules";
 import { Button } from "@/components/ui/Button";
@@ -48,10 +49,29 @@ export default async function PlayerClassifiedsPage({
   const { error } = params;
   const parsedFilters = parsePlayerClassifiedFilters(params);
   const filters = parsedFilters.success ? parsedFilters.data : {};
-  const [games, listings] = await Promise.all([
-    prisma.game.findMany({ select: { id: true, name: true }, orderBy: { name: "asc" } }),
-    parsedFilters.success ? listPlayerClassifieds(user.id, communityId, wallClockNow(), filters) : Promise.resolve([]),
-  ]);
+  // Sélecteurs sans doublon visible : une seule entrée par jeu (même nom
+  // normalisé, identifiants externes compatibles) ; les éditions réellement
+  // distinctes gardent chacune la leur. Aucune ligne n'est fusionnée en base.
+  const gamesRaw = await prisma.game.findMany({
+    select: { id: true, name: true, igdbId: true, steamAppId: true },
+    orderBy: [{ name: "asc" }, { id: "asc" }],
+  });
+  const games = uniqueGameOptions(gamesRaw);
+  // Le filtre couvre toutes les lignes du jeu choisi (liste BRUTE : le
+  // sélecteur replié ne contient plus la ligne sœur) : une annonce publiée sur
+  // la ligne repliée reste visible, sans élargir à un autre jeu.
+  const filterGameIds = filters.gameId ? equivalentGameIds(gamesRaw, filters.gameId) : [];
+  const filterGameId = filterGameIds.length > 1
+    ? (games.find((game) => filterGameIds.includes(game.id))?.id ?? filters.gameId)
+    : filters.gameId;
+  const listings = parsedFilters.success
+    ? await listPlayerClassifieds(
+        user.id,
+        communityId,
+        wallClockNow(),
+        filterGameIds.length > 1 ? { ...filters, gameIds: filterGameIds } : filters
+      )
+    : [];
   const admin = isAdminUser(user, parseAdminDiscordIds(process.env.ADMIN_DISCORD_IDS));
 
   return (
@@ -111,7 +131,7 @@ export default async function PlayerClassifiedsPage({
         <form action="/joueurs" method="get" className="flex flex-col gap-3">
           <h2 className="text-sm font-medium">Filtrer les annonces</h2>
           <label htmlFor="filter-game">Jeu recherché</label>
-          <select id="filter-game" name="gameId" className="rounded-lg border border-border bg-background px-3 py-3 text-base text-foreground" defaultValue={filters.gameId ?? ""}>
+          <select id="filter-game" name="gameId" className="rounded-lg border border-border bg-background px-3 py-3 text-base text-foreground" defaultValue={filterGameId ?? ""}>
             <option value="">Tous les jeux</option>
             {games.map(game => <option key={game.id} value={game.id}>{game.name}</option>)}
           </select>

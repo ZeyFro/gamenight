@@ -4,6 +4,7 @@ import { getCurrentUser } from "@/lib/current-user";
 import { prisma } from "@/lib/prisma";
 import { getPlayerClassifiedCommunityId } from "@/lib/player-classifieds";
 import { getTonightBoard } from "@/lib/tonight";
+import { uniqueGameOptions } from "@/lib/game-search";
 import { TONIGHT_MAX_GAMES, TONIGHT_NOTE_MAX_LENGTH, isTonightEnabled } from "@/lib/tonight-rules";
 import { formatDateTimeFr, wallClockNow } from "@/lib/wallclock";
 import { Button } from "@/components/ui/Button";
@@ -40,11 +41,17 @@ export default async function TonightPage({
     );
   }
 
-  const [{ error, declared }, games, board] = await Promise.all([
+  const [{ error, declared }, gamesRaw, board] = await Promise.all([
     searchParams,
-    prisma.game.findMany({ select: { id: true, name: true }, orderBy: { name: "asc" } }),
+    prisma.game.findMany({
+      select: { id: true, name: true, igdbId: true, steamAppId: true },
+      orderBy: [{ name: "asc" }, { id: "asc" }],
+    }),
     getTonightBoard(user.id, communityId, wallClockNow()),
   ]);
+  // Une seule entrée par jeu dans les trois sélecteurs ; les éditions
+  // distinctes gardent chacune la leur, aucune ligne n'est fusionnée en base.
+  const games = uniqueGameOptions(gamesRaw);
 
   return (
     <main className="mx-auto flex w-full max-w-2xl flex-col gap-6 px-4 py-8 sm:px-6 sm:py-12">

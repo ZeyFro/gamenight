@@ -64,8 +64,13 @@ function isSameGame(a: GameExternalIds, b: GameExternalIds): boolean {
   return true;
 }
 
+/** Clé de comparaison d'un titre : casse/accents aplatis, espaces réduits. */
+function gameNameKey(name: string): string {
+  return normalizeForSearch(name).replace(/\s+/g, " ");
+}
+
 /**
- * Options d'un `<select>` de jeux sans doublon VISIBLE : replie les lignes qui
+ * Options d'un sélecteur de jeux sans doublon VISIBLE : replie les lignes qui
  * désignent le même jeu (même nom normalisé, identifiants externes
  * compatibles) sur la PREMIÈRE rencontrée. C'est son `id` que le formulaire
  * soumet, donc l'ordre d'entrée doit être stable (nom puis id) pour que la
@@ -76,7 +81,7 @@ export function uniqueGameOptions<T extends { name: string } & GameExternalIds>(
   const kept: T[] = [];
   const byName = new Map<string, T[]>();
   for (const game of games) {
-    const key = normalizeForSearch(game.name).replace(/\s+/g, " ");
+    const key = gameNameKey(game.name);
     const sameName = byName.get(key) ?? [];
     if (sameName.some((existing) => isSameGame(existing, game))) continue;
     sameName.push(game);
@@ -84,4 +89,23 @@ export function uniqueGameOptions<T extends { name: string } & GameExternalIds>(
     kept.push(game);
   }
   return kept;
+}
+
+/**
+ * Tous les ids qui désignent le même jeu que `selectedId` (même nom normalisé,
+ * identifiants externes compatibles). Sert aux FILTRES : une annonce peut
+ * avoir été publiée sur la ligne que le sélecteur replie ; filtrer sur le seul
+ * id affiché la rendrait invisible. Une ligne inconnue, ou deux éditions
+ * réellement distinctes, ne renvoient que `selectedId` — jamais un autre jeu.
+ */
+export function equivalentGameIds<T extends { id: string; name: string } & GameExternalIds>(
+  games: readonly T[],
+  selectedId: string
+): string[] {
+  const selected = games.find((game) => game.id === selectedId);
+  if (!selected) return [selectedId];
+  const key = gameNameKey(selected.name);
+  return games
+    .filter((game) => gameNameKey(game.name) === key && isSameGame(selected, game))
+    .map((game) => game.id);
 }

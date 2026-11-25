@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { normalizeForSearch, filterLocalGames, excludeLocalIgdbIds, uniqueGameOptions } from "@/lib/game-search";
+import { normalizeForSearch, filterLocalGames, excludeLocalIgdbIds, uniqueGameOptions, equivalentGameIds } from "@/lib/game-search";
 
 describe("normalizeForSearch (sélecteur de jeu, création de tournoi)", () => {
   it("aplatit la casse", () => {
@@ -100,5 +100,45 @@ describe("uniqueGameOptions (doublons visibles des sélecteurs de jeux)", () => 
     ];
 
     expect(uniqueGameOptions(games).map((game) => game.id)).toEqual(["premier", "autre"]);
+  });
+
+  it("la recherche sur la liste repliée trouve le jeu une fois et garde les deux éditions", () => {
+    const games = [
+      { id: "steam-60-parsecs", name: "60 Parsecs!", steamAppId: 646810, igdbId: null },
+      { id: "igdb-60-parsecs", name: "60 parsecs!", steamAppId: null, igdbId: 112135 },
+      { id: "original", name: "60 Seconds!", steamAppId: null, igdbId: 1001 },
+      { id: "reatomized", name: "60 Seconds! Reatomized", steamAppId: null, igdbId: 1002 },
+    ];
+    const options = uniqueGameOptions(games);
+
+    expect(filterLocalGames(options, "60 parsecs").map((game) => game.id)).toEqual(["steam-60-parsecs"]);
+    expect(filterLocalGames(options, "60 seconds").map((game) => game.id)).toEqual(["original", "reatomized"]);
+  });
+});
+
+describe("equivalentGameIds (filtres qui couvrent une ligne repliée)", () => {
+  const games = [
+    { id: "steam-60-parsecs", name: "60 Parsecs!", steamAppId: 646810, igdbId: null },
+    { id: "igdb-60-parsecs", name: "60 parsecs!", steamAppId: null, igdbId: 112135 },
+    { id: "original", name: "60 Seconds!", steamAppId: null, igdbId: 1001 },
+    { id: "reatomized", name: "60 Seconds! Reatomized", steamAppId: null, igdbId: 1002 },
+    { id: "re4-2005", name: "Resident Evil 4", steamAppId: null, igdbId: 2001 },
+    { id: "re4-2023", name: "Resident Evil 4", steamAppId: null, igdbId: 2023 },
+  ];
+
+  it("renvoie toutes les lignes du même jeu, y compris celle que le sélecteur replie", () => {
+    expect(equivalentGameIds(games, "steam-60-parsecs")).toEqual(["steam-60-parsecs", "igdb-60-parsecs"]);
+    expect(equivalentGameIds(games, "igdb-60-parsecs")).toEqual(["steam-60-parsecs", "igdb-60-parsecs"]);
+  });
+
+  it("ne regroupe jamais deux éditions distinctes ni deux fiches IGDB différentes", () => {
+    expect(equivalentGameIds(games, "original")).toEqual(["original"]);
+    expect(equivalentGameIds(games, "reatomized")).toEqual(["reatomized"]);
+    expect(equivalentGameIds(games, "re4-2005")).toEqual(["re4-2005"]);
+    expect(equivalentGameIds(games, "re4-2023")).toEqual(["re4-2023"]);
+  });
+
+  it("id inconnu : renvoie seulement l'id demandé, jamais un autre jeu", () => {
+    expect(equivalentGameIds(games, "inconnu")).toEqual(["inconnu"]);
   });
 });
