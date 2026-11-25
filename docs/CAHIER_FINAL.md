@@ -10,8 +10,8 @@
 
 | Statut | Nombre |
 | --- | ---: |
-| ✅ Fait | 58 |
-| Codé, non vérifié en réel | 11 |
+| ✅ Fait | 59 |
+| Codé, non vérifié en réel | 10 |
 | Codé, éteint | 41 |
 | Partiel | 0 |
 | Partiel (côté Discord) | 5 |
@@ -24,7 +24,7 @@
 | Id | § | Élément | Interrupteur (état en Production) | Statut réel | Ce qu'il reste à faire | Responsable | Preuve attendue |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | C001 | 1.4 | Budget gratuit : fonctions essentielles sans Nitro, boost ni service payant | `DISCORD_BOOSTERS_ENABLED` (éteint) | Codé, éteint | Allumer (lot G) + tester | ChatGPT (Vercel) + Maxime | Capture après allumage |
-| C002 | 2.1 | Expérience quotidienne accessible depuis Discord (commandes, boutons, modales) | `TOWER_CHALLENGES_ENABLED` (allumé) | Codé, non vérifié en réel | ✅ Sous-tests en direct le 25/11 : `/aide`, `/tower defi`, `/tower progression`, `/tower classement`, bouton et formulaire de preuve vérifiés ; éligibilité 3 jours et capture conservée restent à confirmer | Maxime | Tests verts : `lib/discord-commands-manifest.test.ts` ; capture en Production ; procédure : PROCEDURES_PREUVES.md § C002 |
+| C002 | 2.1 | Expérience quotidienne accessible depuis Discord (commandes, boutons, modales) | `TOWER_CHALLENGES_ENABLED` (allumé) | ✅ Fait | — | — | Essai réel Production le 25/11 avec Melah (Régulars) : `/aide`, `/tower defi`, `/tower progression`, `/tower classement`, `/profil`, `/boost` répondent en privé ; le formulaire de preuve s’ouvre et présente les champs attendus. Épreuve de test attribuée, sans dépôt de preuve. |
 | C003 | 2.2 | Actions GameNight → Discord sans doublon, interactions Discord → GameNight | `NOTIFICATION_EXECUTOR_ENABLED` (présent (valeur cachée)) | Codé, non vérifié en réel | Procédure prête (PROCEDURES_PREUVES.md § C003), preuve à capturer par Maxime | Maxime | Tests verts : `lib/notification-executor.integration.test.ts` ; capture en Production ; procédure : PROCEDURES_PREUVES.md § C003 |
 | C004 | 2.3 | Connexion non obligatoire pour Discord, obligatoire pour les fonctions avancées | aucun | ✅ Fait | — | — | Tests verts : `lib/s0-access-controls.integration.test.ts` |
 | C005 | 3.1 | Sept espaces et organisation du serveur | aucun | Partiel (côté Discord) | Procédure prête (PROCEDURES_PREUVES.md § C005), preuve à capturer par ChatGPT + Maxime | ChatGPT + Maxime | Capture Discord datée ; procédure : PROCEDURES_PREUVES.md § C005 |
@@ -176,7 +176,7 @@
 
 - **GameNight — Historique :** sur le compte connecté à The Tower, `Soirées → Historique` affiche des soirées terminées. Contrôle visuel en lecture seule ; aucun nouveau parcours de création, invitation, vote ou clôture n’a été exécuté pendant ce contrôle.
 - **Discord — compte Melah :** la commande `/tower progression` n’a pas été validée. Une tentative a envoyé par erreur le texte libre « `/equipe/tower progression m` » dans `#🤖・commandes-bot` ; aucune réponse de commande n’a été obtenue. Le brouillon a ensuite été vidé. La suppression de ce message attend l’accord de Maxime.
-- **Effet sur le décompte :** aucun critère nouveau n’est passé au vert. Le total reste **58/148** ; C041 garde sa preuve existante et reçoit seulement une observation complémentaire ; C059 reste partiel.
+- **Effet sur le décompte :** C002 passe au vert après observation en Production des quatre commandes prévues, de leur réponse privée et du formulaire de preuve. Le total passe à **59/148**. C041 garde sa preuve existante ; C059 reste partiel car le dépôt réel et le vote n’ont pas été parcourus.
 
 
 ## Lots de code (Claude Code, une PR par lot, CI verte obligatoire)
