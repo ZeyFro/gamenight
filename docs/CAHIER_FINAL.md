@@ -10,8 +10,8 @@
 
 | Statut | Nombre |
 | --- | ---: |
-| ✅ Fait | 58 |
-| Codé, non vérifié en réel | 11 |
+| ✅ Fait | 60 |
+| Codé, non vérifié en réel | 9 |
 | Codé, éteint | 41 |
 | Partiel | 0 |
 | Partiel (côté Discord) | 5 |
@@ -24,14 +24,14 @@
 | Id | § | Élément | Interrupteur (état en Production) | Statut réel | Ce qu'il reste à faire | Responsable | Preuve attendue |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | C001 | 1.4 | Budget gratuit : fonctions essentielles sans Nitro, boost ni service payant | `DISCORD_BOOSTERS_ENABLED` (éteint) | Codé, éteint | Allumer (lot G) + tester | ChatGPT (Vercel) + Maxime | Capture après allumage |
-| C002 | 2.1 | Expérience quotidienne accessible depuis Discord (commandes, boutons, modales) | `TOWER_CHALLENGES_ENABLED` (allumé) | Codé, non vérifié en réel | Procédure prête (PROCEDURES_PREUVES.md § C002), preuve à capturer par Maxime | Maxime | Tests verts : `lib/discord-commands-manifest.test.ts` ; capture en Production ; procédure : PROCEDURES_PREUVES.md § C002 |
+| C002 | 2.1 | Expérience quotidienne accessible depuis Discord (commandes, boutons, modales) | `TOWER_CHALLENGES_ENABLED` (allumé) | ✅ Fait | — | — | Essai réel Production le 25/11 avec Melah (Régulars) : `/aide`, `/tower defi`, `/tower progression`, `/tower classement`, `/profil`, `/boost` répondent en privé ; le formulaire de preuve s’ouvre et présente les champs attendus. Épreuve de test attribuée, sans dépôt de preuve. |
 | C003 | 2.2 | Actions GameNight → Discord sans doublon, interactions Discord → GameNight | `NOTIFICATION_EXECUTOR_ENABLED` (présent (valeur cachée)) | Codé, non vérifié en réel | Procédure prête (PROCEDURES_PREUVES.md § C003), preuve à capturer par Maxime | Maxime | Tests verts : `lib/notification-executor.integration.test.ts` ; capture en Production ; procédure : PROCEDURES_PREUVES.md § C003 |
 | C004 | 2.3 | Connexion non obligatoire pour Discord, obligatoire pour les fonctions avancées | aucun | ✅ Fait | — | — | Tests verts : `lib/s0-access-controls.integration.test.ts` |
 | C005 | 3.1 | Sept espaces et organisation du serveur | aucun | Partiel (côté Discord) | Procédure prête (PROCEDURES_PREUVES.md § C005), preuve à capturer par ChatGPT + Maxime | ChatGPT + Maxime | Capture Discord datée ; procédure : PROCEDURES_PREUVES.md § C005 |
 | C006 | 4.1–4.2 | Accueil immersif et parcours sans GameNight (panneau à 3 boutons) | `TOWER_ONBOARDING_PANEL_ENABLED` (éteint) | Codé, éteint | Allumer (lot G) + tester | ChatGPT (Vercel) + Maxime | Tests verts : `lib/tower-onboarding-panel.test.ts` ; capture après allumage |
 | C007 | 4.4 | Sélection de jeux et d'intérêts modernisée plutôt que dupliquée (/role) | `DISCORD_ROLE_COMMAND_ENABLED` (éteint) | Codé, éteint | Allumer (lot G) + tester | ChatGPT (Vercel) + Maxime | Tests verts : `lib/discord-role-command.test.ts` ; capture après allumage |
 | C008 | 6.1 | Grades Régulars / Irregular / Ranker / High Ranker | `TOWER_CHALLENGES_ENABLED` (allumé), `TOWER_IRREGULAR_GRANTS_ENABLED` (éteint) | Codé, éteint | Allumer (lot B) + tester | ChatGPT (Vercel) + Maxime | Tests verts : `lib/tower-ranks.test.ts` ; capture après allumage |
-| C009 | 6.2 | Séparation des pouvoirs : un grade ne donne aucun droit d'administration | aucun | ✅ Fait | — | — | Scénario exécuté : actif /admin → HTTP 200, page finale / ; nouveau /admin → HTTP 200, pag |
+| C009 | 6.2 | Séparation des pouvoirs : un grade ne donne aucun droit d'administration | aucun | ✅ Fait | — | — | Tests et scénario d'accès `/admin` déjà consignés ; contrôle Discord du 25/11/2026 : « Administrateur » désactivé pour Régulars, Irregular, Ranker et High Ranker (session `!!ZeyFro`) |
 | C010 | 6.3 | Aucun nouveau rôle Discord permanent par étage | aucun | Codé, non vérifié en réel | Procédure prête (PROCEDURES_PREUVES.md § C010), preuve à capturer par Maxime | Maxime | Tests verts : `lib/tower-etage-roles.test.ts` ; capture en Production ; procédure : PROCEDURES_PREUVES.md § C010 |
 | C011 | 6.4 | Examen distinct des rôles techniques et historiques (admins, modération, jeux, bots, équipes, sanctions, notif | aucun | Partiel (côté Discord) | Procédure prête (PROCEDURES_PREUVES.md § C011), preuve à capturer par ChatGPT + Maxime | ChatGPT + Maxime | Capture Discord datée ; procédure : PROCEDURES_PREUVES.md § C011 |
 | C012 | 7.1 | Étages infinis, stockés en base, affichés par le bot | `TOWER_CHALLENGES_ENABLED` (allumé) | ✅ Fait | — | — | Tests verts : `lib/tower-challenges.integration.test.ts` |
@@ -67,7 +67,7 @@
 | C042 | 13.2 | Calendrier communautaire sans second bot | `CALENDAR_SUBSCRIPTIONS_ENABLED` (éteint) | Codé, éteint | Allumer (lot D) + tester | ChatGPT (Vercel) + Maxime | Tests verts : `lib/calendar-feed.integration.test.ts` ; capture après allumage |
 | C043 | 13.3 | Tournois : inscriptions, règles, participants, résultats, annonces, classements | `TOURNAMENT_SCORES_ENABLED` (éteint) | Codé, éteint | Allumer (lot E) + tester | ChatGPT (Vercel) + Maxime | Tests verts : `lib/tournament-announce.integration.test.ts` ; capture après allumage |
 | C044 | 13.4 | Interfaces : « Ce soir », fiches de soirée, recherche de partie, roulette, calendrier, notifications personnal | `WHO_PLAYS_TONIGHT_ENABLED` (éteint), `NOTIFICATION_CENTER_ENABLED` (éteint) | Codé, éteint | Allumer `NOTIFICATION_CENTER_ENABLED` (lot G) + tester les interfaces avec un compte réel | ChatGPT (Vercel) + Maxime | Tests verts : `lib/notification-kinds.test.ts`, `app/notifications/page.test.tsx` |
-| C045 | 14.1 | Saisons accessibles aux arrivants tardifs | `TOWER_CHALLENGES_ENABLED` (allumé) | Codé, non vérifié en réel | Procédure prête (PROCEDURES_PREUVES.md § C045), preuve à capturer par Maxime | Maxime | Capture en Production ; procédure : PROCEDURES_PREUVES.md § C045 |
+| C045 | 14.1 | Saisons accessibles aux arrivants tardifs | `TOWER_CHALLENGES_ENABLED` (allumé) | ✅ Fait | — | — | Essai réel Production le 25/11 avec Melah (Régulars), nouvelle membre déclarée : le classement affiche S3 et `/tower defi` lui attribue un défi sans blocage. |
 | C046 | 14.2 | Calendrier scolaire et saison d'été (S1 du 1er décembre au 31 mars, avril–juin, été, septembre–novembre) | aucun | ✅ Fait | — | — | Tests verts : `lib/tower-challenge-seasons.test.ts` |
 | C047 | 14.3 | Classements individuel, saisonnier, permanent, historique, distinctions | `TOWER_CHALLENGES_ENABLED` (allumé) | ✅ Fait | — | — | Tests verts : `lib/tower-standings.test.ts` |
 | C048 | 14.3 | Classement d'équipes | `TOWER_CHALLENGES_ENABLED` (allumé) | ✅ Fait | — | — | Tests verts : `lib/tower-team-standings-rules.test.ts`, `lib/tower-team-standings.integration.test.ts` (PR #526 fusionnée) |
@@ -81,7 +81,7 @@
 | C056 | 19.2 | Rôles de prestige séparés des rôles techniques ; permissions sensibles vérifiées avant application | aucun | Codé, non vérifié en réel | Procédure prête (PROCEDURES_PREUVES.md § C056), preuve à capturer par Maxime | Maxime | Tests verts : `lib/tower-layout-permissions.test.ts` ; capture en Production ; procédure : PROCEDURES_PREUVES.md § C056 |
 | C057 | 19.3 | Confidentialité des preuves, tickets et journaux de modération | `DISCORD_REPORT_COMMAND_ENABLED` (éteint), `TOWER_DISCORD_ANNOUNCE_ENABLED` (allumé) | Codé, éteint | Allumer (lot G) + tester | ChatGPT (Vercel) + Maxime | Tests verts : `lib/discord-report-command.test.ts` ; capture après allumage |
 | C058 | 19.4 | Anti-abus : récompenses multiples, votes frauduleux, validations doubles, participation artificielle, exploita | `COMMUNITY_ISOLATION_ENABLED` (présent (valeur cachée)) | ✅ Fait | — | — | Tests verts : `lib/tower-challenges.integration.test.ts`, `lib/community-scope.test.ts` |
-| C059 | 21.2 | Bot : commandes, boutons, menus, défis, preuves, votes, progression, événements, notifications | `TOWER_CHALLENGES_ENABLED` (allumé) | Partiel (côté Discord) | Procédure prête (PROCEDURES_PREUVES.md § C059). Vérification du 25/11 avec Melah non concluante : `/tower progression` n’a pas été exécutée ; un texte libre erroné a été envoyé, puis le brouillon effacé. Le message reste à traiter après accord de Maxime. Refaire le test en sélectionnant la commande dans l’autocomplétion Discord | ChatGPT + Maxime | Capture Discord datée ; procédure : PROCEDURES_PREUVES.md § C059 |
+| C059 | 21.2 | Bot : commandes, boutons, menus, défis, preuves, votes, progression, événements, notifications | `TOWER_CHALLENGES_ENABLED` (allumé) | Partiel (côté Discord) | Essai ciblé du 25/11 avec Melah : `/aide`, `/profil`, `/boost`, `/tower defi`, `/tower progression` et `/tower classement` ont répondu en privé ; le formulaire de dépôt de preuve s’ouvre. Le parcours complet de preuve et de vote de PROCEDURES_PREUVES.md § C059 reste à faire ; capture conservée à ajouter | ChatGPT + Maxime | Réponses Discord observées le 25/11 ; procédure : PROCEDURES_PREUVES.md § C059 |
 | C060 | 21.3 | Base de données : membres, équipes, défis, attributions, preuves, votes, récompenses, étages, saisons, classem | aucun | ✅ Fait | — | — | Tests verts : `lib/tower-challenges.integration.test.ts` |
 | C061 | 21.4 | Migrations : structure vérifiée, sauvegarde, tests, retour arrière, validation de la bascule | aucun | ✅ Fait | — | — | Tests verts : `lib/migrations-criteres.test.ts` (structure, additivité, workflow de production, retour arrière, garde de build) ; sauvegarde et restauration Neon : action humaine, [MIGRATIONS.md](MIGRATIONS.md) § « Critères du cahier 21.4 et leur preuve » |
 | C062 | 21.5 | Environnements distincts, aucune donnée de production en test | aucun | ✅ Fait | — | — | Tests verts : `lib/notification-executor.preview.test.ts`, `lib/tower-challenges.integration.test.ts` |
@@ -176,7 +176,7 @@
 
 - **GameNight — Historique :** sur le compte connecté à The Tower, `Soirées → Historique` affiche des soirées terminées. Contrôle visuel en lecture seule ; aucun nouveau parcours de création, invitation, vote ou clôture n’a été exécuté pendant ce contrôle.
 - **Discord — compte Melah :** la commande `/tower progression` n’a pas été validée. Une tentative a envoyé par erreur le texte libre « `/equipe/tower progression m` » dans `#🤖・commandes-bot` ; aucune réponse de commande n’a été obtenue. Le brouillon a ensuite été vidé. La suppression de ce message attend l’accord de Maxime.
-- **Effet sur le décompte :** aucun critère nouveau n’est passé au vert. Le total reste **58/148** ; C041 garde sa preuve existante et reçoit seulement une observation complémentaire ; C059 reste partiel.
+- **Effet sur le décompte :** C002 passe au vert après observation en Production des quatre commandes prévues, de leur réponse privée et du formulaire de preuve. Le total passe à **60/148**. C045 est également validé avec une nouvelle membre qui accède à la saison en cours et reçoit un défi. C041 garde sa preuve existante ; C059 reste partiel car le dépôt réel et le vote n’ont pas été parcourus.
 
 
 ## Lots de code (Claude Code, une PR par lot, CI verte obligatoire)

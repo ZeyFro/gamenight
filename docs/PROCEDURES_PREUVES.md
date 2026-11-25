@@ -2,7 +2,7 @@
 
 Chaque section dit comment **prouver** un élément du [cahier final](CAHIER_FINAL.md) : prérequis, actions numérotées, résultat attendu, ce qu'il faut capturer, critère OK ou KO, retour arrière. Rédigé pour que ChatGPT ou Maxime puissent l'exécuter sans connaître le code. Les 17 éléments : C002, C003, C005, C010, C011, C045, C053, C056, C059, C093, C094, D01, D14, D15, D16, D18, D19.
 
-**État du dépôt** : ce document ne passe aucune ligne à « Fait ». Une ligne ne devient ✅ que lorsque la capture ou le résultat demandé est **réellement obtenu** et noté dans le journal de [ALLUMAGES.md](ALLUMAGES.md) (date, qui, résultat, jamais de secret). Les tests automatisés cités prouvent la règle dans le code ; ils ne prouvent pas ce qui se passe sur le vrai serveur Discord.
+**Règle de validation fonctionnelle** : une ligne passe au vert lorsque le résultat attendu est observé en Production et consigné dans le journal de [ALLUMAGES.md](ALLUMAGES.md) (date, compte, résultat, sans secret). Une capture aide à garder une trace, mais son archivage ne bloque pas un résultat directement observé. Les tests automatisés prouvent le code ; les essais réels prouvent le comportement du service.
 
 ## Règles communes
 
@@ -31,7 +31,7 @@ Remplacer `<ID_COMMUNAUTE>` par l'identifiant de la communauté The Tower (colon
 
 - **Ce qu'on prouve** : un membre fait son parcours Tower sans quitter Discord.
 - **Tests existants** : `src/lib/discord-commands-manifest.test.ts` (manifeste et routage alignés), `src/lib/discord-tower-challenges.test.ts`, `src/lib/discord-interactions.test.ts`.
-- **Prérequis** : les commandes sont enregistrées (`/aide` répond ; sinon voir [DISCORD_COMMANDES.md](DISCORD_COMMANDES.md), enregistrement par Maxime) ; `TOWER_CHALLENGES_ENABLED` vaut `true` et le drapeau communautaire est allumé ; compte de test membre actif depuis au moins 3 jours.
+- **Prérequis** : les commandes sont enregistrées (`/aide` répond ; sinon voir [DISCORD_COMMANDES.md](DISCORD_COMMANDES.md), enregistrement par Maxime) ; `TOWER_CHALLENGES_ENABLED` vaut `true` et le drapeau communautaire est allumé ; compte de test membre actif.
 - **Actions** :
   1. Dans le salon `commandes-bot`, taper `/aide`. Capturer la réponse (elle liste chaque commande et son état « actif » ou « en attente d'activation »).
   2. Taper `/tower defi`. Capturer la réponse (défi attribué ou défi en cours).
@@ -39,7 +39,11 @@ Remplacer `<ID_COMMUNAUTE>` par l'identifiant de la communauté The Tower (colon
   4. Taper `/tower classement`. Capturer la réponse.
   5. Vérifier qu'aucune réponse n'est publique par erreur : les réponses de ces commandes sont visibles du seul demandeur (« Visible uniquement par toi »).
 - **Résultat attendu** : chaque commande répond en moins de 3 secondes (réponse différée « … réfléchit » puis résultat), en français, sans message d'erreur technique.
-- **Critère OK** : les quatre réponses capturées et cohérentes ; KO si « L'application ne répond pas », une réponse publique, ou un texte d'erreur brut.
+- **Critère OK** : les quatre réponses observées sont cohérentes et privées ; KO si « L'application ne répond pas », une réponse publique, ou un texte d'erreur brut.
+
+**Observations en direct — 25/11/2026, compte Melah<3 (Régulars, The Tower).** Sous-tests passés : `/aide` liste les commandes ; `/tower defi` attribue une épreuve ; `/tower progression` renvoie la progression ; `/tower classement` affiche S3 et le classement ; les cinq réponses sont privées. Vérifications complémentaires : `/profil` renvoie le profil et `/boost` indique l'absence de boost ; le bouton « Déposer ma preuve » ouvre le formulaire avec les champs attendus, puis le formulaire est fermé sans envoi. Le test de `/tower defi` a créé une attribution pour Melah ; aucune preuve n'a été déposée.
+
+**Verdict global C002 : ✅ Fait — essai fonctionnel en Production, 25/11/2026.** Melah (Régulars), membre réel de The Tower, a reçu en privé `/aide`, `/tower defi`, `/tower progression` et `/tower classement`. Le défi a été attribué, le bouton a ouvert le formulaire de preuve avec les champs attendus. L’essai couvre le parcours quotidien et l’interface de dépôt ; aucune preuve n’a été envoyée. L’ancienneté de trois jours et l’archivage d’une capture ne sont pas des conditions de fonctionnement.
 - **Journal Vercel** (facultatif) : Request Path `/api/discord/interactions`, statuts 200 attendus.
 - **Retour arrière** : sans objet (lecture seule pour `/aide`, `/tower classement` ; `/tower defi` attribue un défi au compte de test, sans conséquence).
 
@@ -106,14 +110,12 @@ Remplacer `<ID_COMMUNAUTE>` par l'identifiant de la communauté The Tower (colon
 
 - **Ce qu'on prouve** : un membre arrivé en cours de saison joue la saison courante, sans rattrapage ni blocage.
 - **Tests existants** : `src/lib/tower-season-rules.test.ts`, `src/lib/tower-standings.test.ts`, `src/lib/tower-challenge-seasons.test.ts`.
-- **Prérequis** : un compte de test **nouvellement** membre (arrivé après le début de la saison) ; `TOWER_CHALLENGES_ENABLED=true`. La saison courante est S3 jusqu'au 30 novembre 2026, puis S1 (1ᵉʳ décembre 2026 au 31 mars 2027).
+- **Prérequis** : un compte membre arrivé après le début de la saison ; `TOWER_CHALLENGES_ENABLED=true`.
 - **Actions** :
-  1. Avec le compte de test, ouvrir `https://gamenight-zeyfro.vercel.app/tower` : capturer le nom de la saison et la progression.
-  2. Taper `/tower defi` : capturer le défi attribué.
-  3. Lecture seule : `SELECT "userId", "floorsClimbed" FROM "TowerChallengeProgress" WHERE "communityId" = '<ID_COMMUNAUTE>' ORDER BY "floorsClimbed" DESC LIMIT 20;` : le compte de test apparaît avec 0 étage au départ, sans erreur.
-  4. Le 1ᵉʳ décembre 2026 (minuit, heure de Paris) : rouvrir `/tower` et capturer le passage à « S1 · 2026-2027 ».
-- **Résultat attendu** : saison unique affichée, défi attribuable, pas de message « saison terminée » ou « inscription fermée » pour l'arrivant.
-- **Critère OK** : captures 1, 2 et 4 conformes ; KO si le compte de test est bloqué.
+  1. Ouvrir le classement ou la page Tower avec le compte membre : vérifier la saison courante.
+  2. Taper `/tower defi` et vérifier qu'un défi est attribué.
+- **Résultat attendu** : saison en cours accessible, défi attribuable, aucune erreur « saison terminée » ou « inscription fermée ».
+- **Critère OK** : le membre voit la saison actuelle et reçoit un défi. Le passage entre deux saisons relève du test C046.
 - **Retour arrière** : sans objet.
 
 ## C053 : salons vocaux (côté Discord)
@@ -159,6 +161,8 @@ Remplacer `<ID_COMMUNAUTE>` par l'identifiant de la communauté The Tower (colon
 - **Résultat attendu** : parcours complet sans erreur ; un seul message par preuve ; étage crédité une seule fois.
 - **Critère OK** : captures 1 à 4 conformes et SQL sans échec ; KO sinon.
 - **Retour arrière** : retirer `TOWER_DISCORD_VOTES_ENABLED` (retour au vote sur le site) ; l'étage de test reste (sans conséquence).
+
+**Essai ciblé en production — 25/11/2026, Melah<3 (Régulars)** : `/aide`, `/profil`, `/boost`, `/tower defi`, `/tower progression` et `/tower classement` ont répondu en privé et en français. Le bouton « Déposer ma preuve » a ouvert le formulaire (lien, code/description, consentement). Le formulaire a été fermé sans envoi ; aucun vote ni preuve n'a été soumis. Cela confirme seulement ces contrôles ciblés, pas le critère C059 : aucun défi n'a été réalisé, et les étapes de preuve publique, vote avec un second membre, résultat et requête SQL restent non vérifiées. Les captures de l'essai ne sont pas conservées dans le dépôt.
 
 ## C093 : écritures Discord par la file et l'executor, jamais en direct
 

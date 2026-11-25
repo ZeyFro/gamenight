@@ -349,3 +349,23 @@ Avant de commencer, relever le quota Vercel (100 déploiements par jour en offre
 | G2 | | — | ☐ | |
 | H | | | ☐ | |
 | I | | — | ☐ | |
+
+
+### Tests réels Discord C002 — 25 novembre 2026
+
+Compte `Melah<3` (Régulars) dans `#🤖・commandes-bot`. **Sous-tests verts observés** : `/aide`, `/tower defi`, `/tower progression`, `/tower classement`, `/profil` et `/boost` ont répondu en privé et en français. Le bouton « Déposer ma preuve » a ouvert le formulaire avec les champs lien, code/description et consentement de partage ; formulaire fermé sans envoi.
+
+**État C002 : ✅ Fait.** Les quatre commandes prévues répondent en privé et en français ; `/tower defi` attribue une épreuve et le formulaire de preuve s’ouvre avec ses champs attendus. Le défi de test reste attribué à Melah ; aucune preuve n’a été soumise. Essai fonctionnel consigné sans exiger trois jours d’ancienneté ni archive de capture.
+
+### Preuve complémentaire C009 — contrôle Discord du 25 novembre 2026
+
+Compte `!!ZeyFro`, serveur The Tower. En lecture seule, dans Paramètres du serveur → Rôles → Permissions, le bouton « Administrateur » est désactivé pour chacun des quatre grades : Régulars, Irregular, Ranker et High Ranker. Aucun réglage n’a été modifié. Cette observation complète la preuve existante de C009 ; elle ne valide pas C056, dont la procédure exige aussi l’inventaire des rôles et le contrôle de Gérer les rôles, Gérer les salons, Gérer les messages, Exclure et Bannir.
+
+
+### Essai ciblé C059 — 25 novembre 2026
+
+Avec Melah<3 (Régulars) dans `#🤖・commandes-bot`, `/aide`, `/profil`, `/boost`, `/tower defi`, `/tower progression` et `/tower classement` ont répondu en privé et en français. Le formulaire « Déposer ma preuve » s'est ouvert et a montré les champs lien, code/description et consentement. Il a été fermé sans envoi. Aucun défi n'a été réalisé, aucune preuve/vote n'a été soumis ; le parcours C059 reste partiel. Les captures ne sont pas conservées dans le dépôt.
+
+### Essai réel C045 — 25 novembre 2026
+
+Melah (Régulars), qui a indiqué être nouvelle dans The Tower, voit « Classement The Tower — S3 · 2026 » et `/tower defi` lui attribue « Le défi de patience raisonnée ». L'accès tardif à la saison courante fonctionne. Le défi reste un test ; aucune preuve n’a été déposée.
