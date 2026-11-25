@@ -10,7 +10,7 @@
 
 | Statut | Nombre |
 | --- | ---: |
-| ✅ Fait | 62 |
+| ✅ Fait | 63 |
 | Codé, non vérifié en réel | 9 |
 | Codé, éteint | 41 |
 | Partiel | 0 |
@@ -136,7 +136,7 @@
 | C110 | 4.4 | Onboarding natif Discord (option) | aucun | Sans code (action humaine ou Discord) | Rendre vérifiable (procédure de capture) | Maxime + ChatGPT | Capture datée (procédure : PLAN_TESTS.md) |
 | C111 | 5.1 | Direction artistique (Tower of God, science-fiction, holographique, humour) | aucun | Sans code (action humaine ou Discord) | Rendre vérifiable (procédure de capture) | Maxime + ChatGPT | Capture datée (procédure : PLAN_TESTS.md) |
 | C112 | 5.2 | Éléments visuels à harmoniser (icône, bannière, cartes, classements, annonces) | aucun | Sans code (action humaine ou Discord) | Rendre vérifiable (procédure de capture) | Maxime + ChatGPT | Capture datée (procédure : PLAN_TESTS.md) |
-| C113 | 5.3 | Ton communautaire (convivial, bienveillant, sans humiliation) | aucun | Sans code (action humaine ou Discord) | Rendre vérifiable (procédure de capture) | Maxime + ChatGPT | Capture datée (procédure : PLAN_TESTS.md) |
+| C113 | 5.3 | Ton communautaire (convivial, bienveillant, sans humiliation) | aucun | ✅ Fait | — | — | Contrôle Production le 25/11 : le guide emploie des formulations d’entraide et de remerciement (« préviens les potes », « bien joué », « remercier les potes ») ; le salon des épreuves appelle au fair-play et à l’entraide. |
 | C114 | 6.3 | Suppression des 134 rôles Étage | aucun | Sans code (action humaine ou Discord) | Rendre vérifiable (procédure de capture) | Maxime + ChatGPT | Capture datée (procédure : PLAN_TESTS.md) |
 | C115 | 7.2 | Pas de deux sources concurrentes (arrêt de l'attribution d'étages d'Atlas) | aucun | Sans code (action humaine ou Discord) | Rendre vérifiable (procédure de capture) | Maxime + ChatGPT | Capture datée (procédure : PLAN_TESTS.md) |
 | C116 | 8.1 | Les défis encouragent découverte, coopération, créativité, humour | aucun | Sans code (action humaine ou Discord) | Rendre vérifiable (procédure de capture) | Maxime + ChatGPT | Capture datée (procédure : PLAN_TESTS.md) |
@@ -188,6 +188,7 @@
 - **Notifications (C044) et chroniques :** le panneau de notifications affiche des avis de soirées, rappels et événements personnels avec des liens vers leurs pages ; aucun avis n’a été marqué comme lu. La page d’archives des chroniques s’ouvre mais indique qu’il n’y en a aucune pour The Tower ; aucune chronique n’a été créée. Contrôles visuels seulement, critères encore non validés.
 - **Diagnostic du catalogue (lecture seule) :** la même répétition de titres apparaît aussi dans `/profil/tierlist`. Une requête SELECT sur Neon Production confirme que « 60 Parsecs! », « 60 Seconds! Reatomized » et « Aimlabs » existent chacun sous deux entrées distinctes, `STEAM` et `IGDB`, avec leurs identifiants propres. Aucune ligne n’a été modifiée ; ne pas supprimer les entrées sans établir la stratégie de correspondance.
 - **Discord — organisation (C005) :** dans la session `!!ZeyFro`, la liste du serveur affiche les sept catégories attendues : Le Portail, le Hall des Réguliers, Épreuves GameNight, le Hall des équipes, l’Ascension, le Sommet et le Tribunal. L’inventaire sans écart bloquant et la visibilité d’un compte Régulars restent à contrôler selon la procédure ; C005 reste partiel.
+- **Ton communautaire (C113) :** le guide GameNight et le texte d’accueil du salon des épreuves mettent en avant l’entraide, le fair-play et les encouragements. C113 est validé.
 - **Lancement francophone (C106) :** les pages GameNight consultées et les consignes des salons The Tower sont en français. C106 est validé ; les titres des jeux restent ceux publiés par leurs éditeurs.
 - **Multijoueur/multigaming (C105) :** vérification visuelle de `/ce-soir` en Production : trois emplacements de jeu démarrent sans jeu choisi, avec les options supplémentaires facultatives ; la liste s’étend à 919 titres. Aucun formulaire n’a été envoyé. C105 est validé.
 - **Recherche spontanée et annonces (C037, C038, C128) :** `/jouer-maintenant` affiche le formulaire mais aucune partie active ; le bouton de démarrage reste désactivé sans jeu choisi. `/joueurs` affiche l’annonce et les filtres, mais aucune annonce active. `/ce-soir` affiche les choix de jeu, le bouton de déclaration et des états vides pour les joueurs et soirées. Les sélecteurs de ces pages exposent 919 choix et répètent plusieurs titres, dont « 60 Parsecs! » et « 60 Seconds! Reatomized ». Aucun avis, annonce, déclaration de disponibilité ou démarrage n’a été soumis ; critères non verts.
