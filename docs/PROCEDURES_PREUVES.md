@@ -110,14 +110,12 @@ Remplacer `<ID_COMMUNAUTE>` par l'identifiant de la communauté The Tower (colon
 
 - **Ce qu'on prouve** : un membre arrivé en cours de saison joue la saison courante, sans rattrapage ni blocage.
 - **Tests existants** : `src/lib/tower-season-rules.test.ts`, `src/lib/tower-standings.test.ts`, `src/lib/tower-challenge-seasons.test.ts`.
-- **Prérequis** : un compte de test **nouvellement** membre (arrivé après le début de la saison) ; `TOWER_CHALLENGES_ENABLED=true`. La saison courante est S3 jusqu'au 30 novembre 2026, puis S1 (1ᵉʳ décembre 2026 au 31 mars 2027).
+- **Prérequis** : un compte membre arrivé après le début de la saison ; `TOWER_CHALLENGES_ENABLED=true`.
 - **Actions** :
-  1. Avec le compte de test, ouvrir `https://gamenight-zeyfro.vercel.app/tower` : capturer le nom de la saison et la progression.
-  2. Taper `/tower defi` : capturer le défi attribué.
-  3. Lecture seule : `SELECT "userId", "floorsClimbed" FROM "TowerChallengeProgress" WHERE "communityId" = '<ID_COMMUNAUTE>' ORDER BY "floorsClimbed" DESC LIMIT 20;` : le compte de test apparaît avec 0 étage au départ, sans erreur.
-  4. Le 1ᵉʳ décembre 2026 (minuit, heure de Paris) : rouvrir `/tower` et capturer le passage à « S1 · 2026-2027 ».
-- **Résultat attendu** : saison unique affichée, défi attribuable, pas de message « saison terminée » ou « inscription fermée » pour l'arrivant.
-- **Critère OK** : captures 1, 2 et 4 conformes ; KO si le compte de test est bloqué.
+  1. Ouvrir le classement ou la page Tower avec le compte membre : vérifier la saison courante.
+  2. Taper `/tower defi` et vérifier qu'un défi est attribué.
+- **Résultat attendu** : saison en cours accessible, défi attribuable, aucune erreur « saison terminée » ou « inscription fermée ».
+- **Critère OK** : le membre voit la saison actuelle et reçoit un défi. Le passage entre deux saisons relève du test C046.
 - **Retour arrière** : sans objet.
 
 ## C053 : salons vocaux (côté Discord)
