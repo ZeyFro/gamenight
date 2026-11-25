@@ -2,6 +2,8 @@
 
 > Relevé du 23 novembre 2026. Objectif : **un seul lancement, cahier entièrement terminé** (voir [CAHIER_FINAL.md](CAHIER_FINAL.md)). Les allumages se font **par ChatGPT dans Vercel**, guidé par ce document. Claude Code n'écrit jamais dans Vercel.
 
+> **Relevé Production du 25/11/2026, 19 h 45 (Paris)** : R5 a commencé à être configuré, mais n'est pas validé. Vercel liste en Production `RETENTION_CLEANUP_ENABLED`, `RETENTION_CLEANUP_MODE`, `VOICE_PRESENCE_ENABLED`, `HOSTING_ALERT_ENABLED`, `DISCORD_THREAD_CLEANUP_ENABLED` et `DISCORD_THREAD_CLEANUP_MODE` ; leurs valeurs Sensitive sont cachées. Sur le déploiement `dpl_8aqUmjR9VU3G9qv51dnN3iaPUC4N` (READY, commit `ccbba827`), le cron `discord-thread-cleanup` s'est exécuté à 19 h 15, 19 h 30 et 19 h 45 en `dryRun: true`, avec zéro fil archivé ou supprimé. Les journaux montrent aussi des passages sans erreur pour Steam (7 comptes traités), boosters (15 membres contrôlés), rappels (une soirée vérifiée), notifications (aucun envoi en attente) et vérification Steam des défis (zéro défi à vérifier). Ces six passages prouvent que les tâches s'exécutent ; ils ne valident ni les parcours de joueurs, ni l'effacement après une semaine, ni les push, le vocal ou l'alerte d'hébergement. Aucune nouvelle écriture ou activation ne découle de ce constat. La branche Neon `avant-R5-20261125` existe (créée le 25/11 à 00 h 55, heure de Paris) ; le projet compte 10 branches sur 10. Vérifier les valeurs effectives et préserver cette sauvegarde avant tout autre geste.
+
 ## Règles pour chaque lot
 
 1. **Un lot à la fois.** Le lot suivant ne commence que lorsque **toutes** les vérifications du lot précédent sont cochées.
