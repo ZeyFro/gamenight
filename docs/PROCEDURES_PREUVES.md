@@ -235,13 +235,13 @@ Remplacer `<ID_COMMUNAUTE>` par l'identifiant de la communauté The Tower (colon
 ## D16 : V2 (bot gateway permanent, rangs importés), documentation seulement
 
 - **Ce qu'on prouve** : la V2 est **décrite** et **non** livrée ; rien ne l'active par erreur.
-- **Preuve dans le dépôt** : [CAHIER_DES_CHARGES.md](CAHIER_DES_CHARGES.md) § 27.3 (ligne « v2 ») ; [CAHIER_FINAL.md](CAHIER_FINAL.md) ligne C101 (« feuille de route, après le lancement » : décision du 23/11/2026) ; `docs/CAHIER_FINAL.md` précise qu'aucun interrupteur n'existe.
+- **Preuve dans le dépôt** : [CAHIER_DES_CHARGES.md](CAHIER_DES_CHARGES.md) § 27.3 (ligne « v2 ») ; [CAHIER_FINAL.md](CAHIER_FINAL.md) ligne C101 (« feuille de route, après le lancement » : décision du 23/11/2026) ; `docs/CAHIER_FINAL.md` précise qu'aucun interrupteur n'existe ; `src/lib/v2-documentation-only.test.ts`.
 - **Actions** :
-  1. Lire les deux passages ci-dessus et vérifier qu'ils disent la même chose (V2 après lancement).
-  2. `grep -n "gateway permanent" docs/CAHIER_DES_CHARGES.md docs/CAHIER_FINAL.md` : les deux fichiers répondent.
-  3. Vérifier dans Discord que le bot n'a **pas** l'intention « présences » ni « membres » activée dans le portail développeur (action humaine de Maxime, capture du portail sans jeton).
-- **Résultat attendu** : documentation cohérente ; aucune intention de passerelle superflue.
-- **Critère OK** : étapes 1 à 3 ; KO si une intention privilégiée est active sans besoin.
+  1. `npx vitest run src/lib/v2-documentation-only.test.ts` : vert.
+  2. `grep -n "gateway permanent" docs/CAHIER_DES_CHARGES.md docs/CAHIER_FINAL.md` : les deux fichiers répondent et situent la V2 après le lancement.
+  3. Le test vérifie aussi qu'aucun interrupteur ou client Riot/Hypixel n'existe, et que la seule passerelle du dépôt (vocale v1.1) s'identifie avec `GUILDS` + `GUILD_VOICE_STATES` (1 | 128). Comme aucun code ne demande `GUILD_MEMBERS` ni `GUILD_PRESENCES`, même une case activée dans le portail ne fournirait aucune donnée à l'application : la capture du portail n'est plus bloquante pour cette V2 non livrée.
+- **Résultat attendu** : documentation cohérente ; test vert ; aucune intention privilégiée demandée par le code.
+- **Critère OK** : étapes 1 à 3 ; KO si un interrupteur V2, un import Riot/Hypixel ou un intent privilégié apparaît.
 - **Retour arrière** : sans objet.
 
 ## D18 : rappel : suppression des 134 rôles Étage avant la création automatique de rôles (action manuelle)
