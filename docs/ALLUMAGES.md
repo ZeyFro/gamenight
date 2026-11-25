@@ -349,3 +349,8 @@ Avant de commencer, relever le quota Vercel (100 déploiements par jour en offre
 | G2 | | — | ☐ | |
 | H | | | ☐ | |
 | I | | — | ☐ | |
+
+
+### Preuve complémentaire C009 — contrôle Discord du 25 novembre 2026
+
+Compte `!!ZeyFro`, serveur The Tower. En lecture seule, dans Paramètres du serveur → Rôles → Permissions, le bouton « Administrateur » est désactivé pour chacun des quatre grades : Régulars, Irregular, Ranker et High Ranker. Aucun réglage n’a été modifié. Cette observation complète la preuve existante de C009 ; elle ne valide pas C056, dont la procédure exige aussi l’inventaire des rôles et le contrôle de Gérer les rôles, Gérer les salons, Gérer les messages, Exclure et Bannir.
