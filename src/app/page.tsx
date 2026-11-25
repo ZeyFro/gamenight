@@ -30,7 +30,7 @@ import { CountUp } from "@/components/ui/CountUp";
 import { FloatingParticles } from "@/components/FloatingParticles";
 import { ParallaxHeader } from "@/components/ui/ParallaxHeader";
 import { Avatar } from "@/components/ui/Avatar";
-import { LoginLanding } from "@/components/app/LoginLanding";
+import { DiscordMark, LoginLanding } from "@/components/app/LoginLanding";
 import { XpProgress } from "@/components/app/XpProgress";
 import { EmptySessionHero, HomePlanningLinks, HomeInstantLink } from "@/components/app/HomePlanning";
 import { TowerWelcomePanel } from "@/components/tower/TowerWelcomePanel";
@@ -141,9 +141,9 @@ async function HomeContent({
             <Button
               type="submit"
               variant="primary"
-              fullWidthOnMobile
-              className="w-full gap-2"
+              className="w-full gap-2.5"
             >
+              <DiscordMark />
               Se connecter avec Discord
             </Button>
           </form>

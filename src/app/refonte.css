@@ -110,9 +110,12 @@ doigt, sans la barre de défilement native qui mangeait une ligne. */
 .gn-login-art>span { display:flex; flex-direction:column; align-items:center; gap:18px; border:2px solid var(--border); border-radius:12px; background:var(--surface); box-shadow:var(--gn-shadow); padding:28px 12px; font-size:13px; transform:rotate(-5deg); }
 .gn-login-art>span:nth-child(2) { transform:translateY(18px) rotate(3deg); border-color:#79649b; }
 .gn-login-art>span:nth-child(3) { transform:rotate(8deg); }.gn-login-art b { font-size:36px; }
-.gn-login-card { position:relative; border:2px solid #5a4877; border-radius:16px; background:#19171f; box-shadow:8px 8px #080709; padding:clamp(24px,3vw,44px); }
+.gn-login-card { position:relative; border:2px solid #5a4877; border-radius:16px; background:#19171f; box-shadow:8px 8px #080709, 0 0 60px #b99aff16; padding:clamp(24px,3vw,44px); }
 .gn-login-card h2 { font-size:30px; margin:20px 0 12px; letter-spacing:-.04em; }
-.gn-login-benefits { margin:26px 0 0; display:grid; gap:14px; font-size:13px; color:var(--muted); }
+.gn-login-benefits { margin:26px 0 0; display:grid; gap:0; font-size:13px; color:var(--muted); }
+.gn-login-benefits li { padding:13px 0; border-top:1px solid #ffffff0d; }
+.gn-login-benefits li:first-child { padding-top:0; border-top:0; }
+.gn-login-benefits li:last-child { padding-bottom:0; }
 .gn-login-benefits li::before { content:'✓'; margin-right:12px; color:var(--gn-lime); }
 .gn-calendar-toolbar { display:flex; align-items:center; justify-content:space-between; gap:16px; flex-wrap:wrap; margin-bottom:20px; }
 .gn-calendar-nav { display:flex; align-items:center; gap:10px; }.gn-calendar-nav h2 { font-size:24px; min-width:185px; text-transform:capitalize; letter-spacing:-.035em; }
