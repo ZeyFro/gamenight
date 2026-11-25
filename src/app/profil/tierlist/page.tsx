@@ -3,6 +3,7 @@ import { getCurrentUser } from "@/lib/current-user";
 import { prisma } from "@/lib/prisma";
 import { TierlistBoard } from "@/components/TierlistBoard";
 import { pageMetadata } from "@/lib/page-title";
+import { dedupeTierlistGames } from "@/lib/tierlist";
 
 export const metadata = pageMetadata("Ma tier list");
 
@@ -29,9 +30,10 @@ export default async function ProfilTierlistPage() {
     prisma.tierlistEntry.findMany({ where: { userId: user.id } }),
   ]);
 
-  const initialTiers = Object.fromEntries(entries.map((e) => [e.gameId, e.tier]));
+  // Même jeu importé en Steam et en IGDB : une seule carte, rang conservé.
+  const { games: uniqueGames, initialTiers } = dedupeTierlistGames(games, entries);
 
-  if (games.length === 0) {
+  if (uniqueGames.length === 0) {
     return (
       <p className="text-sm text-muted">
         Aucun jeu dans la bibliothèque commune pour l&apos;instant.
@@ -41,7 +43,7 @@ export default async function ProfilTierlistPage() {
 
   return (
     <TierlistBoard
-      games={games.map((g) => ({ id: g.id, name: g.name, coverUrl: g.coverUrl }))}
+      games={uniqueGames.map((g) => ({ id: g.id, name: g.name, coverUrl: g.coverUrl }))}
       initialTiers={initialTiers}
     />
   );
