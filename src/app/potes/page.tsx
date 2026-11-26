@@ -37,6 +37,7 @@ import { gameLevelUserWhere, levelKey, loadVisibleLevels, parseGameLevelFilter }
 import { GAME_LEVELS, GAME_LEVEL_LABELS, isGameLevelsEnabled } from "@/lib/game-levels-rules";
 import { COMMUNITY_PREFERENCES, isPlayerMatchingEnabled, parsePlayerMatchingFilters, PLAY_HABITS, PLAYER_LANGUAGES, playerMatchingUserWhere } from "@/lib/player-matching-rules";
 import { loadCompatiblePartners } from "@/lib/player-matching";
+import { isTonightEnabled } from "@/lib/tonight-rules";
 
 export const metadata = pageMetadata("Potes");
 
@@ -139,8 +140,9 @@ export default async function PotesPage({ searchParams }: { searchParams?: Promi
   const nowPlayingEnabled = isNowPlayingEnabled();
   // Visibilité du profil : nouveau drapeau, éteint par défaut (alors rien ne change).
   const visibility = isProfileVisibilityEnabled() ? await getProfileVisibility(user.id) : null;
-  // Partenaires compatibles (§12.3) : seulement parmi les potes déjà listés (même communauté, profil visible).
-  const partners = matchingEnabled && visibility !== "HIDDEN" && !matchingFiltered ? await loadCompatiblePartners(user.id, potes.map((pote) => pote.id)) : [];
+  // Partenaires compatibles (§12.3) : seulement parmi les potes déjà listés (même communauté, profil visible)
+  // et, quand des filtres sont actifs, parmi ceux qui y correspondent — jamais un candidat écarté.
+  const partners = matchingEnabled && visibility !== "HIDDEN" ? await loadCompatiblePartners(user.id, potes.map((pote) => pote.id)) : [];
   const poteNames = new Map(potes.map((pote) => [pote.id, pote.discordName]));
 
   return (
@@ -151,6 +153,11 @@ export default async function PotesPage({ searchParams }: { searchParams?: Promi
         title="Potes"
         description={friendsEnabled ? `${potes.length} ${plural(potes.length, "ami")}.` : `${otherMembersLabel(potes.length)} dans le groupe${memberCounts.members > 0 ? ` (${memberCounts.members} avec toi)` : ""}.`}
       />
+
+      <div className="flex flex-wrap gap-x-4 gap-y-2">
+        <Link href="/joueurs" className="text-sm font-medium text-accent">🔎 Chercher un joueur ou publier une annonce →</Link>
+        {isTonightEnabled() && <Link href="/ce-soir" className="text-sm font-medium text-accent">🌙 Qui joue ce soir ? →</Link>}
+      </div>
 
       {visibility && (
         <Card>
@@ -207,7 +214,7 @@ export default async function PotesPage({ searchParams }: { searchParams?: Promi
 
       {partners.length > 0 && <Card>
         <h2 className="font-semibold text-foreground">Partenaires compatibles</h2>
-        <p className="mt-1 text-sm text-muted">Proposés d’après vos jeux en commun et vos réponses dans les paramètres. Les profils masqués ne sont jamais proposés.</p>
+        <p className="mt-1 text-sm text-muted">Proposés parmi les membres affichés d’après vos jeux en commun et vos réponses dans les paramètres. Les profils masqués ne sont jamais proposés.</p>
         <ul className="mt-3 grid gap-2" aria-label="Partenaires compatibles">
           {partners.map((partner) => <li key={partner.userId} className="text-sm">
             <Link href={`/potes/${partner.userId}`} className="font-medium text-accent hover:underline">{poteNames.get(partner.userId)}</Link>
