@@ -1,152 +1,20 @@
-# Recette des 61 lignes actives du cahier
-
-RelevÃ© du 26/11/2026 sur `main` `4eec09f9`. Cette PR corrige aussi, dans le cahier, le **texte** de quatre incohÃ©rences, nÂ°1, 2, 4 et 6 de la derniÃ¨re section (la nÂ°3, tranchÃ©e par Maxime, aligne le cahier des charges sur 3 jours), et le **statut de C089** (correction factuelle : flag allumÃ© en Production depuis le 24/11). **Aucun autre statut de [CAHIER_FINAL.md](CAHIER_FINAL.md) nâ€™est changÃ©, aucune ligne ne passe au vert** ([dÃ©cision D1](DECISIONS_PRODUIT_20261126.md)). Une ligne ne devient verte qu'aprÃ¨s un **test rÃ©el fait par un compte non-admin, datÃ© et consignÃ©** dans le cahier, avec sa preuve. Un flag allumÃ©, une page affichÃ©e ou un test automatisÃ© ne suffisent pas.
-
-**PÃ©rimÃ¨tre** : les 148 lignes du cahier, moins les 77 Â« âœ… Fait Â» et les 9 reportÃ©es (C095 Ã  C103), soit 61 lignes actives : 16 Â« codÃ©, allumÃ©, non vÃ©rifiÃ© Â», 4 Â« codÃ©, non vÃ©rifiÃ© Â», 6 Â« partiel cÃ´tÃ© Discord Â», 23 Â« codÃ©, Ã©teint Â» et 12 Â« sans code Â» (C089 corrigÃ©e le 26/11 : flag allumÃ© en Production).
-
-## Conventions
-
-**Comptes**
-- **M** : membre non-admin (Melah, rÃ´le MEMBER et non booster dans Neon le 25/11).
-- **M2** : second membre non-admin, pour Ãªtre l'autre capitaine, l'ami ou l'invitÃ©. **Il n'existe pas encore** : Ã  crÃ©er, ou Ã  demander Ã  un vrai membre.
-- **A** : administrateur (`!!ZeyFro`). Il sert seulement Ã  prÃ©parer ou Ã  observer, **jamais Ã  prouver** une ligne.
-
-**Qui fait le test**
-- **Agent** : un agent avec Chrome, connectÃ© comme M ou M2 dans GameNight et dans Discord.
-- **Maxime** : Maxime seul, pour ce qui demande ses droits de propriÃ©taire sur Discord, Vercel ou Neon, ou son accord.
-
-**Preuve**
-- Capture datÃ©e, avec l'heure de Paris et le compte visible.
-- URL de la page.
-- Pour la base, une requÃªte **SELECT en lecture seule** (requÃªtes types dans [PROCEDURES_PREUVES.md](PROCEDURES_PREUVES.md) Â§ Â« RequÃªtes SQL de lecture seule Â»).
-- Le rÃ©sultat est inscrit dans la colonne Â« Preuve attendue Â» du cahier, **sans changer le statut** tant que Maxime n'a pas validÃ©.
-
-**Allumage** : par lot, selon [ALLUMAGES.md](ALLUMAGES.md) (A Ã  H), avec l'accord de Maxime, un lot Ã  la fois. Aucun flag n'est allumÃ© par ce document.
-
----
-
-## Groupe A â€” 29 lignes stables (rien Ã  coder)
-
-### A1. Sans code (12) : actions humaines dans Discord ou sur le site
-
-`PLAN_TESTS.md`, citÃ© par le cahier, n'a **pas de section par ligne** pour ces 12 Ã©lÃ©ments. Les Ã©tapes ci-dessous en tiennent lieu.
-
-| Id | Ã‰lÃ©ment | Compte | Ã‰tapes | Preuve attendue | Qui |
-| --- | --- | --- | --- | --- | --- |
-| C104 | Parcours complet du joueur | M (puis M2) | EnchaÃ®ner, avec M, les parcours des groupes B et C dÃ©jÃ  verts : dÃ©couvrir, partenaires, soirÃ©es, Ã©quipes, Tour, dÃ©fis, grades, compÃ©titions. | Une capture par Ã©tape, puis un tableau rÃ©capitulatif datÃ© qui renvoie aux lignes vertes. | Agent |
-| C108 | Principes d'organisation (noms, emojis, mobile, pas de salon vide, fils et panneaux) | M | Parcourir le serveur sur mobile et sur ordinateur. Relever les salons vides, les noms sans emoji, les panneaux absents. | Captures mobile et ordinateur ; liste des Ã©carts (vide si aucun). | Agent |
-| C109 | RÃ¨glement et validation d'accÃ¨s, rÃ´le RÃ©gulars, test comme un vrai nouveau | Compte **neuf** | Rejoindre le serveur, lire le rÃ¨glement, valider par YAGPDB, vÃ©rifier que le rÃ´le RÃ©gulars est attribuÃ© et ce qui devient visible. | Captures avant et aprÃ¨s validation ; SELECT sur `Membership` du compte neuf. | Maxime (invite) puis Agent |
-| C111 | Direction artistique | M | Captures de l'icÃ´ne, de la banniÃ¨re, des panneaux et des annonces. | Planche de captures datÃ©e ; avis de Maxime. | Agent, avis de Maxime |
-| C112 | Ã‰lÃ©ments visuels harmonisÃ©s | M | MÃªmes Ã©lÃ©ments que C111, comparÃ©s entre eux (couleurs, ton). | Planche comparÃ©e ; Ã©carts listÃ©s. | Agent, avis de Maxime |
-| C115 | Plus de deux sources d'Ã©tages (Atlas arrÃªtÃ©) | A pour observer, M pour vÃ©rifier | VÃ©rifier qu'Atlas n'attribue plus d'Ã©tage : aucun message d'Atlas aprÃ¨s une activitÃ© de M. Atlas est Ã  expulser ([PERMISSIONS_BOTS.md](PERMISSIONS_BOTS.md)). | Capture de la liste des membres et bots (Atlas absent) et du salon d'activitÃ©. | Maxime |
-| C118 | YAGPDB : validation et sÃ©lection de rÃ´les prÃ©servÃ©es | Compte neuf, M | Valider le rÃ¨glement (C109), puis choisir un rÃ´le hors jeu par YAGPDB ([D2](DECISIONS_PRODUIT_20261126.md) : rÃ´les hors jeux = YAGPDB). | Captures du message YAGPDB et du rÃ´le obtenu. | Agent |
-| C120 | Ticket Tool rÃ©parÃ© et rÃ©utilisÃ© | M | Ouvrir un ticket depuis le panneau d'assistance, vÃ©rifier qu'il est privÃ©, puis le fermer. | Captures du panneau, du ticket privÃ© et de sa fermeture. | Agent (le staff ferme) |
-| C121 | Appy conserve son rÃ´le dans les candidatures | M | Ouvrir une candidature Appy, vÃ©rifier qu'elle arrive au staff. | Capture de la candidature reÃ§ue cÃ´tÃ© staff. | Agent puis Maxime |
-| C123 | Anti-raid, anti-spam, contrÃ´le des bots et applications | A | Relever les rÃ©glages AutoMod, la vÃ©rification, la liste des bots et leurs permissions. | Captures datÃ©es des rÃ©glages ; liste des bots. | Maxime |
-| C125 | Exigences gÃ©nÃ©rales (testable, documentÃ©, mobile, sans effet sur les autres communautÃ©s) | M | VÃ©rifier sur mobile 3 pages clÃ©s et qu'aucune donnÃ©e d'une autre communautÃ© n'apparaÃ®t. | Captures mobiles ; SELECT montrant 2 communautÃ©s distinctes et l'absence de fuite. | Agent |
-| C127 | DÃ©veloppement communautaire (soirÃ©es hebdomadaires, crÃ©ateurs, partenariats, rÃ©seaux) | â€” | Constater les soirÃ©es hebdomadaires rÃ©elles, le programme crÃ©ateurs et les partenariats. | Liste datÃ©e des actions menÃ©es ; captures. | Maxime |
-
-### A2. Partiel cÃ´tÃ© Discord (6) : procÃ©dures existantes
-
-| Id | PrÃ©requis | Compte | Ã‰tapes | Preuve attendue | Qui |
-| --- | --- | --- | --- | --- | --- |
-| C005 | Aucun | M | [PROCEDURES_PREUVES.md Â§ C005](PROCEDURES_PREUVES.md) | Capture datÃ©e des sept espaces vus par M. | Agent |
-| C011 | Aucun | A | [Â§ C011](PROCEDURES_PREUVES.md) : tableau des rÃ´les par famille. | Capture datÃ©e de la liste des rÃ´les. | Maxime |
-| C053 | `SESSION_VISIBILITY_ENABLED` est dÃ©jÃ  allumÃ© ; `DISCORD_TEAM_SPACES_ENABLED` (lot G) est **Ã©teint** | M, M2 | [Â§ C053](PROCEDURES_PREUVES.md). Le vocal d'Ã©quipe exige le lot G et #642 (D5, permissions par membre). | Captures des vocaux visibles par M et invisibles pour un non-membre. | Agent aprÃ¨s allumage |
-| C056 | Retirer Ã  High Ranker les 3 permissions de modÃ©ration vocale | A | Corriger le rÃ´le, puis revÃ©rifier ([Â§ C056](PROCEDURES_PREUVES.md)). | **DÃ©jÃ  dans le dÃ©pÃ´t** : vÃ©rification du 25/11 (Administrateur dÃ©sactivÃ© sur les 4 grades ; High Ranker garde muet, sourdine, dÃ©placer). Reste la capture aprÃ¨s correction. | Maxime |
-| C059 | Aucun | M | [Â§ C059](PROCEDURES_PREUVES.md). | **DÃ©jÃ  dans le dÃ©pÃ´t** : essai du 25/11 avec Melah (`/aide`, `/profil`, `/boost`, `/tower defi`, `/tower progression`, `/tower classement`). Reste ce que la colonne du cahier liste encore (formulaire de preuve, votes). | Agent |
-| C093 | Aucun | A (journal Vercel) | [Â§ C093](PROCEDURES_PREUVES.md). | **DÃ©jÃ  dans le dÃ©pÃ´t** : PR #613 et livraisons SENT dans Neon. Reste le journal Vercel d'une nouvelle Ã©criture. | Maxime |
-
-### A3. CodÃ©, non vÃ©rifiÃ© en rÃ©el (4)
-
-| Id | PrÃ©requis | Compte | Ã‰tapes | Preuve attendue | Qui |
-| --- | --- | --- | --- | --- | --- |
-| C003 | `NOTIFICATION_EXECUTOR_ENABLED` prÃ©sent | M | [Â§ C003](PROCEDURES_PREUVES.md) : une action GameNight, un seul message Discord, puis une interaction en retour. | **DÃ©jÃ  dans le dÃ©pÃ´t** : contrÃ´le SQL du 25/11 (groupes historiques de SEND rÃ©pÃ©tÃ©s). Reste une nouvelle action sans doublon : SELECT sur `NotificationDelivery` et capture. | Maxime |
-| D01 | `DISCORD_CONNECTIONS_SCOPE_ENABLED` (lot C), **Ã©teint** | M | [Â§ D01](PROCEDURES_PREUVES.md) : refuser puis accepter le consentement `connections`. | Captures de l'Ã©cran OAuth et des suggestions prÃ©remplies. | Agent aprÃ¨s allumage |
-| D14 | `DISCORD_REPORT_COMMAND_ENABLED` allumÃ© | M, puis A pour lire | [Â§ D14](PROCEDURES_PREUVES.md) : clic droit sur un message, Â« Signaler Â». | Capture du ticket privÃ© staff, sans aucune sanction ; SELECT sur `ModerationReport`. **Couvre aussi C057 et C088.** | Agent puis Maxime |
-| D15 | `DISCORD_BOOSTERS_ENABLED` (voir l'incohÃ©rence 2 plus bas) | Un vrai booster | [Â§ D15](PROCEDURES_PREUVES.md). | Captures du rÃ´le Â« Soutien de la Tour Â», du mur et des salons ; retrait automatique Ã  la fin du boost. **Couvre aussi C089.** | Maxime (il faut un booster rÃ©el) |
-
-### A4. AllumÃ©es, Ã  tester sans code neuf (7)
-
-| Id | PrÃ©requis | Compte | Ã‰tapes | Preuve attendue | Qui |
-| --- | --- | --- | --- | --- | --- |
-| C001 | Aucun | M (non booster) | Refaire, sans Nitro ni boost, les parcours essentiels : soirÃ©e, Ã©quipe, `/tower defi`, `/profil`. VÃ©rifier qu'aucun paiement n'est demandÃ©. | **DÃ©jÃ  dans le dÃ©pÃ´t** : Melah MEMBER, non booster, le 25/11 (`/aide`, `/profil`, `/boost`, `/tower`). Reste les autres fonctions essentielles. | Agent |
-| C029 | `COMMUNITY_HIGHLIGHTS_ENABLED` allumÃ© | M | Une fois des donnÃ©es rÃ©elles disponibles (un dÃ©fi validÃ©, un exploit saisi par un admin), ouvrir `/tower/palmares` et Profil â†’ Lore. | Capture d'un exploit affichÃ©. Un essai du 26/11 en lecture seule (#632, non fusionnÃ©e) n'a trouvÃ© que des tableaux vides. | Agent |
-| C052 | `TOWER_CHALLENGES_ENABLED`, `TEAM_RIVALRIES_ENABLED` allumÃ©s | M | Ouvrir classements, Hall of Fame et Rankers aprÃ¨s des dÃ©fis et des rivalitÃ©s rÃ©els. | Captures avec donnÃ©es. Tableaux vides le 26/11 (#632). | Agent |
-| C057 | `DISCORD_REPORT_COMMAND_ENABLED`, `TOWER_DISCORD_ANNOUNCE_ENABLED` allumÃ©s | M, M2 | DÃ©poser une preuve et un signalement avec M. VÃ©rifier que M2 ne voit ni la preuve privÃ©e, ni le ticket, ni le journal. | Captures vues par M2 (accÃ¨s refusÃ© ou contenu absent). **D14 en est une partie.** | Agent |
-| C078 | `TOWER_DISCORD_VOTES_ENABLED` allumÃ© | M2 (membre depuis â‰¥ 3 jours) | Voter âœ… ou âŒ sur une preuve de M, ouvrir le fil de la preuve, changer son vote. | Captures du compteur mis Ã  jour et du fil ; SELECT sur les votes. AnciennetÃ© appliquÃ©e : **3 jours** (code, `CLAUDE.md`, cahier). Le cahier des charges Â§27.2 B est alignÃ© sur 3 jours (incohÃ©rence 3, tranchÃ©e). | Agent |
-| C088 | `DISCORD_REPORT_COMMAND_ENABLED` allumÃ© | M | Comme D14. | MÃªme preuve que D14 (ligne en double). | Agent |
-| C089 | `DISCORD_BOOSTERS_ENABLED` = `true` en Production depuis le 24/11 (relevÃ© Vercel du 26/11) | Un vrai booster | Comme D15 : rÃ´le Â« Soutien de la Tour Â», mur, salons, retrait automatique Ã  la fin du boost. | Captures (voir D15). | Maxime (il faut un booster rÃ©el) |
-
----
-
-## Groupe B â€” 9 lignes Ã  tester aprÃ¨s le code neuf
-
-Ã€ faire dans l'ordre de fusion. Chaque parcours a besoin de **M et M2**.
-
-| Id | PrÃ©requis (PR, migration, flag) | Compte | Ã‰tapes | Preuve attendue | Qui |
-| --- | --- | --- | --- | --- | --- |
-| C030 | #641 (D8 : passation journalisÃ©e), #642 (D5 : dissolution) ; flags `TEAM_APPLICATIONS_ENABLED` et `TEAM_RECRUITERS_ENABLED` (lot E) allumÃ©s | M, M2 | M crÃ©e une Ã©quipe ; M2 la trouve, candidate ; M accepte ; M nomme M2 recruteur. | Captures de chaque Ã©tape ; SELECT sur `TeamApplication` (`status`, `decidedById`). | Agent |
-| C031 | `TEAM_RECRUITMENT_CRITERIA_ENABLED` allumÃ© | M, M2 | M renseigne objectifs, critÃ¨res et rendez-vous ; M2 les voit sur la fiche. | Capture de la fiche vue par M2, rendez-vous compris (absent le 26/11, #632). | Agent |
-| C077 | #641 ; `TEAM_RECRUITERS_ENABLED` | M, M2 | Recruteur, puis invitÃ© de tournoi. La relance Ã  48 h et l'expiration Ã  7 jours demandent d'attendre : prÃ©voir une date de contrÃ´le. | Captures ; SELECT sur `TeamApplication.status = 'EXPIRED'` aprÃ¨s 7 jours. | Agent (relance : contrÃ´le diffÃ©rÃ©) |
-| C043 | #641 (migration `20261126210000_tournament_team_round_robin`, **Ã  appliquer avec l'accord de Maxime**) ; `TOURNAMENT_SCORES_ENABLED` allumÃ© | M, M2 | CrÃ©er un tournoi individuel, s'inscrire Ã  deux, dÃ©clarer un rÃ©sultat, voir le classement et l'annonce. | Captures ; SELECT sur `Tournament.status = 'DONE'`. | Agent |
-| C081 | #641 ; `TOURNAMENT_TEAMS_ENABLED` allumÃ© | M et M2 capitaines | Tournoi de 2 Ã©quipes : les deux capitaines confirment. Puis un dÃ©saccord, tranchÃ© par l'arbitre **aprÃ¨s 24 h** (D6). La poule Ã  5 Ã©quipes demande 5 capitaines (voir le harnais dans #400). | Captures de la confirmation et du refus `too_early` avant 24 h ; SELECT sur `TournamentMatchReport`. | Agent (arbitre = Maxime) |
-| C080 | D7 (pas de PR identifiÃ©e au 26/11) ; `SESSION_VISIBILITY_ENABLED` allumÃ© | M, M2 | CrÃ©er une soirÃ©e publique, une sur candidature et une privÃ©e ; M2 candidate et passe par la liste d'attente ; espace temporaire crÃ©Ã© 30 min avant, supprimÃ© Ã  la fin. | Captures ; SELECT sur `SessionDiscordSpace` et sur la suppression. | Agent |
-| C083 | #641 (90 jours renouvelables) ; `PROJECT_ORGANIZER_ENABLED` allumÃ© | M, M2 | M crÃ©e un projet ; M2 entre ; M valide ; vÃ©rifier les deux fils (annonce publique et fil privÃ©, D9) ; clÃ´ture, puis archivage 7 jours aprÃ¨s. | Captures des deux fils ; SELECT sur `Project.status`. | Agent (archivage : contrÃ´le diffÃ©rÃ©) |
-| C084 | #636 (tests seulement), #634 fusionnÃ©e ; `TEAM_RIVALRIES_ENABLED` allumÃ© | M, M2 | Â« Jouer maintenant Â» : M2 clique Â« IntÃ©ressÃ© Â» puis Â« Rejoindre Â», expiration Ã  2 h. RivalitÃ© : M dÃ©fie l'Ã©quipe de M2, M2 accepte, les deux dÃ©clarent le rÃ©sultat. | Captures ; une notification in-app au crÃ©ateur. | Agent |
-| C006 | #635 fusionnÃ©e, **publication du panneau seulement avec l'accord de Maxime** (D11) ; #640 (Ã©cran de premiÃ¨re connexion) | Compte neuf | AprÃ¨s validation YAGPDB (C109), cliquer les trois boutons du panneau. | Captures des trois rÃ©ponses privÃ©es ; aucun rÃ´le changÃ©. | Maxime (publication) puis Agent |
-
----
-
-## Groupe C â€” 23 lignes Ã©teintes, par lot d'allumage
-
-Chaque lot s'allume entier, avec l'accord de Maxime ([ALLUMAGES.md](ALLUMAGES.md)), puis chaque ligne est testÃ©e par M (et M2 si indiquÃ©).
-
-| Lot | Id | Flag(s) | Compte | Ã‰tapes | Preuve attendue | Qui |
-| --- | --- | --- | --- | --- | --- | --- |
-| **A** | C091 | `ADMIN_DASHBOARD_V2_ENABLED` | A seulement | Ouvrir `/admin/tableau-de-bord` ; M obtient une 404. | Capture A et 404 de M. **Pour le contrÃ´le d'accÃ¨s, seule la vue de M compte.** | Maxime puis Agent |
-| **B** | C008 | `TOWER_IRREGULAR_GRANTS_ENABLED` | A (attribue), M (voit) | Attribuer Irregular Ã  M ; M le voit, sans aucun droit nouveau. | Captures ; SELECT sur le journal d'attribution. | Maxime puis Agent |
-| **B** | C017 | `TOWER_TEAM_DAILY_ENABLED` + cron 18 h | M capitaine | AprÃ¨s le cron de 18 h, l'Ã©quipe reÃ§oit son dÃ©fi. | SELECT : attribution datÃ©e aprÃ¨s 18 h et lien avec le cron (deux attributions des 24 et 25/11, d'origine non prouvÃ©e). | Maxime (cron) puis Agent |
-| **B** | C020 | `TOWER_CHALLENGE_REPLACEMENT_ENABLED` | M | DÃ©fi sur un jeu non possÃ©dÃ© : bouton Â« Remplacer Â», une seule fois. | Capture ; SELECT sur `TowerChallengeReplacement`. | Agent |
-| **B** | C021 | `TOWER_CHALLENGE_PROPOSALS_ENABLED` | M Ranker (â‰¥ 30 Ã©tages) | Proposer un dÃ©fi ; l'admin le valide. | Captures ; SELECT sur le statut de la proposition. **Il faut un vrai Ranker.** | Agent puis Maxime |
-| **B** | C079 | `TOWER_STEAM_AUTOVALIDATE_ENABLED` | M (Steam public) | DÃ©fi mesurable Steam, validation automatique ; Â« Signaler un doute Â» par M2. | Captures ; SELECT sur `measureValue`. | Agent |
-| **B + C** | C050 | `TOWER_SEASON_AWARDS_ENABLED`, `PROFILE_CUSTOMIZATION_ENABLED` | M | RÃ©compenses visibles sur le profil aprÃ¨s une clÃ´ture de saison. | Captures. **NÃ©cessite une fin de saison rÃ©elle.** | Agent (date diffÃ©rÃ©e) |
-| **C** | C035 | `GAME_LEVELS_ENABLED`, `GAME_LEVELS_MATCHMAKING_ENABLED` (**Ã©tat Ã  confirmer par ChatGPT Work dans Vercel**) | M, M2 | M2 dÃ©clare un niveau de jeu et publie une annonce ; M filtre par jeu et par niveau. | Capture du rÃ©sultat filtrÃ©. **IncohÃ©rence 1** : le cahier les dit Ã©teints, mais #632 les a vus allumÃ©s en Production le 26/11. | Agent |
-| **C** | C036 | `PLAYER_MATCHING_ENABLED` | M | Renseigner langue, prÃ©fÃ©rences et habitudes. | Capture ; SELECT sur le profil de jeu de M. | Agent |
-| **C** | C037 | `WHO_PLAYS_TONIGHT_ENABLED` | M, M2 | M2 se dÃ©clare dispo ; M le voit sur `/ce-soir`. | Capture vue par M. | Agent |
-| **C** | C038 | `PLAYER_MATCHING_ENABLED` | M, M2 | Les partenaires compatibles de M incluent M2. | Capture. | Agent |
-| **C** | C039 | `PROFILE_VISIBILITY_ENABLED`, `PLAYER_MATCHING_ENABLED` | M, M2 | M2 masque son profil ; M ne le trouve plus (annonces comprises : correctif dans #637). | Capture vue par M. | Agent |
-| **C** | C040 | `GAME_PLATFORMS_ENABLED`, `GAME_LEVELS_ENABLED` | M | Remplir le profil (jeux, plateformes, niveaux, dispos). | Capture du profil vu par M2. | Agent |
-| **C** | C086 | `DISCORD_CONNECTIONS_SCOPE_ENABLED`, `GAME_PLATFORMS_ENABLED` | M | Comme D01, puis crossplay sur une fiche jeu. | Captures. **Recoupe D01.** | Agent |
-| **C** | C087 | `GAME_LEVELS_ENABLED`, `GAME_LEVELS_MATCHMAKING_ENABLED` | M, M2 | Niveau de jeu et matchmaking (tournoi Ã©quipes alÃ©atoires). | Captures. **Recoupe C035.** | Agent |
-| **C** | C090 | `PROFILE_CUSTOMIZATION_ENABLED` | M, M2 | M achÃ¨te un Ã©lÃ©ment dÃ©coratif ; M2 le voit ; `prefers-reduced-motion` coupe les effets. | Captures. | Agent |
-| **C** | C128 | `POTES_FRIENDS_ENABLED` (**Ã©tat Ã  confirmer par ChatGPT Work dans Vercel**) | M, M2 | M cherche M2 par pseudo, envoie une demande, M2 accepte ; M2 voit une soirÃ©e publique de M (rejoindre) et une soirÃ©e privÃ©e (sur invitation). | Captures. **IncohÃ©rence 1** : #632 a observÃ© l'interface Potes active le 26/11 alors que le cahier dit Â« Ã©teint Â». | Agent |
-| **C** | C076 | `NOTIFICATION_CENTER_ENABLED` | M | RÃ©gler ses prÃ©fÃ©rences ; s'abonner Ã  un jeu. | Capture de `/notifications`. | Agent |
-| **C** | C044 | `WHO_PLAYS_TONIGHT_ENABLED`, `NOTIFICATION_CENTER_ENABLED` | M | Parcourir Â« Ce soir Â», une fiche de soirÃ©e, la roulette, le calendrier et `/notifications`. | Captures. **IncohÃ©rence 4** : le cahier range `NOTIFICATION_CENTER_ENABLED` au lot G, `ALLUMAGES.md` au lot C. | Agent |
-| **C** | C085 | `NOTIFICATION_CENTER_ENABLED`, `NOTIFICATION_EXECUTOR_ENABLED` | M, M2 | Un MP ciblÃ© Ã  M2, un message de fil, une annonce. Aucun @everyone (D10). | Captures ; SELECT sur `NotificationDelivery`. **Recoupe D09.** | Agent |
-| **C** | D09 | `NOTIFICATION_CENTER_ENABLED`, `SESSION_VISIBILITY_ENABLED` | M (crÃ©ateur), M2 (abonnÃ© au jeu) | SoirÃ©e publique d'un seul jeu : le rÃ´le du jeu est mentionnÃ© ; M n'est jamais mentionnÃ©. | Capture du message ; liste des mentions autorisÃ©es. | Agent |
-| **G** | C007 | `DISCORD_ROLE_COMMAND_ENABLED` | M | `/role` : choisir un rÃ´le de jeu (D2 : rÃ´les de jeu = GameNight). | Capture privÃ©e et rÃ´le obtenu. | Agent |
-| **G** | C082 | `DISCORD_ROLE_AUTOCREATE_ENABLED` | M | `/role` sur un jeu sans rÃ´le : crÃ©ation par la file, une seule fois par semaine. | Captures ; SELECT sur `DiscordRoleRequest`. **D2 : l'alerte Ã  200 rÃ´les sur 250 et le blocage Ã  200 sont Ã  vÃ©rifier.** | Agent |
-
----
-
-## Lignes couvertes autrement, et incohÃ©rences Ã  faire trancher
-
-**Doublons** : un seul test peut alimenter plusieurs lignes, mais chaque ligne garde sa propre preuve.
-- **D14 = C088**, et une partie de **C057** : commande Â« Signaler Â».
-- **D15 = C089** : boosters.
-- **D01 âŠ‚ C086** : consentement `connections`.
-- **C035 â‰ˆ C087** : niveau de jeu et matchmaking.
-- **C085 â‰ˆ D09 â‰ˆ C076** : notifications.
-
-**IncohÃ©rences**
-1. **Ã‰tats de flags pÃ©rimÃ©s** : C035 et C128 Ã©taient dits Â« Ã©teint Â» ; #632 (non fusionnÃ©e) a observÃ© le 26/11 les niveaux de jeu et Potes **actifs** en Production. Le relevÃ© Vercel du 26/11 est **incomplet** (liste tronquÃ©e : ces flags n'y figurent pas). **Texte corrigÃ© dans le cahier** : Â« Ã©tat Ã  revÃ©rifier dans Vercel Â». **Ã€ confirmer par ChatGPT Work dans Vercel** ; ces deux lignes restent dans le groupe C tant que ce n'est pas fait.
-2. **`DISCORD_BOOSTERS_ENABLED`** : Â« allumÃ© Â» en C001, Â« Ã©teint Â» en C089. Le relevÃ© Vercel du 26/11 donne `true` en Production (mis Ã  jour le 24/11). **Statut de C089 corrigÃ©** en Â« CodÃ©, allumÃ©, non vÃ©rifiÃ© en rÃ©el Â» (dÃ©cision de Maxime du 26/11 : correction factuelle, pas un passage au vert) ; C089 passe du groupe C au groupe A4.
-3. **C078, anciennetÃ© des votants** (tranchÃ© par Maxime le 26/11 : **3 jours**, dÃ©cision du 23/11 ; Â§27.2 B du cahier des charges alignÃ©) : le cahier, le code (`TOWER_VOTER_MIN_TENURE_MS`), `CLAUDE.md` et `TOWER_VOTES_DISCORD.md` disent **3 jours**. Seul le cahier des charges (Â§27.2 B, dÃ©cisions du 18/11) dit **7 jours**. Le passage Ã  3 jours vient d'une dÃ©cision de Maxime du 23/11 (constat 1.4, commit `91be15bc`). `DECISIONS_TOWER.md` du 17/11 ne fixe aucune anciennetÃ©. **Maxime a tranchÃ© le 26/11 : 3 jours.**
-4. **`NOTIFICATION_CENTER_ENABLED`** : lot G dans le cahier (C044, C085, D09), lot C dans `ALLUMAGES.md`. **Texte du cahier corrigÃ©** : lot C.
-5. **C042** (Â« âœ… Fait Â», hors des 61) : #632 en conteste le contenu ICS. Ã€ regarder avant le lancement, mÃªme si la ligne n'est pas comptÃ©e ici.
-6. **Lignes sans code** : `PLAN_TESTS.md` Ã©tait citÃ© comme Â« procÃ©dure Â», mais n'a aucune section par ligne. **Texte des 12 lignes corrigÃ© dans le cahier** : la procÃ©dure renvoie au groupe A1 ci-dessus.
-
-## Ce que ce document ne prouve pas
-
-Rien n'est testÃ© ici : c'est un plan. Les preuves dÃ©jÃ  prÃ©sentes dans le dÃ©pÃ´t (C001, C003, C056, C059, C093, C017) sont citÃ©es, pas recrÃ©Ã©es. Il manque Ã  ce jour un **second compte non-admin (M2)** pour presque tout le groupe B et la moitiÃ© du groupe C.
+YªçŠx-®éÜj×¢ëiºÚ+Š§j[h‘éÜ¢éíï;N‹Z–‹­¦ëeŠw¬ÔŒI••ÑÑ”‘•Ì€ØÄ±¥¹•Ì…Ñ¥Ù•Ì‘Ô…¡¥•È4(4)I•±•Û¤‘Ô€ÈØ¼ÄÄ¼ÈÀÈØÍÕÈµ…¥¹€€Ñ••ŒÀå˜å€¸•ÑÑ”AH½ÉÉ¥”…ÕÍÍ¤°‘…¹Ì±”…¡¥•È°±”€¨©Ñ•áÑ”¨¨‘”ÅÕ…ÑÉ”¥¹½£¥É•¹•Ì°»
+ÀÄ°€È°€Ğ•Ğ€Ø‘”±„‘•É¹§¡É”Í•Ñ¥½¸€¡±„»
+ÀÌ°ÑÉ…¹£¥”Á…È5…á¥µ”°…±¥¹”±”…¡¥•È‘•Ì¡…É•ÌÍÕÈ€Ì©½ÕÉÌ¤°•Ğ±”€¨©ÍÑ…ÑÕĞ‘”Ààä¨¨€¡½ÉÉ•Ñ¥½¸™…ÑÕ•±±”€è™±…œ…±±Õ·¤•¸AÉ½‘ÕÑ¥½¸‘•ÁÕ¥Ì±”€ÈĞ¼ÄÄ¤¸€¨©ÕÕ¸…ÕÑÉ”ÍÑ…ÑÕĞ‘”m!%I}%90¹µ‘t¡!%I}%90¹µ¤»Še•ÍĞ¡…¹Ÿ¤°…ÕÕ¹”±¥¹”¹”Á…ÍÍ”…ÔÙ•ÉĞ¨¨€¡m“¥¥Í¥½¸Åt¡%M%=9M}AI=U%Q|ÈÀÈØÄÄÈØ¹µ¤¤¸U¹”±¥¹”¹”‘•Ù¥•¹ĞÙ•ÉÑ”ÅÔ…ÁË¡ÌÕ¸€¨©Ñ•ÍĞË¥•°™…¥ĞÁ…ÈÕ¸½µÁÑ”¹½¸µ…‘µ¥¸°‘…Ó¤•Ğ½¹Í¥»¤¨¨‘…¹Ì±”…¡¥•È°…Ù•ŒÍ„ÁÉ•ÕÙ”¸U¸™±…œ…±±Õ·¤°Õ¹”Á…”…™™¥£¥”½ÔÕ¸Ñ•ÍĞ…ÕÑ½µ…Ñ¥Ï¤¹”ÍÕ™™¥Í•¹ĞÁ…Ì¸4(4(¨©C¥É¥·¡ÑÉ”¨¨€è±•Ì€ÄĞà±¥¹•Ì‘Ô…¡¥•È°µ½¥¹Ì±•Ì€ÜÜƒ
+¬ƒŠr…¥Ğƒ
+ì•Ğ±•Ì€äÉ•Á½ÉÓ¥•Ì€¡ÀäÔƒ€ÄÀÌ¤°Í½¥Ğ€ØÄ±¥¹•Ì…Ñ¥Ù•Ì€è€ÄØƒ
+¬½“¤°…±±Õ·¤°¹½¸Û¥É¥™§¤ƒ
+ì°€Ğƒ
+¬½“¤°¹½¸Û¥É¥™§¤ƒ
+ì°€Øƒ
+¬Á…ÉÑ¥•°ÑÓ¤¥Í½Éƒ
+ì°€ÈÌƒ
+¬½“¤°ƒ¥Ñ•¥¹Ğƒ
+ì•Ğ€ÄÈƒ
+¬Í…¹Ì½‘”ƒ
+ì€¡Ààä½ÉÉ¥Ÿ¥”±”€ÈØ¼ÄÄ€è™±…œ…±±Õ·¤•¸AÉ½‘ÕÑ¥½¸¤¸4(4(ŒŒ½¹Ù•¹Ñ¥½¹Ì4(4(¨©½µÁÑ•Ì¨¨4(´€¨©4¨¨€èµ•µ‰É”¹½¸µ…‘µ¥¸€¡5•±… °ËÑ±”55	H•Ğ¹½¸‰½½ÍÑ•È‘…¹Ì9•½¸±”€ÈÔ¼ÄÄ¤¸4(´€¨©4È¨¨€èÍ•½¹µ•µ‰É”¹½¸µ…‘µ¥¸°Á½ÕÈƒ©ÑÉ”°…ÕÑÉ”…Á¥Ñ…¥¹”°°…µ¤½Ô°¥¹Ù¥Ó¤¸€¨©%°¸•á¥ÍÑ”Á…Ì•¹½É”¨¨€èƒ€Ë¥•È°½Ôƒ€‘•µ…¹‘•Èƒ€Õ¸ÙÉ…¤µ•µ‰É”¸4(´€¨©¨¨€è…‘µ¥¹¥ÍÑÉ…Ñ•ÕÈ€¡€„…i•åÉ½€¤¸%°Í•ÉĞÍ•Õ±•µ•¹Ğƒ€ÁË¥Á…É•È½Ôƒ€½‰Í•ÉÙ•È°€¨©©…µ…¥Ìƒ€ÁÉ½ÕÙ•È¨¨Õ¹”±¥¹”¸4(4(¨©EÕ¤™…¥Ğ±”Ñ•ÍĞ¨¨4(´€¨©•¹Ğ¨¨€èÕ¸…•¹Ğ…Ù•Œ¡É½µ”°½¹¹•Ó¤½µµ”4½Ô4È‘…¹Ì…µ•9¥¡Ğ•Ğ‘…¹Ì¥Í½É¸4(´€¨©5…á¥µ”¨¨€è5…á¥µ”Í•Õ°°Á½ÕÈ”ÅÕ¤‘•µ…¹‘”Í•Ì‘É½¥ÑÌ‘”ÁÉ½ÁÉ§¥Ñ…¥É”ÍÕÈ¥Í½É°Y•É•°½Ô9•½¸°½ÔÍ½¸…½É¸4(4(¨©AÉ•ÕÙ”¨¨4(´…ÁÑÕÉ”‘…Ó¥”°…Ù•Œ°¡•ÕÉ”‘”A…É¥Ì•Ğ±”½µÁÑ”Ù¥Í¥‰±”¸4(´UI0‘”±„Á…”¸4(´A½ÕÈ±„‰…Í”°Õ¹”É•Å×©Ñ”€¨©M1P•¸±•ÑÕÉ”Í•Õ±”¨¨€¡É•Å×©Ñ•ÌÑåÁ•Ì‘…¹ÌmAI=UIM}AIUYL¹µ‘t¡AI=UIM}AIUYL¹µ¤ƒ
+œƒ
+¬I•Å×©Ñ•ÌME0‘”±•ÑÕÉ”Í•Õ±”ƒ
+ì¤¸4(´1”Ë¥ÍÕ±Ñ…Ğ•ÍĞ¥¹ÍÉ¥Ğ‘…¹Ì±„½±½¹¹”ƒ
+¬AÉ•ÕÙ”…ÑÑ•¹‘Õ”ƒ
+ì‘Ô…¡¥•È°€¨©Í…¹Ì¡…¹•È±”ÍÑ…ÑÕĞ¨¨Ñ…¹ĞÅÕ”5…á¥µ”¸„Á…ÌÙ…±¥“¤¸4(4(¨©±±Õµ…”¨¨€èÁ…È±½Ğ°Í•±½¸m11U5L¹µ‘t¡11U5L¹µ¤€¡ƒ€ ¤°…Ù•Œ°…½É‘”5…á¥µ”°Õ¸±½Ğƒ€±„™½¥Ì¸ÕÕ¸™±…œ¸•ÍĞ…±±Õ·¤Á…È”‘½Õµ•¹Ğ¸4(4(´´´4(4(ŒŒÉ½ÕÁ”ƒŠP€Èä±¥¹•ÌÍÑ…‰±•Ì€¡É¥•¸ƒ€½‘•È¤4(4(ŒŒŒÄ¸M…¹Ì½‘”€ ÄÈ¤€è…Ñ¥½¹Ì¡Õµ…¥¹•Ì‘…¹Ì¥Í½É½ÔÍÕÈ±”Í¥Ñ”4(4)A19}QMQL¹µ‘€°¥Ó¤Á…È±”…¡¥•È°¸„€¨©Á…Ì‘”Í•Ñ¥½¸Á…È±¥¹”¨¨Á½ÕÈ•Ì€ÄÈƒ¥³¥µ•¹ÑÌ¸1•Ìƒ¥Ñ…Á•Ì¤µ‘•ÍÍ½ÕÌ•¸Ñ¥•¹¹•¹Ğ±¥•Ô¸4(4)ğ%ğƒ%³¥µ•¹Ğğ½µÁÑ”ğƒ%Ñ…Á•ÌğAÉ•ÕÙ”…ÑÑ•¹‘Õ”ğEÕ¤ğ4)ğ€´´´ğ€´´´ğ€´´´ğ€´´´ğ€´´´ğ€´´´ğ4)ğÄÀĞğA…É½ÕÉÌ½µÁ±•Ğ‘Ô©½Õ•ÕÈğ4€¡ÁÕ¥Ì4È¤ğ¹¡‡¹¹•È°…Ù•Œ4°±•ÌÁ…É½ÕÉÌ‘•ÌÉ½ÕÁ•Ì•Ğ“¥«€Ù•ÉÑÌ€è“¥½ÕÙÉ¥È°Á…ÉÑ•¹…¥É•Ì°Í½¥Ë¥•Ì°ƒ¥ÅÕ¥Á•Ì°Q½ÕÈ°“¥™¥Ì°É…‘•Ì°½µÃ¥Ñ¥Ñ¥½¹Ì¸ğU¹”…ÁÑÕÉ”Á…Èƒ¥Ñ…Á”°ÁÕ¥ÌÕ¸Ñ…‰±•…ÔË¥…Á¥ÑÕ±…Ñ¥˜‘…Ó¤ÅÕ¤É•¹Ù½¥”…Õà±¥¹•ÌÙ•ÉÑ•Ì¸ğ•¹Ğğ4)ğÄÀàğAÉ¥¹¥Á•Ì½É…¹¥Í…Ñ¥½¸€¡¹½µÌ°•µ½©¥Ì°µ½‰¥±”°Á…Ì‘”Í…±½¸Ù¥‘”°™¥±Ì•ĞÁ…¹¹•…Õà¤ğ4ğA…É½ÕÉ¥È±”Í•ÉÙ•ÕÈÍÕÈµ½‰¥±”•ĞÍÕÈ½É‘¥¹…Ñ•ÕÈ¸I•±•Ù•È±•ÌÍ…±½¹ÌÙ¥‘•Ì°±•Ì¹½µÌÍ…¹Ì•µ½©¤°±•ÌÁ…¹¹•…Õà…‰Í•¹ÑÌ¸ğ…ÁÑÕÉ•Ìµ½‰¥±”•Ğ½É‘¥¹…Ñ•ÕÈ€ì±¥ÍÑ”‘•Ìƒ¥…ÉÑÌ€¡Ù¥‘”Í¤…ÕÕ¸¤¸ğ•¹Ğğ4)ğÄÀäğK¡±•µ•¹Ğ•ĞÙ…±¥‘…Ñ¥½¸…¡Ì°ËÑ±”K¥Õ±…ÉÌ°Ñ•ÍĞ½µµ”Õ¸ÙÉ…¤¹½ÕÙ•…Ôğ½µÁÑ”€¨©¹•Õ˜¨¨ğI•©½¥¹‘É”±”Í•ÉÙ•ÕÈ°±¥É”±”Ë¡±•µ•¹Ğ°Ù…±¥‘•ÈÁ…ÈeA°Û¥É¥™¥•ÈÅÕ”±”ËÑ±”K¥Õ±…ÉÌ•ÍĞ…ÑÑÉ¥‰×¤•Ğ”ÅÕ¤‘•Ù¥•¹ĞÙ¥Í¥‰±”¸ğ…ÁÑÕÉ•Ì…Ù…¹Ğ•Ğ…ÁË¡ÌÙ…±¥‘…Ñ¥½¸€ìM1PÍÕÈ5•µ‰•ÉÍ¡¥Á€‘Ô½µÁÑ”¹•Õ˜¸ğ5…á¥µ”€¡¥¹Ù¥Ñ”¤ÁÕ¥Ì•¹Ğğ4)ğÄÄÄğ¥É•Ñ¥½¸…ÉÑ¥ÍÑ¥ÅÕ”ğ4ğ…ÁÑÕÉ•Ì‘”°¥Ñ¹”°‘”±„‰…¹¹§¡É”°‘•ÌÁ…¹¹•…Õà•Ğ‘•Ì…¹¹½¹•Ì¸ğA±…¹¡”‘”…ÁÑÕÉ•Ì‘…Ó¥”€ì…Ù¥Ì‘”5…á¥µ”¸ğ•¹Ğ°…Ù¥Ì‘”5…á¥µ”ğ4)ğÄÄÈğƒ%³¥µ•¹ÑÌÙ¥ÍÕ•±Ì¡…Éµ½¹¥Ï¥Ìğ4ğ7©µ•Ìƒ¥³¥µ•¹ÑÌÅÕ”ÄÄÄ°½µÁ…Ë¥Ì•¹ÑÉ”•Õà€¡½Õ±•ÕÉÌ°Ñ½¸¤¸ğA±…¹¡”½µÁ…Ë¥”€ìƒ¥…ÉÑÌ±¥ÍÓ¥Ì¸ğ•¹Ğ°…Ù¥Ì‘”5…á¥µ”ğ4)ğÄÄÔğA±ÕÌ‘”‘•ÕàÍ½ÕÉ•ÌŸ¥Ñ…•Ì€¡Ñ±…Ì…ÉË©Ó¤¤ğÁ½ÕÈ½‰Í•ÉÙ•È°4Á½ÕÈÛ¥É¥™¥•Èğ[¥É¥™¥•ÈÅÔÑ±…Ì¸…ÑÑÉ¥‰Õ”Á±ÕÌŸ¥Ñ…”€è…ÕÕ¸µ•ÍÍ…”Ñ±…Ì…ÁË¡ÌÕ¹”…Ñ¥Ù¥Ó¤‘”4¸Ñ±…Ì•ÍĞƒ€•áÁÕ±Í•È€¡mAI5%MM%=9M}	=QL¹µ‘t¡AI5%MM%=9M}	=QL¹µ¤¤¸ğ…ÁÑÕÉ”‘”±„±¥ÍÑ”‘•Ìµ•µ‰É•Ì•Ğ‰½ÑÌ€¡Ñ±…Ì…‰Í•¹Ğ¤•Ğ‘ÔÍ…±½¸…Ñ¥Ù¥Ó¤¸ğ5…á¥µ”ğ4)ğÄÄàğeA€èÙ…±¥‘…Ñ¥½¸•ĞÏ¥±•Ñ¥½¸‘”ËÑ±•ÌÁË¥Í•ÉÛ¥•Ìğ½µÁÑ”¹•Õ˜°4ğY…±¥‘•È±”Ë¡±•µ•¹Ğ€¡ÄÀä¤°ÁÕ¥Ì¡½¥Í¥ÈÕ¸ËÑ±”¡½ÉÌ©•ÔÁ…ÈeA€¡mÉt¡%M'4îÚ$z{-®éÜj×çBL:–6÷&F–b²Ó"ÆRfö—B²&VfW'2×&VGV6VBÖÖ÷F–öæ6÷WRÆW2VffWG2âÂ6GW&W2âÂvVçBÀĞ§Â¢¤2¢¢Â3#‚ÂõDU5ôe$”TäE5ôTä$ÄTF‚¢¬:—FB:6öæf—&ÖW""6†DuBv÷&²Fç2fW&6VÂ¢¢’ÂÒÂÓ"ÂÒ6†W&6†RÓ""6WVFòÂVçfö–RVæRFVÖæFRÂÓ"66WFR²Ó"fö—BVæR6ö—,:–RV&Æ—VRFRÒ‡&V¦ö–æG&R’WBVæR6ö—,:–R&—l:–R‡7W"–çf—FF–öâ’âÂ6GW&W2â¢¤–æ6öŒ:—&Væ6R¢¢¢3c3"ö'6W'l:’Âv–çFW&f6R÷FW27F—fRÆR#bóÆ÷'2VRÆR6†–W"F—B*²:—FV–çB+²âÂvVçBÀĞ§Â¢¤2¢¢Â3sbÂäõD”d”4D”ôåô4TåDU%ôTä$ÄTFÂÒÂ,:–vÆW"6W2,:–l:—&Væ6W2²2v&öææW":Vâ¦WRâÂ6GW&RFRöæ÷F–f–6F–öç6âÂvVçBÀĞ§Â¢¤2¢¢Â3CBÂt„õõÄ•5õDôä”t…EôTä$ÄTFÂäõD”d”4D”ôåô4TåDU%ôTä$ÄTFÂÒÂ&6÷W&—"*²6R6ö—"+²ÂVæRf–6†RFR6ö—,:–RÂÆ&÷VÆWGFRÂÆR6ÆVæG&–W"WBöæ÷F–f–6F–öç6âÂ6GW&W2â¢¤–æ6öŒ:—&Væ6RB¢¢¢ÆR6†–W"&ævRäõD”d”4D”ôåô4TåDU%ôTä$ÄTFRÆ÷BrÂÄÅTÔtU2æÖFRÆ÷B2âÂvVçBÀĞ§Â¢¤2¢¢Â3ƒRÂäõD”d”4D”ôåô4TåDU%ôTä$ÄTFÂäõD”d”4D”ôåôU„T5UDõ%ôTä$ÄTFÂÒÂÓ"ÂVâÕ6–&Ì:’:Ó"ÂVâÖW76vRFRf–ÂÂVæRææöæ6RâV7VâWfW'–öæR„C’âÂ6GW&W2²4TÄT5B7W"æ÷F–f–6F–öäFVÆ—fW'–â¢¥&V6÷WRC’â¢¢ÂvVçBÀĞ§Â¢¤2¢¢ÂC’ÂäõD”d”4D”ôåô4TåDU%ôTä$ÄTFÂ4U54”ôåõd•4”$”Ä•E•ôTä$ÄTFÂÒ†7,:–FWW"’ÂÓ"†&öæì:’R¦WR’Â6ö—,:–RV&Æ—VRBwVâ6WVÂ¦WR¢ÆR,;FÆRGR¦WRW7BÖVçF–öæì:’²ÒâvW7B¦Ö—2ÖVçF–öæì:’âÂ6GW&RGRÖW76vR²Æ—7FRFW2ÖVçF–öç2WF÷&—<:–W2âÂvVçBÀĞ§Â¢¤r¢¢Â3rÂD•44õ$Eõ$ôÄUô4ôÔÔäEôTä$ÄTFÂÒÂ÷&öÆV¢6†ö—6—"Vâ,;FÆRFR¦WR„C"¢,;FÆW2FR¦WRÒvÖTæ–v‡B’âÂ6GW&R&—l:–RWB,;FÆRö'FVçRâÂvVçBÀĞ§Â¢¤r¢¢Â3ƒ"ÂD•44õ$Eõ$ôÄUôUDô5$TDUôTä$ÄTFÂÒÂ÷&öÆV7W"Vâ¦WR6ç2,;FÆR¢7,:–F–öâ"Æf–ÆRÂVæR6WVÆRfö—2"6VÖ–æRâÂ6GW&W2²4TÄT5B7W"F—66÷&E&öÆU&WVW7Fâ¢¤C"¢ÂvÆW'FR:#,;FÆW27W"#SWBÆR&Æö6vR:#6öçB:l:—&–f–W"â¢¢ÂvVçBÀĞ Ğ¢ÒÒĞĞ Ğ¢22Æ–væW26÷WfW'FW2WG&VÖVçBÂWB–æ6öŒ:—&Væ6W2:f—&RG&æ6†W Ğ Ğ¢¢¤F÷V&Æöç2¢¢¢Vâ6WVÂFW7BWWBÆ–ÖVçFW"ÇW6–WW'2Æ–væW2ÂÖ—26†VRÆ–væRv&FR6&÷&R&WWfRàĞ¢Ò¢¤CBÒ3ƒ‚¢¢ÂWBVæR'F–RFR¢¤3Sr¢¢¢6öÖÖæFR*²6–væÆW"+²àĞ¢Ò¢¤CRÒ3ƒ’¢¢¢&ö÷7FW'2àĞ¢Ò¢¤C(¨"3ƒb¢¢¢6öç6VçFVÖVçB6öææV7F–öç6àĞ¢Ò¢¤33R(˜‚3ƒr¢¢¢æ—fVRFR¦WRWBÖF6†Ö¶–æràĞ¢Ò¢¤3ƒR(˜‚C’(˜‚3sb¢¢¢æ÷F–f–6F–öç2àĞ Ğ¢¢¤–æ6öŒ:—&Væ6W2¢ Ğ£â¢¬8—FG2FRfÆw2:—&–Ü:—2¢¢¢33RWB3#‚:—F–VçBF—G2*²:—FV–çB+²²3c3"†æöâgW6–öæì:–R’ö'6W'l:’ÆR#bóÆW2æ—fVW‚FR¦WRWB÷FW2¢¦7F–g2¢¢Vâ&öGV7F–öââÆR&VÆWl:’fW&6VÂGR#bóW7B¢¦–æ6ö×ÆWB¢¢†Æ—7FRG&öç\:–R¢6W2fÆw2âw’f–wW&VçB2’â¢¥FW‡FR6÷'&–|:’Fç2ÆR6†–W"¢¢¢*²:—FB:&Wl:—&–f–W"Fç2fW&6VÂ+²â¢¬86öæf—&ÖW""6†DuBv÷&²Fç2fW&6VÂ¢¢²6W2FWW‚Æ–væW2&W7FVçBFç2ÆRw&÷WR2FçBVR6RâvW7B2f—BàĞ£"â¢¦D•44õ$Eô$ôõ5DU%5ôTä$ÄTF¢¢¢*²ÆÇVÜ:’+²Vâ3Â*²:—FV–çB+²Vâ3ƒ’âÆR&VÆWl:’fW&6VÂGR#bóFöææRG'VVVâ&öGV7F–öâ†Ö—2:¦÷W"ÆR#Bó’â¢¥7FGWBFR3ƒ’6÷'&–|:’¢¢Vâ*²6öL:’ÂÆÇVÜ:’Âæöâl:—&–fœ:’Vâ,:–VÂ+²†L:–6—6–öâFRÖ†–ÖRGR#bó¢6÷'&V7F–öâf7GVVÆÆRÂ2Vâ76vRRfW'B’²3ƒ’76RGRw&÷WR2Rw&÷WRBàĞ£2â¢¤3s‚Âæ6–VææWL:’FW2f÷FçG2¢¢‡G&æ6Œ:’"Ö†–ÖRÆR#bó¢¢£2¦÷W'2¢¢ÂL:–6—6–öâGR#2ó²*s#rã""GR6†–W"FW26†&vW2Æ–vì:’’¢ÆR6†–W"ÂÆR6öFR†DõtU%õdõDU%ôÔ”åõDTåU$UôÕ6’Â4ÄTDRæÖFWBDõtU%õdõDU5ôD•44õ$BæÖFF—6VçB¢£2¦÷W'2¢¢â6WVÂÆR6†–W"FW26†&vW2Œ*s#rã""ÂL:–6—6–öç2GR‚ó’F—B¢£r¦÷W'2¢¢âÆR76vR:2¦÷W'2f–VçBBwVæRL:–6—6–öâFRÖ†–ÖRGR#2ó†6öç7FBãBÂ6öÖÖ—B“&SV&6’âDT4•4”ôå5õDõtU"æÖFGRróæRf—†RV7VæRæ6–VææWL:’â¢¤Ö†–ÖRG&æ6Œ:’ÆR#bó¢2¦÷W'2â¢ Ğ£Bâ¢¦äõD”d”4D”ôåô4TåDU%ôTä$ÄTF¢¢¢Æ÷BrFç2ÆR6†–W"„3CBÂ3ƒRÂC’’ÂÆ÷B2Fç2ÄÅTÔtU2æÖFâ¢¥FW‡FRGR6†–W"6÷'&–|:’¢¢¢Æ÷B2àĞ£Râ¢¤3C"¢¢Œ*²)ÈRf—B+²Â†÷'2FW2c’¢3c3"Vâ6öçFW7FRÆR6öçFVçR”52â8&Vv&FW"fçBÆRÆæ6VÖVçBÂÜ:¦ÖR6’ÆÆ–væRâvW7B26ö×L:–R–6’àĞ£bâ¢¤Æ–væW26ç26öFR¢¢¢ÄåõDU5E2æÖF:—F—B6—L:’6öÖÖR*²&ö<:–GW&R+²ÂÖ—2âvV7VæR6V7F–öâ"Æ–væRâ¢¥FW‡FRFW2"Æ–væW26÷'&–|:’Fç2ÆR6†–W"¢¢¢Æ&ö<:–GW&R&Vçfö–RRw&÷WR6’ÖFW77W2àĞ Ğ¢226RVR6RFö7VÖVçBæR&÷WfR0Ğ Ğ¥&–VââvW7BFW7L:’–6’¢2vW7BVâÆââÆW2&WWfW2L:–¬:,:—6VçFW2Fç2ÆRL:—;GB„3Â32Â3SbÂ3S’Â3“2Â3r’6öçB6—L:–W2Â2&V7,:œ:–W2â–ÂÖçVR:6R¦÷W"Vâ¢§6V6öæB6ö×FRæöâÖFÖ–â„Ó"’¢¢÷W"&W7VRF÷WBÆRw&÷WR"WBÆÖö—Fœ:’GRw&÷WR2àĞ

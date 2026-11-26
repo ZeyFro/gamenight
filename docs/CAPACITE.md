@@ -1,88 +1,55 @@
-# Capacité : 100, 500 ou 1 000 membres ?
+# Capacité GameNight × The Tower — offres gratuites uniquement
 
-> Relevé du 23 novembre 2026. Sources : les pages officielles de Vercel (offre Hobby) et de Neon (offres et tarifs, mises à jour en novembre 2026), le projet Neon lu sans rien modifier, le code de `main` et les mesures de l'audit du 20/11 ([AUDIT_APP_20261120.md](AUDIT_APP_20261120.md), volet 2). Les prix sont ceux affichés par les fournisseurs ce jour, hors taxes, **à revérifier au moment de payer**.
+> Relevé documentaire du 26 novembre 2026. Les plafonds ci-dessous proviennent des pages officielles de Vercel et Neon ; ils peuvent évoluer. Aucun service payant n’est retenu ni proposé. Les seuils d’alerte servent à limiter le risque de coupure, pas à garantir une capacité en nombre de membres.
 
-## La réponse courte
+## Principes d’exploitation
 
-| Membres actifs | Avec les offres gratuites actuelles | Avec Vercel Pro + Neon Launch |
-| --- | --- | --- |
-| **100** | Oui, mais à la limite : le calcul gratuit de Vercel (4 h par mois) sera presque épuisé. | Oui, largement. |
-| **500** | **Non.** Vercel bloque les fonctions en cours de mois, et Neon arrête sa base. | Oui. |
-| **1 000** | **Non.** | Oui, en surveillant l'usage. Coût estimé : **40 à 70 $ par mois**. |
+- Conserver uniquement les offres gratuites existantes.
+- Ne pas convertir une consommation estimée en « nombre de membres supportés » : le trafic réel et le coût par action doivent être mesurés.
+- Examiner chaque semaine l’usage Vercel, Neon et cron-job.org. Utiliser en priorité les alertes déjà disponibles et les outils gratuits.
+- Ne pas activer de tâches, flags ou notifications automatiquement à cause d’un seuil.
+- À 70 %, analyser les tâches fréquentes et requêtes coûteuses ; à 85 %, réduire la charge non essentielle de façon contrôlée ; à 95 %, geler l’ouverture de nouveaux accès et prévenir Maxime. Ne jamais changer Production automatiquement.
+- Si un plafond gratuit est atteint, le service peut être limité jusqu’au renouvellement du quota. Le plan de continuité est de réduire les tâches et usages facultatifs, pas de passer à une offre payante.
 
-« Membre actif » = quelqu'un qui ouvre le site environ **10 pages par jour**. Ce chiffre est une **hypothèse** : le site ne mesure pas encore sa fréquentation. Si tes membres sont deux fois moins actifs, les seuils doublent.
+## Vercel Hobby
 
-**Le vrai danger** n'est pas la lenteur, c'est l'**arrêt net**. Une offre gratuite qui atteint sa limite **coupe le service** : jusqu'à 30 jours chez Vercel, jusqu'au mois suivant chez Neon. Il n'y a pas de dégradation douce.
+Plafonds gratuits documentés : 4 heures de CPU actif par mois, 360 GB-heures de mémoire provisionnée, 1 million d’invocations, 100 Go de transfert rapide, et 6 000 minutes de build. Les journaux d’exécution Hobby sont conservés une heure. Dépasser une limite peut empêcher l’usage jusqu’à la période suivante. L’offre Hobby est destinée à un usage personnel et non commercial : l’adéquation du projet à ses conditions doit être vérifiée dans le cadre de l’ouverture.
 
----
+| Mesure | Alerte de suivi | Action graduée, sans achat |
+| --- | ---: | --- |
+| CPU actif (4 h/mois) | 50 % / 70 % / 85 % / 95 % | Vérifier la durée et la fréquence des fonctions ; à 85 %, suspendre l’ouverture progressive et réduire les traitements non essentiels après validation. |
+| Invocations (1 M/mois) | 50 % / 70 % / 85 % / 95 % | Repérer les appels cron et les navigations qui répètent des requêtes ; espacer uniquement les tâches non critiques après validation. |
+| Transfert rapide (100 Go/mois) | 50 % / 70 % / 85 % / 95 % | Mesurer les pages et médias les plus lourds ; limiter le chargement non nécessaire et différer les médias facultatifs. |
+| Builds (6 000 min/mois) | 70 % / 85 % / 95 % | Éviter les déploiements répétés et les builds inutiles ; garder les contrôles obligatoires. |
+| Journaux (1 h) | Vérification hebdomadaire et après incident | Exporter ou consigner sans données personnelles les éléments utiles dans la fenêtre disponible ; utiliser les alertes existantes. |
 
-## Les limites une par une
+Les seuils sont des niveaux d’alerte proposés, pas des plafonds supplémentaires du fournisseur. La consultation des pages Usage et des alertes intégrées ne nécessite aucun abonnement.
 
-### 1. Vercel Hobby — le calcul des pages
+## Neon Free
 
-| Limite (officielle) | Où on en est | Ça casse à partir de | Symptôme | Solution et coût |
-| --- | --- | --- | --- | --- |
-| **4 h de calcul actif par mois** | Chaque page est calculée à chaque visite. Selon l'audit, une page fait **17 à 73 requêtes en base**, soit environ 0,1 s de calcul. 4 h ≈ **140 000 pages par mois**, tâches automatiques comprises. | **≈ 100 à 150 membres actifs** (300 pages par membre et par mois). | Plus aucune page ne répond (erreur), parfois pendant **jusqu'à 30 jours**. | **Vercel Pro, 20 $ par mois** : la limite fixe disparaît, l'usage est facturé au-delà du crédit compris. |
-| 1 million d'appels de fonctions par mois | Une page, une action ou une tâche = un appel. | ≈ 1 500 à 2 000 membres actifs | Idem | Vercel Pro |
-| 100 Go de transfert par mois | Pages de 50 à 400 Ko (840 Ko pour `/bibliotheque/groupe`) | ≈ 1 500 membres actifs | Idem | Vercel Pro (1 To compris) |
-| Durée d'une fonction : 300 s au plus | Les tâches longues sont déjà découpées (budgets de 45 à 240 s) | Ne casse pas avec le nombre de membres | — | — |
-| **Journaux gardés 1 heure** | — | Dès le premier incident de nuit | Impossible de savoir ce qui s'est passé | Vercel Pro : journaux gardés plus longtemps (durée à vérifier sur l'offre) |
-| Usage non commercial seulement | Communauté gratuite, sans revenus | — | — | Rien à faire tant qu'il n'y a pas de revenus |
+Le plan gratuit documente 100 CU-heures de calcul par projet et par mois, 1 Go de stockage par projet, une mise en veille après cinq minutes d’inactivité par défaut, une capacité maximale de 2 CU et six heures d’historique Instant Restore. Le nombre de branches disponibles dépend du quota affiché pour le projet ; ne pas créer de branche de recette sans vérifier ce quota et l’isolation préalable.
 
-### 2. Neon (offre gratuite) — la base de données
+| Mesure | Alerte de suivi | Action graduée, sans achat |
+| --- | ---: | --- |
+| Calcul (100 CU-h/projet/mois) | 50 % / 70 % / 85 % / 95 % | À 70 %, identifier les réveils fréquents ; réduire les appels périodiques non indispensables après validation. |
+| Stockage (1 Go/projet) | 50 % / 70 % / 85 % / 95 % | Mesurer les tables qui croissent et appliquer uniquement les règles de rétention déjà approuvées ; aucune suppression de sauvegarde. |
+| Mise en veille (5 min par défaut) | Contrôle hebdomadaire | Éviter les sondes trop fréquentes qui maintiennent le calcul éveillé. |
+| Restauration (6 h) | Rappel de limite, pas une alerte d’usage | Les tests de lecture n’exigent pas de pg_dump ni de restauration. Toute opération risquée suit une protection et une autorisation dédiées. |
 
-Relevé du projet : offre **gratuite**, calcul automatique de 0,25 à 2 unités, mise en veille après 5 minutes sans requête. **22 Mo** de données pour **10 comptes**. Environ **48 heures de calcul consommées** du 1er au 22 novembre.
+## Tâches planifiées et code
 
-| Limite (officielle) | Où on en est | Ça casse à partir de | Symptôme | Solution et coût |
-| --- | --- | --- | --- | --- |
-| **100 heures de calcul par mois** | ≈ 48 h au 22/11 avec 10 comptes. La base est éveillée environ 1/3 du temps, souvent par les tâches automatiques. | Dès qu'elle reste éveillée en continu : 0,25 unité × 720 h = 180 h. Soit **≈ 50 à 100 membres actifs** répartis sur la journée. | **Toute l'application tombe** (base suspendue) jusqu'au mois suivant. | **Neon Launch** : 0,106 $ par heure de calcul, sans minimum. Base éveillée en continu à 0,25 unité : **≈ 19 $ par mois** ; avec des soirées chargées (0,5 à 1 unité) : **25 à 40 $**. |
-| 1 Go de stockage | 22 Mo pour 10 comptes, soit ≈ 2 Mo par compte, rien n'étant purgé | ≈ 5 000 comptes (beaucoup plus tôt si la galerie ou le chat grossissent) | Écritures refusées | Neon Launch : 0,35 $ par Go et par mois. Ou allumer la purge (`RETENTION_CLEANUP_ENABLED`) plus tard. |
-| **6 heures d'historique** pour revenir en arrière | — | Dès le premier jour | Une erreur vue le lendemain n'est plus réparable | Neon Launch : historique plus long, réglable (à vérifier sur l'offre). En attendant : une **branche de sauvegarde** avant chaque étape risquée. |
-| Taille de calcul maximale : 2 unités | — | ≈ 1 000+ membres connectés en même temps | Pages lentes le soir | Neon Launch (jusqu'à 16 unités) |
-| Mise en veille après 5 minutes | — | Pas une casse | La première page après un moment calme met 0,5 à 1 s de plus | Rien à faire (c'est ce qui économise le calcul) |
+- Examiner la fréquence réelle des cronjobs et leur consommation Vercel/Neon ; supprimer aucun job sans analyse d’impact.
+- Garder les contrôles de sécurité et de migration obligatoires. Éviter les exécutions répétées qui ne produisent pas de preuve nouvelle.
+- Utiliser les budgets et limites d’exécution déjà présents dans le code. Réduire les appels SQL répétés, limiter les résultats paginés et ne charger les médias qu’à la demande.
+- L’alerte gratuite existante de surveillance d’hébergement ne sera considérée opérationnelle qu’après vérification de ses mesures, de son seuil et de sa destination. Ne pas envoyer d’alerte à des membres Discord.
 
-### 3. Connexions à la base (Prisma)
+## Limites de l’estimation
 
-| Limite | Où on en est | Ça casse à partir de | Symptôme | Solution et coût |
-| --- | --- | --- | --- | --- |
-| Connexions simultanées | Le code passe par le **regroupeur de connexions** de Neon (adresse « pooled », pilote serverless `@prisma/adapter-neon`). Le regroupeur accepte jusqu'à 10 000 clients ; la base elle-même 225 connexions directes. | Pas avant plusieurs milliers de visiteurs **simultanés** | Erreurs de connexion | Rien à faire |
-| Nombre de requêtes par page (17 à 73) | Chaque requête traverse le réseau | Pas une casse, mais c'est ce qui consomme le calcul Vercel et Neon | Pages plus lentes sous charge | Plus tard : mettre en cache les pages les plus lourdes (`/`, `/sessions`, `/potes`). Pas avant le lancement. |
+Aucun seuil fixe de membres n’est annoncé : il dépend des pages consultées, des tâches en arrière-plan, des médias et des connexions. Les valeurs d’usage réelles du projet doivent être relevées chaque semaine avant d’augmenter progressivement le nombre de membres.
 
-### 4. Discord — le bot
+## Sources officielles
 
-| Limite (Discord) | Où on en est | Ça casse à partir de | Symptôme | Solution et coût |
-| --- | --- | --- | --- | --- |
-| Environ 50 appels par seconde pour un bot, plus des limites par salon et par action | Tous les messages passent par une **file d'attente**. L'exécuteur respecte déjà le 429 de Discord et réessaie plus tard. | Pas une casse : les messages partent **en retard** lors d'une rafale (grosse soirée, 100 invitations) | MP et annonces décalés de quelques minutes | Rien à faire |
-| Messages privés en masse | Un MP n'est envoyé qu'à ceux qu'une action concerne | Discord peut bloquer un bot qui envoie trop de MP à des inconnus | MP refusés | Ne pas allumer d'autres MP au lancement (règle déjà décidée) |
-| 250 rôles et 500 salons par serveur | Les fonctions qui en créent (équipes, rôles de jeu, boosters) sont **éteintes** | — | — | Rien à faire tant qu'elles restent éteintes |
-| Enregistrement des commandes | ≈ 5 écritures puis attente (limite constatée) | — | « Enregistrer » s'arrêtait à 5/13 | Corrigé par la PR #518 (attente et reprise) |
-
-### 5. Tâches planifiées
-
-| Limite | Où on en est | Ça casse à partir de | Symptôme | Solution et coût |
-| --- | --- | --- | --- | --- |
-| cron-job.org coupe un appel au bout de 30 s | Les tâches longues répondent tout de suite et continuent après (prévu dans le code) | — | — | Rien à faire |
-| Fréquence des appels | Chaque appel réveille la base Neon et consomme du calcul Vercel. Un appel par minute = 43 000 appels par mois. | Avec Neon gratuit, un appel toutes les 1 à 4 minutes **empêche la mise en veille** et épuise les 100 h | Base suspendue en fin de mois | Espacer les tâches non urgentes (toutes les 10 à 15 min). Garder `notification-executor` fréquent : les envois immédiats passent déjà par `after()`, la tâche n'est qu'un filet. |
-| Exécuteur des messages | Budget de 50 s par passage | Plusieurs centaines de messages par minute | Retards | Rien à faire |
-
-### 6. Stockage de fichiers (Vercel Blob)
-
-La galerie des soirées est **fermée** (pas de stockage privé configuré). Seules les bannières de profil sont stockées. Pas de risque au lancement tant que la galerie reste fermée.
-
----
-
-## Le minimum à faire avant le lancement
-
-1. **Passer Neon en Launch** (sans minimum, ≈ 20 à 40 $ par mois). C'est le risque le plus probable : la base gratuite s'éteint quand les 100 h sont épuisées, et **tout** le site tombe avec elle. Bonus : un historique plus long pour revenir en arrière.
-2. **Passer Vercel en Pro** (20 $ par mois) **avant** d'inviter plus d'une centaine de personnes actives. Sinon, plafonne les invitations à environ 100 membres pendant la semaine 1 et regarde la consommation chaque jour (Vercel → Usage).
-3. **Créer une alerte de dépense ou d'usage** sur les deux consoles, à 50 % et 80 %.
-4. **Espacer les tâches automatiques non urgentes** sur cron-job.org (synchronisations Steam, profils, nettoyages : toutes les 10 à 15 minutes au lieu de chaque minute).
-5. **Prendre une branche de sauvegarde Neon** juste avant l'annonce (6 h d'historique seulement en offre gratuite).
-
-**Coût mensuel du minimum recommandé** : environ **40 à 60 $** (Vercel Pro 20 $ + Neon Launch 20 à 40 $) pour 1 000 membres actifs. Avec les seules offres gratuites, ne dépasse pas **une centaine de membres actifs**.
-
-## Ce qui n'a pas pu être mesuré
-
-- La consommation réelle de Vercel ce mois-ci : la page Usage n'est pas lisible d'ici. Regarde Vercel → Usage → « Active CPU » et « Function Invocations ».
-- La fréquence réelle des tâches sur cron-job.org.
-- Le comportement réel de tes membres (pages par jour). Une semaine de mesure après l'ouverture affinera les seuils.
+- [Vercel — Limits](https://vercel.com/docs/limits)
+- [Vercel — Hobby Plan](https://vercel.com/docs/plans/hobby)
+- [Neon — Free plan reaches 1 GB per project](https://neon.com/blog/neon-free-plan-1-gb-per-project)
+- [Neon — Free plan guidance, November 2026](https://neon.com/blog/how-to-make-the-most-of-neons-free-plan)

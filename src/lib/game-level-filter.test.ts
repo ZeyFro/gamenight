@@ -28,6 +28,11 @@ describe("condition de niveau sur un utilisateur", () => {
       gameLevels: { some: { gameId: "g1", level: "CONFIRME" } },
     });
   });
+  it("couvre toutes les lignes d’un jeu replié dans le sélecteur", () => {
+    expect(gameLevelUserWhere({ gameId: "g1", gameIds: ["g1", "g2"], level: "CONFIRME" })).toEqual({
+      gameLevels: { some: { gameId: { in: ["g1", "g2"] }, level: { in: ["CONFIRME", "COMPETITIF"] } } },
+    });
+  });
   it("exclut les profils masqués quand la visibilité est active", () => {
     vi.stubEnv("PROFILE_VISIBILITY_ENABLED", "true");
     expect(gameLevelUserWhere({ gameId: "g1", level: "DEBUTANT" })).toMatchObject({

@@ -37,14 +37,27 @@ type Classified = { game: { id: string }; createdBy: { id: string } };
  * Drapeau éteint : annonces renvoyées telles quelles, `posterLevel` null, aucun filtre.
  */
 export async function withPosterLevels<T extends Classified>(
-  listings: readonly T[], minimum?: GameLevel | null,
+  listings: readonly T[], minimum?: GameLevel | null, gameIds?: readonly string[],
 ): Promise<(T & { posterLevel: ResolvedGameLevel | null })[]> {
   if (!isGameLevelsMatchmakingEnabled()) return listings.map((listing) => ({ ...listing, posterLevel: null }));
   const byGame = new Map<string, string[]>();
   for (const listing of listings) byGame.set(listing.game.id, [...(byGame.get(listing.game.id) ?? []), listing.createdBy.id]);
   const perGame = new Map<string, Map<string, ResolvedGameLevel>>();
+  const authors = [...new Set(listings.map((listing) => listing.createdBy.id))];
+  // Jeu replié : le niveau peut être déclaré sur une autre ligne équivalente.
+  // On lit alors toutes les lignes du groupe avec tous les auteurs, et le tag
+  // retient la première valeur trouvée pour l'annonce.
+  const groupIds = gameIds?.length ? [...new Set(gameIds)] : null;
   for (const [gameId, userIds] of byGame) perGame.set(gameId, await loadGameLevels(userIds, gameId));
-  const annotated = listings.map((listing) => ({ ...listing, posterLevel: perGame.get(listing.game.id)?.get(listing.createdBy.id) ?? null }));
+  if (groupIds) for (const gameId of groupIds) perGame.set(gameId, await loadGameLevels(authors, gameId));
+  const posterLevelOf = (listing: T) => {
+    for (const gameId of groupIds ?? [listing.game.id]) {
+      const level = perGame.get(gameId)?.get(listing.createdBy.id);
+      if (level) return level;
+    }
+    return null;
+  };
+  const annotated = listings.map((listing) => ({ ...listing, posterLevel: posterLevelOf(listing) }));
   if (!minimum) return annotated;
   return annotated.filter((listing) => listing.posterLevel !== null && gameLevelAtLeast(listing.posterLevel.level, minimum));
 }
