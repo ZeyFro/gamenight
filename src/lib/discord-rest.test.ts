@@ -10,6 +10,7 @@ import {
   listActiveDiscordThreads,
   listArchivedDiscordForumThreads,
   listDiscordForumChannels,
+  listChannelMessages,
   listGuildChannels,
   verifyVoiceChannelDestination,
   NO_MENTIONS,
@@ -196,6 +197,26 @@ describe("discord-rest", () => {
         now: NOW,
       });
       expect(result).toEqual({ ok: true, data: { messageId: "msg1", channelId: "chan1" } });
+    });
+
+    it("sendChannelMessage transmet le nonce stable et enforce_nonce", async () => {
+      fetchMock.mockResolvedValue(jsonResponse(200, { id: "msg1", channel_id: "chan1" }));
+      await sendChannelMessage({
+        channelId: "chan1", content: "hello", allowedMentions: NO_MENTIONS,
+        nonce: "tower-welcome-v1", deadline: FAR_FUTURE, now: NOW,
+      });
+      const body = JSON.parse(fetchMock.mock.calls[0][1].body as string);
+      expect(body.nonce).toBe("tower-welcome-v1");
+      expect(body.enforce_nonce).toBe(true);
+    });
+
+    it("refuse un nonce trop long avant tout appel réseau", async () => {
+      const result = await sendChannelMessage({
+        channelId: "chan1", content: "hello", allowedMentions: NO_MENTIONS,
+        nonce: "12345678901234567890123456", deadline: FAR_FUTURE, now: NOW,
+      });
+      expect(result).toMatchObject({ ok: false, kind: "invalid_request" });
+      expect(fetchMock).not.toHaveBeenCalled();
     });
 
     it("editChannelMessage renvoie messageId/channelId", async () => {
@@ -794,6 +815,36 @@ describe("discord-rest", () => {
       const [url, init] = fetchMock.mock.calls[0];
       expect(String(url)).toBe("https://discord.com/api/v10/channels/thread-1/thread-members/user-1");
       expect(init.method).toBe("PUT");
+    });
+  });
+
+  describe("listChannelMessages", () => {
+    it("lit au plus 100 messages et extrait seulement les IDs de boutons nécessaires", async () => {
+      fetchMock.mockResolvedValue(jsonResponse(200, [{
+        id: "111111111111111111", channel_id: "222222222222222222",
+        content: "welcome", author: { bot: true },
+        components: [{ type: 1, components: [{ type: 2, custom_id: "gn:welcome:players" }] }],
+      }]));
+      const result = await listChannelMessages({
+        channelId: "222222222222222222", limit: 100, deadline: FAR_FUTURE, now: NOW,
+      });
+      expect(result).toEqual({
+        ok: true,
+        data: { messages: [{
+          messageId: "111111111111111111", channelId: "222222222222222222",
+          content: "welcome", authorIsBot: true, componentIds: ["gn:welcome:players"],
+        }] },
+      });
+      expect(String(fetchMock.mock.calls[0][0])).toBe("https://discord.com/api/v10/channels/222222222222222222/messages?limit=100");
+      expect(fetchMock.mock.calls[0][1].method).toBe("GET");
+    });
+
+    it("refuse une référence invalide ou une limite hors plage sans appeler Discord", async () => {
+      expect(await listChannelMessages({ channelId: "../nope", deadline: FAR_FUTURE, now: NOW }))
+        .toMatchObject({ ok: false, kind: "invalid_request" });
+      expect(await listChannelMessages({ channelId: "222222222222222222", limit: 101, deadline: FAR_FUTURE, now: NOW }))
+        .toMatchObject({ ok: false, kind: "invalid_request" });
+      expect(fetchMock).not.toHaveBeenCalled();
     });
   });
 
