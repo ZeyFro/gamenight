@@ -56,7 +56,6 @@ describe("guide assisté : pas de validation fictive", () => {
   });
   it("masque l’étape Tower si les défis sont désactivés pour la communauté", () => {
     render(<OnboardingFlow progress={{ ...empty, steamSkipped: true, planningReady: true }} towerAvailable={false} />);
-    fireEvent.click(screen.getByRole("button", { name: "Suivant" }));
     expect(screen.getByRole("heading", { name: "Jeux, rôles et plateformes" })).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Suivant" }));
     expect(screen.getByRole("heading", { name: "Jouer avec le groupe" })).toBeTruthy();
