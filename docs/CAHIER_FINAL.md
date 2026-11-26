@@ -13,8 +13,8 @@
 | --- | ---: |
 | ✅ Fait | 78 |
 | Codé, non vérifié en réel | 4 |
-| Codé, éteint | 24 |
-| Codé, allumé, non vérifié en réel | 15 |
+| Codé, éteint | 23 |
+| Codé, allumé, non vérifié en réel | 16 |
 | Partiel | 0 |
 | Partiel (côté Discord) | 6 |
 | Non fait | 0 |
@@ -113,7 +113,7 @@
 | C086 | 27 J | Console : scope OAuth connections, identifiants préremplis, plateformes, crossplay [#481] | `DISCORD_CONNECTIONS_SCOPE_ENABLED` (éteint), `GAME_PLATFORMS_ENABLED` (éteint) | Codé, éteint | Allumer (lot C) + tester | ChatGPT (Vercel) + Maxime | Tests verts : `lib/discord-connections.test.ts`, `lib/game-platforms.test.ts` ; capture après allumage |
 | C087 | 27 K | Niveau par jeu et matchmaking (Débutant / Intermédiaire / Confirmé / Compétitif) [#468, #482] | `GAME_LEVELS_ENABLED` (éteint), `GAME_LEVELS_MATCHMAKING_ENABLED` (éteint) | Codé, éteint | Allumer (lot C) + tester | ChatGPT (Vercel) + Maxime | Tests verts : `lib/game-levels-matchmaking.integration.test.ts` ; capture après allumage |
 | C088 | 27 L | Signalement contextuel : ticket privé staff, aucune sanction automatique [#478] | `DISCORD_REPORT_COMMAND_ENABLED` (allumé, Vercel 25/11) | Codé, allumé, non vérifié en réel | Tester en Production | ChatGPT (Vercel) + Maxime | Tests verts : `lib/discord-report-command.test.ts` ; essai réel à consigner |
-| C089 | 27 M | Boosters : rôle « Soutien de la Tour », mur des soutiens, salons boosters, retrait automatique [#483] | `DISCORD_BOOSTERS_ENABLED` (allumé : `true` en Production au relevé Vercel du 26/11, mis à jour le 24/11 ; même état que C001) | Codé, éteint | Tester avec un vrai booster (le flag est déjà allumé ; statut à revoir par Maxime) | ChatGPT (Vercel) + Maxime | Tests verts : `lib/booster-support.test.ts` ; capture après allumage |
+| C089 | 27 M | Boosters : rôle « Soutien de la Tour », mur des soutiens, salons boosters, retrait automatique [#483] | `DISCORD_BOOSTERS_ENABLED` (allumé : `true` en Production au relevé Vercel du 26/11, mis à jour le 24/11 ; même état que C001) | Codé, allumé, non vérifié en réel | Tester avec un vrai booster (rôle, mur, salons, retrait automatique) | ChatGPT (Vercel) + Maxime | Relevé Vercel du 26/11/2026 : `DISCORD_BOOSTERS_ENABLED` = `true` en Production depuis le 24/11 (correction factuelle du statut, pas un passage au vert). Tests verts : `lib/booster-support.test.ts` ; essai réel à consigner |
 | C090 | 27 N | Personnalisation du profil (couleurs, thèmes, cadres, effets, vitrine, entitlement sans paiement) [#477] | `PROFILE_CUSTOMIZATION_ENABLED` (éteint) | Codé, éteint | Allumer (lot C) + tester | ChatGPT (Vercel) + Maxime | Tests verts : `lib/profile-customization.test.ts` ; capture après allumage |
 | C091 | 27 O | Tableau de bord staff v2 en lecture seule [#486] | `ADMIN_DASHBOARD_V2_ENABLED` (éteint) | Codé, éteint | Allumer (lot A) + tester | ChatGPT (Vercel) + Maxime | Capture après allumage |
 | C092 | 27.6 | Tous les interrupteurs sont OFF par défaut | `DISCORD_ROLE_SELF_CREATION_ENABLED` (éteint) | ✅ Fait | — | — | Contrôle statique du 25/11 : `.env.example` n'allume aucun `*_ENABLED` et `flags-default-off.test.ts` couvre les interrupteurs documentés en refusant toute lecture par truthiness (chaîne exacte `true` uniquement). |

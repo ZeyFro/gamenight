@@ -1,8 +1,8 @@
 # Recette des 61 lignes actives du cahier
 
-Relevé du 26/11/2026 sur `main` `4eec09f9`. Cette PR corrige aussi, dans le cahier, le **texte** de quatre incohérences, n°1, 2, 4 et 6 de la dernière section (la n°3 attend Maxime). **Aucun statut n'est changé** de [CAHIER_FINAL.md](CAHIER_FINAL.md) ([décision D1](DECISIONS_PRODUIT_20261126.md)). Une ligne ne devient verte qu'après un **test réel fait par un compte non-admin, daté et consigné** dans le cahier, avec sa preuve. Un flag allumé, une page affichée ou un test automatisé ne suffisent pas.
+Relevé du 26/11/2026 sur `main` `4eec09f9`. Cette PR corrige aussi, dans le cahier, le **texte** de quatre incohérences, n°1, 2, 4 et 6 de la dernière section (la n°3, tranchée par Maxime, aligne le cahier des charges sur 3 jours), et le **statut de C089** (correction factuelle : flag allumé en Production depuis le 24/11). **Aucun autre statut de [CAHIER_FINAL.md](CAHIER_FINAL.md) n’est changé, aucune ligne ne passe au vert** ([décision D1](DECISIONS_PRODUIT_20261126.md)). Une ligne ne devient verte qu'après un **test réel fait par un compte non-admin, daté et consigné** dans le cahier, avec sa preuve. Un flag allumé, une page affichée ou un test automatisé ne suffisent pas.
 
-**Périmètre** : les 148 lignes du cahier, moins les 77 « ✅ Fait » et les 9 reportées (C095 à C103), soit 61 lignes actives : 15 « codé, allumé, non vérifié », 4 « codé, non vérifié », 6 « partiel côté Discord », 24 « codé, éteint » et 12 « sans code ».
+**Périmètre** : les 148 lignes du cahier, moins les 77 « ✅ Fait » et les 9 reportées (C095 à C103), soit 61 lignes actives : 16 « codé, allumé, non vérifié », 4 « codé, non vérifié », 6 « partiel côté Discord », 23 « codé, éteint » et 12 « sans code » (C089 corrigée le 26/11 : flag allumé en Production).
 
 ## Conventions
 
@@ -25,7 +25,7 @@ Relevé du 26/11/2026 sur `main` `4eec09f9`. Cette PR corrige aussi, dans le cah
 
 ---
 
-## Groupe A — 28 lignes stables (rien à coder)
+## Groupe A — 29 lignes stables (rien à coder)
 
 ### A1. Sans code (12) : actions humaines dans Discord ou sur le site
 
@@ -66,7 +66,7 @@ Relevé du 26/11/2026 sur `main` `4eec09f9`. Cette PR corrige aussi, dans le cah
 | D14 | `DISCORD_REPORT_COMMAND_ENABLED` allumé | M, puis A pour lire | [§ D14](PROCEDURES_PREUVES.md) : clic droit sur un message, « Signaler ». | Capture du ticket privé staff, sans aucune sanction ; SELECT sur `ModerationReport`. **Couvre aussi C057 et C088.** | Agent puis Maxime |
 | D15 | `DISCORD_BOOSTERS_ENABLED` (voir l'incohérence 2 plus bas) | Un vrai booster | [§ D15](PROCEDURES_PREUVES.md). | Captures du rôle « Soutien de la Tour », du mur et des salons ; retrait automatique à la fin du boost. **Couvre aussi C089.** | Maxime (il faut un booster réel) |
 
-### A4. Allumées, à tester sans code neuf (6)
+### A4. Allumées, à tester sans code neuf (7)
 
 | Id | Prérequis | Compte | Étapes | Preuve attendue | Qui |
 | --- | --- | --- | --- | --- | --- |
@@ -74,8 +74,9 @@ Relevé du 26/11/2026 sur `main` `4eec09f9`. Cette PR corrige aussi, dans le cah
 | C029 | `COMMUNITY_HIGHLIGHTS_ENABLED` allumé | M | Une fois des données réelles disponibles (un défi validé, un exploit saisi par un admin), ouvrir `/tower/palmares` et Profil → Lore. | Capture d'un exploit affiché. Un essai du 26/11 en lecture seule (#632, non fusionnée) n'a trouvé que des tableaux vides. | Agent |
 | C052 | `TOWER_CHALLENGES_ENABLED`, `TEAM_RIVALRIES_ENABLED` allumés | M | Ouvrir classements, Hall of Fame et Rankers après des défis et des rivalités réels. | Captures avec données. Tableaux vides le 26/11 (#632). | Agent |
 | C057 | `DISCORD_REPORT_COMMAND_ENABLED`, `TOWER_DISCORD_ANNOUNCE_ENABLED` allumés | M, M2 | Déposer une preuve et un signalement avec M. Vérifier que M2 ne voit ni la preuve privée, ni le ticket, ni le journal. | Captures vues par M2 (accès refusé ou contenu absent). **D14 en est une partie.** | Agent |
-| C078 | `TOWER_DISCORD_VOTES_ENABLED` allumé | M2 (membre depuis ≥ 3 jours) | Voter ✅ ou ❌ sur une preuve de M, ouvrir le fil de la preuve, changer son vote. | Captures du compteur mis à jour et du fil ; SELECT sur les votes. Ancienneté appliquée : **3 jours** (code, `CLAUDE.md`, cahier). Le cahier des charges §27.2 B dit 7 jours (incohérence 3). | Agent |
+| C078 | `TOWER_DISCORD_VOTES_ENABLED` allumé | M2 (membre depuis ≥ 3 jours) | Voter ✅ ou ❌ sur une preuve de M, ouvrir le fil de la preuve, changer son vote. | Captures du compteur mis à jour et du fil ; SELECT sur les votes. Ancienneté appliquée : **3 jours** (code, `CLAUDE.md`, cahier). Le cahier des charges §27.2 B est aligné sur 3 jours (incohérence 3, tranchée). | Agent |
 | C088 | `DISCORD_REPORT_COMMAND_ENABLED` allumé | M | Comme D14. | Même preuve que D14 (ligne en double). | Agent |
+| C089 | `DISCORD_BOOSTERS_ENABLED` = `true` en Production depuis le 24/11 (relevé Vercel du 26/11) | Un vrai booster | Comme D15 : rôle « Soutien de la Tour », mur, salons, retrait automatique à la fin du boost. | Captures (voir D15). | Maxime (il faut un booster réel) |
 
 ---
 
@@ -97,7 +98,7 @@ Relevé du 26/11/2026 sur `main` `4eec09f9`. Cette PR corrige aussi, dans le cah
 
 ---
 
-## Groupe C — 24 lignes éteintes, par lot d'allumage
+## Groupe C — 23 lignes éteintes, par lot d'allumage
 
 Chaque lot s'allume entier, avec l'accord de Maxime ([ALLUMAGES.md](ALLUMAGES.md)), puis chaque ligne est testée par M (et M2 si indiqué).
 
@@ -110,7 +111,7 @@ Chaque lot s'allume entier, avec l'accord de Maxime ([ALLUMAGES.md](ALLUMAGES.md
 | **B** | C021 | `TOWER_CHALLENGE_PROPOSALS_ENABLED` | M Ranker (≥ 30 étages) | Proposer un défi ; l'admin le valide. | Captures ; SELECT sur le statut de la proposition. **Il faut un vrai Ranker.** | Agent puis Maxime |
 | **B** | C079 | `TOWER_STEAM_AUTOVALIDATE_ENABLED` | M (Steam public) | Défi mesurable Steam, validation automatique ; « Signaler un doute » par M2. | Captures ; SELECT sur `measureValue`. | Agent |
 | **B + C** | C050 | `TOWER_SEASON_AWARDS_ENABLED`, `PROFILE_CUSTOMIZATION_ENABLED` | M | Récompenses visibles sur le profil après une clôture de saison. | Captures. **Nécessite une fin de saison réelle.** | Agent (date différée) |
-| **C** | C035 | `GAME_LEVELS_ENABLED`, `GAME_LEVELS_MATCHMAKING_ENABLED` | M, M2 | M2 déclare un niveau de jeu et publie une annonce ; M filtre par jeu et par niveau. | Capture du résultat filtré. **Incohérence 1** : le cahier les dit éteints, mais #632 les a vus allumés en Production le 26/11. | Agent |
+| **C** | C035 | `GAME_LEVELS_ENABLED`, `GAME_LEVELS_MATCHMAKING_ENABLED` (**état à confirmer par ChatGPT Work dans Vercel**) | M, M2 | M2 déclare un niveau de jeu et publie une annonce ; M filtre par jeu et par niveau. | Capture du résultat filtré. **Incohérence 1** : le cahier les dit éteints, mais #632 les a vus allumés en Production le 26/11. | Agent |
 | **C** | C036 | `PLAYER_MATCHING_ENABLED` | M | Renseigner langue, préférences et habitudes. | Capture ; SELECT sur le profil de jeu de M. | Agent |
 | **C** | C037 | `WHO_PLAYS_TONIGHT_ENABLED` | M, M2 | M2 se déclare dispo ; M le voit sur `/ce-soir`. | Capture vue par M. | Agent |
 | **C** | C038 | `PLAYER_MATCHING_ENABLED` | M, M2 | Les partenaires compatibles de M incluent M2. | Capture. | Agent |
@@ -119,14 +120,13 @@ Chaque lot s'allume entier, avec l'accord de Maxime ([ALLUMAGES.md](ALLUMAGES.md
 | **C** | C086 | `DISCORD_CONNECTIONS_SCOPE_ENABLED`, `GAME_PLATFORMS_ENABLED` | M | Comme D01, puis crossplay sur une fiche jeu. | Captures. **Recoupe D01.** | Agent |
 | **C** | C087 | `GAME_LEVELS_ENABLED`, `GAME_LEVELS_MATCHMAKING_ENABLED` | M, M2 | Niveau de jeu et matchmaking (tournoi équipes aléatoires). | Captures. **Recoupe C035.** | Agent |
 | **C** | C090 | `PROFILE_CUSTOMIZATION_ENABLED` | M, M2 | M achète un élément décoratif ; M2 le voit ; `prefers-reduced-motion` coupe les effets. | Captures. | Agent |
-| **C** | C128 | `POTES_FRIENDS_ENABLED` | M, M2 | M cherche M2 par pseudo, envoie une demande, M2 accepte ; M2 voit une soirée publique de M (rejoindre) et une soirée privée (sur invitation). | Captures. **Incohérence 1** : #632 a observé l'interface Potes active le 26/11 alors que le cahier dit « éteint ». | Agent |
+| **C** | C128 | `POTES_FRIENDS_ENABLED` (**état à confirmer par ChatGPT Work dans Vercel**) | M, M2 | M cherche M2 par pseudo, envoie une demande, M2 accepte ; M2 voit une soirée publique de M (rejoindre) et une soirée privée (sur invitation). | Captures. **Incohérence 1** : #632 a observé l'interface Potes active le 26/11 alors que le cahier dit « éteint ». | Agent |
 | **C** | C076 | `NOTIFICATION_CENTER_ENABLED` | M | Régler ses préférences ; s'abonner à un jeu. | Capture de `/notifications`. | Agent |
 | **C** | C044 | `WHO_PLAYS_TONIGHT_ENABLED`, `NOTIFICATION_CENTER_ENABLED` | M | Parcourir « Ce soir », une fiche de soirée, la roulette, le calendrier et `/notifications`. | Captures. **Incohérence 4** : le cahier range `NOTIFICATION_CENTER_ENABLED` au lot G, `ALLUMAGES.md` au lot C. | Agent |
 | **C** | C085 | `NOTIFICATION_CENTER_ENABLED`, `NOTIFICATION_EXECUTOR_ENABLED` | M, M2 | Un MP ciblé à M2, un message de fil, une annonce. Aucun @everyone (D10). | Captures ; SELECT sur `NotificationDelivery`. **Recoupe D09.** | Agent |
 | **C** | D09 | `NOTIFICATION_CENTER_ENABLED`, `SESSION_VISIBILITY_ENABLED` | M (créateur), M2 (abonné au jeu) | Soirée publique d'un seul jeu : le rôle du jeu est mentionné ; M n'est jamais mentionné. | Capture du message ; liste des mentions autorisées. | Agent |
 | **G** | C007 | `DISCORD_ROLE_COMMAND_ENABLED` | M | `/role` : choisir un rôle de jeu (D2 : rôles de jeu = GameNight). | Capture privée et rôle obtenu. | Agent |
 | **G** | C082 | `DISCORD_ROLE_AUTOCREATE_ENABLED` | M | `/role` sur un jeu sans rôle : création par la file, une seule fois par semaine. | Captures ; SELECT sur `DiscordRoleRequest`. **D2 : l'alerte à 200 rôles sur 250 et le blocage à 200 sont à vérifier.** | Agent |
-| **G** | C089 | `DISCORD_BOOSTERS_ENABLED` (déjà `true` en Production, relevé Vercel du 26/11) | Un vrai booster | Comme D15. | Captures (voir D15). Le statut « codé, éteint » est à revoir par Maxime (incohérence 2). | Maxime |
 
 ---
 
@@ -140,9 +140,9 @@ Chaque lot s'allume entier, avec l'accord de Maxime ([ALLUMAGES.md](ALLUMAGES.md
 - **C085 ≈ D09 ≈ C076** : notifications.
 
 **Incohérences**
-1. **États de flags périmés** : C035 et C128 étaient dits « éteint » ; #632 (non fusionnée) a observé le 26/11 les niveaux de jeu et Potes **actifs** en Production. Le relevé Vercel du 26/11 est **incomplet** (liste tronquée : ces flags n'y figurent pas). **Texte corrigé dans le cahier** : « état à revérifier dans Vercel ».
-2. **`DISCORD_BOOSTERS_ENABLED`** : « allumé » en C001, « éteint » en C089. Le relevé Vercel du 26/11 donne `true` en Production (mis à jour le 24/11). **Texte de C089 corrigé** ; son statut « Codé, éteint » est laissé tel quel : c'est à Maxime de le revoir.
-3. **C078, ancienneté des votants** : le cahier, le code (`TOWER_VOTER_MIN_TENURE_MS`), `CLAUDE.md` et `TOWER_VOTES_DISCORD.md` disent **3 jours**. Seul le cahier des charges (§27.2 B, décisions du 18/11) dit **7 jours**. Le passage à 3 jours vient d'une décision de Maxime du 23/11 (constat 1.4, commit `91be15bc`). `DECISIONS_TOWER.md` du 17/11 ne fixe aucune ancienneté. **Rien n'est tranché ici : Maxime doit dire quelle décision fait foi.**
+1. **États de flags périmés** : C035 et C128 étaient dits « éteint » ; #632 (non fusionnée) a observé le 26/11 les niveaux de jeu et Potes **actifs** en Production. Le relevé Vercel du 26/11 est **incomplet** (liste tronquée : ces flags n'y figurent pas). **Texte corrigé dans le cahier** : « état à revérifier dans Vercel ». **À confirmer par ChatGPT Work dans Vercel** ; ces deux lignes restent dans le groupe C tant que ce n'est pas fait.
+2. **`DISCORD_BOOSTERS_ENABLED`** : « allumé » en C001, « éteint » en C089. Le relevé Vercel du 26/11 donne `true` en Production (mis à jour le 24/11). **Statut de C089 corrigé** en « Codé, allumé, non vérifié en réel » (décision de Maxime du 26/11 : correction factuelle, pas un passage au vert) ; C089 passe du groupe C au groupe A4.
+3. **C078, ancienneté des votants** (tranché par Maxime le 26/11 : **3 jours**, décision du 23/11 ; §27.2 B du cahier des charges aligné) : le cahier, le code (`TOWER_VOTER_MIN_TENURE_MS`), `CLAUDE.md` et `TOWER_VOTES_DISCORD.md` disent **3 jours**. Seul le cahier des charges (§27.2 B, décisions du 18/11) dit **7 jours**. Le passage à 3 jours vient d'une décision de Maxime du 23/11 (constat 1.4, commit `91be15bc`). `DECISIONS_TOWER.md` du 17/11 ne fixe aucune ancienneté. **Maxime a tranché le 26/11 : 3 jours.**
 4. **`NOTIFICATION_CENTER_ENABLED`** : lot G dans le cahier (C044, C085, D09), lot C dans `ALLUMAGES.md`. **Texte du cahier corrigé** : lot C.
 5. **C042** (« ✅ Fait », hors des 61) : #632 en conteste le contenu ICS. À regarder avant le lancement, même si la ligne n'est pas comptée ici.
 6. **Lignes sans code** : `PLAN_TESTS.md` était cité comme « procédure », mais n'a aucune section par ligne. **Texte des 12 lignes corrigé dans le cahier** : la procédure renvoie au groupe A1 ci-dessus.
