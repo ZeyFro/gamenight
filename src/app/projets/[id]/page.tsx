@@ -7,13 +7,13 @@ import { formatDateTimeFr } from "@/lib/wallclock";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { pageMetadata } from "@/lib/page-title";
-import { applyToProjectAction, closeProjectAction, decideProjectEntryAction, withdrawFromProjectAction } from "../actions";
+import { applyToProjectAction, closeProjectAction, decideProjectEntryAction, renewProjectAction, withdrawFromProjectAction } from "../actions";
 
 export const metadata = pageMetadata("Projet");
 
 const RESULTS: Record<string, string> = {
   created: "Projet créé.", applied: "Ta candidature est envoyée à l'organisateur.", withdrawn: "Tu t'es retiré du projet.",
-  accepted: "Entrée validée.", declined: "Entrée refusée.", closed: "Projet clôturé.",
+  accepted: "Entrée validée.", declined: "Entrée refusée.", closed: "Projet clôturé.", renewed: "Projet renouvelé.",
   pending: "Tu as déjà une candidature en attente.", member: "Tu participes déjà.", declined_final: "Ta candidature a été refusée.",
   own: "Tu es l'organisateur de ce projet.", full: "Le projet est complet.", forbidden: "Seul l'organisateur peut décider.",
   not_pending: "Cette candidature a déjà été traitée.", rate: "Trop de demandes, réessaie dans une minute.", invalid: "Message trop long (300 caractères maximum).",
@@ -91,6 +91,21 @@ export default async function ProjectPage({ params, searchParams }: { params: Pr
               </div>
             ))}
           </Card>
+          {open && (
+            <form action={renewProjectAction} className="grid gap-2 rounded-lg border border-border p-3">
+              <input type="hidden" name="projectId" value={project.id} />
+              <p className="text-sm text-muted">Renouveler la date de fin (90 jours maximum à partir d’aujourd’hui).</p>
+              <div className="flex flex-wrap items-end gap-2">
+                <label className="grid gap-1 text-sm text-foreground">Nouvelle date
+                  <input type="date" name="endDate" required className="rounded-lg border border-border bg-background px-3 py-2 text-base text-foreground" />
+                </label>
+                <label className="grid gap-1 text-sm text-foreground">Heure
+                  <input type="time" name="endTime" defaultValue="23:59" className="rounded-lg border border-border bg-background px-3 py-2 text-base text-foreground" />
+                </label>
+                <Button type="submit" variant="secondary" size="sm">Renouveler</Button>
+              </div>
+            </form>
+          )}
           {open && (
             <form action={closeProjectAction}>
               <input type="hidden" name="projectId" value={project.id} />
