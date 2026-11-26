@@ -2,7 +2,7 @@ import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { scopedTransactionPrisma } from "@/lib/community-scoped-client";
 
-const THIRTY_DAYS_MS = 30 * 24 * 60 * 60 * 1000;
+const FOURTEEN_DAYS_MS = 14 * 24 * 60 * 60 * 1000;
 
 /** Maintenance explicitly triggered by an authenticated cron, never on a page read.
  * Team captain activity means management actions OR last community XP activity.
@@ -12,7 +12,7 @@ export async function transferInactiveCommunityTeamCaptains(
   date = new Date(),
   dryRun = true,
 ): Promise<{ eligible: number; transferred: number }> {
-  const cutoff = new Date(date.getTime() - THIRTY_DAYS_MS);
+  const cutoff = new Date(date.getTime() - FOURTEEN_DAYS_MS);
   // Préfiltrer les équipes réellement transmissibles AVANT LIMIT 25.
   // Sinon 25 capitaines sans successeur peuvent affamer toutes les suivantes.
   const candidateTeams = await prisma.$queryRaw<{ id: string; communityId: string }[]>`
@@ -53,6 +53,12 @@ export async function transferInactiveCommunityTeamCaptains(
             orderBy: [{ joinedAt: "asc" }, { userId: "asc" }],
             select: { userId: true },
           },
+          // Décision du 26/11/2026 : le recruteur actif passe avant le membre le plus ancien.
+          recruiters: {
+            where: { user: { memberships: { some: { communityId: row.communityId, status: "ACTIVE" } } } },
+            orderBy: [{ createdAt: "asc" }, { userId: "asc" }],
+            select: { userId: true },
+          },
         },
       });
       if (!team) return "skip";
@@ -67,7 +73,9 @@ export async function transferInactiveCommunityTeamCaptains(
       });
       if (currentCaptain?.status === "ACTIVE" && mostRecentActivity?.streakLastActiveAt &&
         mostRecentActivity.streakLastActiveAt > cutoff) return "skip";
-      const successor = team.members.find((m) => m.userId !== captainId);
+      const activeIds = new Set(team.members.map((member) => member.userId));
+      const successor = team.recruiters.find((recruiter) => recruiter.userId !== captainId && activeIds.has(recruiter.userId))
+        ?? team.members.find((member) => member.userId !== captainId);
       if (!successor) return "skip";
       if (dryRun) return "eligible";
       const updated = await scopedDb.communityTeam.updateMany({
