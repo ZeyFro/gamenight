@@ -58,7 +58,7 @@ export default async function PoteDisposPage({
   return <>
     <AvailabilityView weeklySlots={weeklySlots} overrides={overrides} />
     {gameLevels.length > 0 && <section aria-labelledby="game-levels-title" className="mt-6 grid gap-2">
-      <h2 id="game-levels-title" className="font-semibold text-foreground">Niveaux par jeu</h2>
+      <h2 id="game-levels-title" className="font-semibold text-foreground">Niveaux de jeu</h2>
       <ul className="grid gap-1 text-sm">
         {gameLevels.map((entry) => <li key={entry.gameId}>{entry.gameName} · <strong>{GAME_LEVEL_LABELS[entry.level]}</strong></li>)}
       </ul>

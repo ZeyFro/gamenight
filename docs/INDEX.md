@@ -25,6 +25,7 @@
 - [Procédures de preuve](PROCEDURES_PREUVES.md) — comment prouver, étape par étape et en lecture seule, les 17 éléments du cahier « non vérifiés en réel » ou « côté Discord ».
 - [Défis Discord The Tower](tower-challenges.md) — lot préparé en brouillon, activation et enregistrement des commandes séparés.
 - [Audit final du 23/11/2026](AUDIT_FINAL.md) — constats, corrections, restants et ce qui n'a pas pu être vérifié ; détails dans [`audit/`](audit/01-securite-owasp.md).
+- [Décisions produit du 26/11/2026](DECISIONS_PRODUIT_20261126.md) — D1 à D11 (ouverture à 61 lignes vertes, /role, annonces, vocabulaire, équipes, tournois, soirées, projets, notifications, arrivée).
 - [Rapport de la nuit du 24/11/2026](RAPPORT_NUIT.md) — PR fusionnées, migrations, restes, tâches ChatGPT et Maxime, décisions à valider.
 - [Audit local du serveur Discord](AUDIT_DISCORD.md) — inventaire REST en lecture seule, sans membres ni messages.
 - [Checklist de préparation](L3-06-preparation-checklist.md) et [galerie vidéo](CLIPS_VIDEO.md).
@@ -73,3 +74,5 @@
 ## Archives
 
 Les anciens journaux et états de reprise sont dans [l’archive documentaire](archive/README.md). Ils préservent leur contexte historique ; pour l’état de reprise courant, utiliser uniquement [docs/REPRISE_AUTONOME.md](REPRISE_AUTONOME.md).
+
+- [Recette des 61 lignes actives](RECETTE_61_LIGNES.md) — prérequis, scénarios et preuves attendues.
