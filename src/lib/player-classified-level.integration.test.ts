@@ -67,14 +67,33 @@ describe.skipIf(!TEST_DATABASE_URL)("recherche de joueurs par niveau : PostgreSQ
     expect(names(await search("viewer", { gameId: ids.game, level: "COMPETITIF" }))).toEqual(["expert"]);
   });
 
-  it("sans filtre de niveau, tout le monde reste listé (hors autre serveur) avec le tag visible", async () => {
+  it("sans filtre de niveau, les profils visibles restent listés avec leur tag ; un profil masqué n’est jamais exposé", async () => {
     const rows = await search("viewer", {});
-    expect(names(rows)).toEqual(["expert", "hidden", "nolevel", "novice", "pro"]);
+    expect(names(rows)).toEqual(["expert", "nolevel", "novice", "pro"]);
     const level = (name: string) => rows.find((row) => row.createdBy.discordName === name)?.authorLevel;
     expect(level("expert")).toBe("COMPETITIF");
     expect(level("novice")).toBe("DEBUTANT");
     expect(level("nolevel")).toBeNull();
-    expect(level("hidden")).toBeNull(); // profil masqué : niveau jamais révélé
+  });
+
+  it("jeu replié : le niveau déclaré sur la ligne sœur s’applique à l’annonce", async () => {
+    const sister = await db.game.create({ data: { name: "Valheim", source: "MANUAL", addedById: ids.viewer, steamAppId: 990_001 } });
+    await db.playerClassified.deleteMany({ where: { createdById: ids.pro } });
+    await db.userGameLevel.deleteMany({ where: { userId: ids.pro, gameId: ids.game } });
+    await db.playerClassified.create({ data: {
+      communityId: ids.a, gameId: sister.id, createdById: ids.pro, message: "annonce ligne sœur", createdAt: new Date(), expiresAt: new Date(Date.now() + 3_600_000),
+    } });
+    await db.userGameLevel.create({ data: { userId: ids.pro, gameId: sister.id, level: "CONFIRME" } });
+
+    const rows = await lib.listPlayerClassifieds(ids.viewer, ids.a, new Date(), {
+      gameId: ids.game, gameIds: [ids.game, sister.id], level: "CONFIRME",
+    });
+    // « expert » reste présent (niveau supérieur, annonce sur la ligne principale) ;
+    // « pro » n'est retenu que grâce à son niveau déclaré sur la ligne sœur.
+    expect(names(rows)).toEqual(["expert", "pro"]);
+    const pro = rows.find((row) => row.createdBy.discordName === "pro");
+    expect(pro?.authorLevel).toBe("CONFIRME");
+    expect(pro?.game.id).toBe(sister.id);
   });
 
   it("un membre d'un autre serveur ne voit pas les annonces ni les niveaux d'ici", async () => {
