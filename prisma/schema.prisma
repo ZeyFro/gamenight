@@ -2602,6 +2602,9 @@ model TournamentMatch {
   team1Id      String?
   team2Id      String?
   winnerTeamId String?
+  // Tournois d'équipes (décision du 26/11/2026) : heure d'ouverture du match (les deux équipes connues), départ du délai
+  // de repli de l'arbitrage (48 h sans déclaration). Ce n'est pas un rendez-vous fixé par les capitaines ; garde :
+  // src/lib/tournament-match-opened-at.test.ts.
   scheduledAt  DateTime?
   completedAt  DateTime?
   // Scores optionnels (TOURNAMENT_SCORES_ENABLED) : player1 / player2.
