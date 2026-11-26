@@ -76,7 +76,7 @@ describe("affichage", () => {
   it("décrit les critères dans un ordre stable, sans ligne vide", () => {
     expect(describeTeamCriteria({ ...empty })).toEqual([]);
     expect(describeTeamCriteria({ goals: ["DETENTE", "SOCIAL"], minLevel: "EXPERT", mic: "REQUIRED", slots: ["NIGHT"], platforms: ["PC"], note: "ok" }).map((row) => row.label))
-      .toEqual(["Objectifs", "Niveau minimum", "Micro", "Créneaux (heure de Paris)", "Plateformes", "Précisions"]);
+      .toEqual(["Objectifs", "Niveau de jeu minimum", "Micro", "Créneaux (heure de Paris)", "Plateformes", "Précisions"]);
     expect(describeTeamCriteria({ ...empty, mic: "NOT_NEEDED", goals: ["COMPETITIF"] })).toEqual([
       { label: "Objectifs", values: ["Compétitif"] }, { label: "Micro", values: ["Micro facultatif"] },
     ]);
