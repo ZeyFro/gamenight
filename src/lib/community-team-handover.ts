@@ -1,6 +1,7 @@
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { scopedTransactionPrisma } from "@/lib/community-scoped-client";
+import { normalizeSensitiveOperation } from "@/lib/sensitive-operation-log";
 
 const FOURTEEN_DAYS_MS = 14 * 24 * 60 * 60 * 1000;
 
@@ -74,15 +75,22 @@ export async function transferInactiveCommunityTeamCaptains(
       if (currentCaptain?.status === "ACTIVE" && mostRecentActivity?.streakLastActiveAt &&
         mostRecentActivity.streakLastActiveAt > cutoff) return "skip";
       const activeIds = new Set(team.members.map((member) => member.userId));
-      const successor = team.recruiters.find((recruiter) => recruiter.userId !== captainId && activeIds.has(recruiter.userId))
-        ?? team.members.find((member) => member.userId !== captainId);
+      const recruiter = team.recruiters.find((candidate) => candidate.userId !== captainId && activeIds.has(candidate.userId));
+      const successor = recruiter ?? team.members.find((member) => member.userId !== captainId);
       if (!successor) return "skip";
       if (dryRun) return "eligible";
       const updated = await scopedDb.communityTeam.updateMany({
         where: { id: row.id, communityId: row.communityId, captainLastActivityAt: { lte: cutoff }, captainId: team.captainId },
         data: { captainId: successor.userId, captainLastActivityAt: date },
       });
-      return updated.count ? "transferred" : "skip";
+      if (!updated.count) return "skip";
+      // Journal des décisions (décision du 26/11/2026) : une ligne par passation, dans la même transaction (jamais de passation sans
+      // trace). Action système : aucun acteur ; cible = équipe ; résultat = voie retenue et nouveau capitaine (identifiants seulement).
+      await tx.sensitiveOperationLog.create({ data: normalizeSensitiveOperation({
+        actorId: null, action: "team.captain_handover", communityId: row.communityId, target: row.id,
+        outcome: `${recruiter ? "recruiter" : "oldest_member"}:${successor.userId}`,
+      }) });
+      return "transferred";
     }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
     if (outcome !== "skip") eligible++;
     if (outcome === "transferred") transferred++;

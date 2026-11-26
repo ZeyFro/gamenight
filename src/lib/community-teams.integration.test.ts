@@ -110,6 +110,9 @@ describe.skipIf(!TEST_DATABASE_URL)("équipes communautaires : PostgreSQL isolé
     expect(await transferInactiveCommunityTeamCaptains(new Date(), false)).toMatchObject({ eligible: 1, transferred: 1 });
     expect((await db.communityTeam.findUniqueOrThrow({ where: { id: team.id } })).captainId).toBe(ids.member);
     expect(await transferInactiveCommunityTeamCaptains(new Date(), false)).toMatchObject({ transferred: 0 });
+    // Sans recruteur : le membre actif le plus ancien, journalisé une seule fois (la simulation n'écrit rien).
+    expect((await db.sensitiveOperationLog.findMany({ where: { action: "team.captain_handover", target: team.id }, select: { outcome: true } })).map((row) => row.outcome))
+      .toEqual([`oldest_member:${ids.member}`]);
     expect((await db.communityTeam.findUniqueOrThrow({ where: { id: team.id } })).createdById).toBe(ids.leader);
   });
 
@@ -128,6 +131,9 @@ describe.skipIf(!TEST_DATABASE_URL)("équipes communautaires : PostgreSQL isolé
     const { transferInactiveCommunityTeamCaptains } = await import("./community-team-handover");
     expect(await transferInactiveCommunityTeamCaptains(new Date(), false)).toMatchObject({ transferred: 1 });
     expect((await db.communityTeam.findUniqueOrThrow({ where: { id: team.id } })).captainId).toBe(ids.racer);
+    // Journal des décisions : une ligne système, dans la même transaction que la passation.
+    expect(await db.sensitiveOperationLog.findMany({ where: { action: "team.captain_handover", target: team.id }, select: { actorId: true, communityRef: true, outcome: true } }))
+      .toEqual([{ actorId: null, communityRef: ids.community, outcome: `recruiter:${ids.racer}` }]);
   });
 
   it("ne transfère pas avant quatorze jours", async () => {

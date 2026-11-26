@@ -20,6 +20,7 @@ export const SENSITIVE_OPERATIONS = [
   "discord.welcome_panel_publish",
   "admin.badges", "admin.free_games", "admin.game_stats", "admin.messages", "admin.superlatives",
   "tower.irregular_grant", "tower.irregular_revoke", "tower.participant_confirm",
+  "team.captain_handover",
 ] as const;
 export type SensitiveOperation = (typeof SENSITIVE_OPERATIONS)[number];
 

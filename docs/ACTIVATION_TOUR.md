@@ -332,7 +332,7 @@ Ces interrupteurs précèdent le lot Tower 2.0 ou n'en font pas partie ; ils son
 | --- | --- | --- |
 | `TOWER_ONBOARDING_PANEL_ENABLED` | Panneau Discord d'accueil à trois boutons ; réponses privées, aucun rôle modifié | `TOWER_DISCORD_WELCOME_CHANNEL_ID`, `TOWER_DISCORD_GUILD_ID` ; publication par workflow dédié, jamais sur Preview |
 | `TOWER_DISCORD_PREFLIGHT_ENABLED` | `GET /api/admin/tower-preflight` : inventaire en lecture seule des salons (éteint = 404, aucune écriture Discord) | `DISCORD_BOT_GUILD_ID` |
-| `TEAM_CAPTAIN_HANDOVER_ENABLED` | Passation du capitaine inactif depuis 30 jours (OFF et simulation par défaut) | cron externe non configuré ; jamais sur Preview |
+| `TEAM_CAPTAIN_HANDOVER_ENABLED` | Passation du capitaine inactif depuis 14 jours (décision du 26/11 : recruteur actif, sinon membre le plus ancien ; journalisée) (OFF et simulation par défaut) | cron externe non configuré ; jamais sur Preview |
 
 **Site, sécurité, rétention, push**
 

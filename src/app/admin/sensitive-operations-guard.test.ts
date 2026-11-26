@@ -72,6 +72,12 @@ describe("journal des opérations sensibles : aucune action d'administration n'y
     expect(source).toContain('action: "tower.participant_confirm"');
   });
 
+  it("la passation automatique d'un capitaine inactif (décision du 26/11) est journalisée dans sa transaction", () => {
+    const source = readFileSync("src/lib/community-team-handover.ts", "utf8");
+    expect(source).toContain('action: "team.captain_handover"');
+    expect(source).toMatch(/tx\.sensitiveOperationLog\.create/);
+  });
+
   it("chaque action de la liste fermée est utilisée quelque part dans le code (liste sans entrée morte)", () => {
     const code = files.filter((file) => /^src\/.*\.(ts|tsx)$/.test(file) && !/\.test\./.test(file) && file !== "src/lib/sensitive-operation-log.ts")
       .map((file) => readFileSync(file, "utf8")).join("\n");

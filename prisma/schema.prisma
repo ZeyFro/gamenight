@@ -2631,6 +2631,8 @@ model TournamentTeamSettings {
   isPrivate           Boolean   @default(false)
   maxTeams            Int
   registrationClosesAt DateTime?
+  // Décision du 26/11/2026 : posé au lancement quand exactement 5 équipes jouent (poule unique, 10 matchs, classement).
+  roundRobin          Boolean   @default(false)
   createdAt           DateTime  @default(now())
 
   tournament Tournament @relation(fields: [tournamentId], references: [id], onDelete: Cascade)

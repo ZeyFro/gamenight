@@ -21,11 +21,11 @@ const MESSAGES: Record<string, string> = {
   invite_closed: "Le tournoi est lancé.", invite_already: "Cette équipe est déjà invitée ou inscrite.", invite_missing: "Tournoi ou équipe introuvable.",
   launch_launched: "Tournoi lancé.", launch_too_few: "Il faut au moins 2 équipes inscrites.", launch_closed: "Le tournoi est déjà lancé.", launch_forbidden: "Seul l’organisateur lance le tournoi.", launch_missing: "Tournoi introuvable.",
   report_confirmed: "Résultat confirmé par les deux capitaines.", report_waiting: "Ta déclaration est enregistrée : le capitaine adverse doit la confirmer.",
-  report_disputed: "Désaccord : l’organisateur est prévenu et tranchera.", report_forbidden: "Seuls les deux capitaines du match déclarent le résultat.",
+  report_disputed: "Désaccord : l’organisateur est prévenu et tranchera 24 h après la dernière déclaration.", report_forbidden: "Seuls les deux capitaines du match déclarent le résultat.",
   report_already_reported: "Ta déclaration est verrouillée : tu as déjà déclaré ce résultat.", report_already_decided: "Ce match est déjà tranché.",
   report_not_ready: "Les deux équipes ne sont pas encore connues.", report_invalid_winner: "Gagnant invalide.", report_closed: "Le tournoi n’est pas en cours.", report_missing: "Match introuvable ou informations invalides.",
   resolve_resolved: "Match tranché.", resolve_forbidden: "Seuls l’organisateur et les administrateurs tranchent.", resolve_already_decided: "Ce match est déjà tranché.",
-  resolve_inconsistent: "Le gagnant doit avoir le score le plus élevé.", resolve_invalid_winner: "Gagnant invalide.", resolve_not_ready: "Match pas encore jouable.", resolve_missing: "Match introuvable.",
+  resolve_inconsistent: "Le gagnant doit avoir le score le plus élevé.", resolve_invalid_winner: "Gagnant invalide.", resolve_not_ready: "Match pas encore jouable.", resolve_too_early: "L’arbitre tranche seulement 24 h après la dernière déclaration d’un capitaine.", resolve_missing: "Match introuvable.",
 };
 const ENTRY_LABELS = { INVITED: "Invitée", REGISTERED: "Inscrite", DECLINED: "A refusé", WITHDRAWN: "Retirée" } as const;
 const STATUS_LABELS = { REGISTRATION: "Inscriptions ouvertes", IN_PROGRESS: "En cours", DONE: "Terminé", CANCELLED: "Annulé" } as const;
@@ -87,8 +87,17 @@ export default async function TeamTournamentPage({ params, searchParams }: { par
         <form action={launchTeamTournamentAction}><input type="hidden" name="tournamentId" value={view.id} /><Button type="submit" size="sm" variant="primary">Lancer maintenant (au moins 2 équipes)</Button></form>
       </section>}
 
+      {view.roundRobin && <section aria-labelledby="tt-standings" className="grid gap-2">
+        <h2 id="tt-standings" className="font-semibold text-foreground">Classement de la poule</h2>
+        <p className="text-xs text-muted">Poule unique à 5 équipes : chacune rencontre les 4 autres (10 matchs en 5 journées). Départage : victoires, confrontation directe entre deux équipes, différence de score, puis tirage au lancement.</p>
+        <div className="overflow-x-auto"><table className="w-full text-left text-sm">
+          <thead className="text-xs text-muted"><tr><th scope="col" className="py-1 pr-2">Rang</th><th scope="col" className="py-1 pr-2">Équipe</th><th scope="col" className="py-1 pr-2">Joués</th><th scope="col" className="py-1 pr-2">Victoires</th><th scope="col" className="py-1 pr-2">Défaites</th>{showScores && <th scope="col" className="py-1">Diff.</th>}</tr></thead>
+          <tbody>{view.roundRobin.standings.map(row => <tr key={row.teamId} className="border-t border-border text-foreground"><td className="py-1 pr-2">{row.rank}</td><td className="py-1 pr-2">{row.name}</td><td className="py-1 pr-2">{row.played}</td><td className="py-1 pr-2">{row.wins}</td><td className="py-1 pr-2">{row.losses}</td>{showScores && <td className="py-1">{row.difference > 0 ? `+${row.difference}` : row.difference}</td>}</tr>)}</tbody>
+        </table></div>
+      </section>}
+
       {view.matches.length > 0 && <section aria-labelledby="tt-matches" className="grid gap-3">
-        <h2 id="tt-matches" className="font-semibold text-foreground">Matchs</h2>
+        <h2 id="tt-matches" className="font-semibold text-foreground">{view.roundRobin ? "Calendrier" : "Matchs"}</h2>
         {view.matches.filter(match => match.team1Id || match.team2Id).map(match => {
           const ownTeamId = [match.team1Id, match.team2Id].find(teamId => teamId && view.viewer.captainBracketTeamIds.includes(teamId)) ?? null;
           const ownReport = ownTeamId ? match.reports.find(report => report.teamId === ownTeamId) : undefined;
@@ -103,11 +112,12 @@ export default async function TeamTournamentPage({ params, searchParams }: { par
             <Button type="submit" size="sm" variant={kind === "report" ? "primary" : undefined}>{kind === "report" ? "Déclarer le résultat" : "Trancher (organisateur)"}</Button>
           </form>;
           return <Card key={match.id} className="grid gap-2">
-            <p className="text-sm font-semibold text-foreground">Tour {match.round} · {match.team1?.name ?? "À déterminer"} contre {match.team2?.name ?? "À déterminer"}</p>
+            <p className="text-sm font-semibold text-foreground">{view.roundRobin ? "Journée" : "Tour"} {match.round} · {match.team1?.name ?? "À déterminer"} contre {match.team2?.name ?? "À déterminer"}</p>
+            {view.roundRobin && match.position === 0 && view.roundRobin.restingByRound.get(match.round) && <p className="text-xs text-muted">Au repos cette journée : {view.roundRobin.restingByRound.get(match.round)}</p>}
             {match.completedAt ? <p className="text-sm text-muted">Vainqueur : {winnerName ?? "—"}{showScores && match.score1 !== null && match.score2 !== null ? ` (${match.score1} – ${match.score2})` : ""}</p>
-              : <p className="text-xs text-muted">{match.reports.length === 0 ? "Aucune déclaration." : disputed ? "Désaccord entre les capitaines : l’organisateur tranche." : "Une déclaration reçue, en attente de confirmation de l’autre capitaine."}</p>}
+              : <p className="text-xs text-muted">{match.reports.length === 0 ? "Aucune déclaration." : disputed ? "Désaccord entre les capitaines : l’arbitre tranche après 24 h." : "Une déclaration reçue, en attente de confirmation de l’autre capitaine."}{!match.completedAt && match.arbitrationOpensAt ? ` Arbitrage possible à partir du ${dateFormat.format(match.arbitrationOpensAt)}.` : ""}</p>}
             {ready && ownTeamId && (ownReport ? <p className="text-xs text-muted">Ta déclaration est verrouillée.</p> : picker("report"))}
-            {ready && view.viewer.isReferee && match.reports.length > 0 && picker("resolve")}
+            {ready && view.viewer.isReferee && match.arbitrationOpen && picker("resolve")}
           </Card>;
         })}
       </section>}
