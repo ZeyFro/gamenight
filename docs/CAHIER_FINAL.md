@@ -13,8 +13,8 @@
 | --- | ---: |
 | ✅ Fait | 77 |
 | Codé, non vérifié en réel | 4 |
-| Codé, éteint | 23 |
-| Codé, allumé, non vérifié en réel | 17 |
+| Codé, éteint | 22 |
+| Codé, allumé, non vérifié en réel | 18 |
 | Partiel | 0 |
 | Partiel (côté Discord) | 6 |
 | Non fait | 0 |
@@ -128,7 +128,7 @@
 | C101 | 27.3 | Bot gateway permanent (activité Discord, temps en vocal, « 3 membres jouent à X ») | aucun | Feuille de route, après le lancement (décision du 23/11) | Rien avant le lancement | Maxime | — |
 | C102 | 27.3 | Rangs importés via API officielles (Riot, Hypixel) | aucun | Feuille de route, après le lancement (décision du 23/11) | Rien avant le lancement | Maxime | — |
 | C103 | 27.4 | VIP payant cosmétique et confort | aucun | Feuille de route, après le lancement (décision du 23/11) | Rien avant le lancement | Maxime | — |
-| C128 | 12.3 | Potes = amis GameNight : demande d’ami à accepter, recherche par pseudo, non-ami : voit si une soirée est publique (rejoindre) ou privée (sur invitation) | `POTES_FRIENDS_ENABLED` (éteint) | Codé, éteint | Allumer `POTES_FRIENDS_ENABLED` (lot C) + tester avec un pote | ChatGPT (Vercel) + Maxime | Tests : `friends-rules.test.ts`, `friends.integration.test.ts`, `friends-actions.limits.integration.test.ts` (migration `friendships` appliquée) |
+| C128 | 12.3 | Potes = amis GameNight : demande d’ami à accepter, recherche par pseudo, non-ami : voit si une soirée est publique (rejoindre) ou privée (sur invitation) | `POTES_FRIENDS_ENABLED` (interface Potes active observée en Production le 26/11) | Codé, allumé, non vérifié en réel | Tester la recherche d’un membre non ami, l’envoi et l’acceptation d’une demande, puis la visibilité d’une soirée publique/privée pour un non-ami. Le seul ami déjà présent ne permet pas de valider ces parcours sans écriture | ChatGPT + Maxime | Essai Melah du 26/11 : page Potes affiche l’ami existant !!ZeyFro et les filtres; rechercher l’ami déjà accepté ou un pseudo inexistant affiche un état vide sans erreur. Aucune demande envoyée ni donnée modifiée. Tests : `friends-rules.test.ts`, `friends.integration.test.ts`, `friends-actions.limits.integration.test.ts`. |
 | C104 | 1.1 | Vision : parcours complet du joueur (découvrir, partenaires, soirées, équipes, Tour, défis, grades, compétitio | aucun | Sans code (action humaine ou Discord) | Rendre vérifiable (procédure de capture) | Maxime + ChatGPT | Capture datée (procédure : PLAN_TESTS.md) |
 | C105 | 1.2 | Multigaming : aucun jeu imposé | aucun | ✅ Fait | — | — | Production le 25/11 : `/ce-soir` propose une liste de jeux sans choix prérempli (919 options observées) et laisse les jeux supplémentaires facultatifs ; aucune plateforme ni licence payante n’est imposée. |
 | C106 | 1.3 | Lancement prioritairement francophone | aucun | ✅ Fait | — | — | Contrôle Production le 25/11 : navigation et contenus GameNight vérifiés en français ; les noms des jeux restent dans leur titre officiel. Les panneaux et salons The Tower consultés sont également en français. |
