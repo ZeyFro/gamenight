@@ -13,8 +13,8 @@
 | --- | ---: |
 | ✅ Fait | 77 |
 | Codé, non vérifié en réel | 4 |
-| Codé, éteint | 24 |
-| Codé, allumé, non vérifié en réel | 16 |
+| Codé, éteint | 23 |
+| Codé, allumé, non vérifié en réel | 17 |
 | Partiel | 0 |
 | Partiel (côté Discord) | 6 |
 | Non fait | 0 |
@@ -59,7 +59,7 @@
 | C032 | 11.2 | Identité visuelle d'une équipe | aucun | ✅ Fait | — | — | PR #526 fusionnée, migration `team_identity` appliquée ; capture sur /equipes/gestion à la prochaine vérification |
 | C033 | 11.3 | Forums existants (recherche de joueurs, recrutement, projets) avec tags | aucun | ✅ Fait | — | — | Tests verts : `lib/tower-forums.test.ts`, `app/tower/forums/page.test.tsx` |
 | C034 | 11.4 | Équipes conservées dans GameNight : 2 à 8 membres, équipe unique, capitaine | aucun | ✅ Fait | — | — | Tests verts : `lib/community-teams-rules.test.ts` |
-| C035 | 12.2 | Critères de recherche : jeux, plateformes, disponibilités, mode compétitif ou détente, niveau | `GAME_LEVELS_ENABLED` (éteint), `GAME_LEVELS_MATCHMAKING_ENABLED` (éteint) | Codé, éteint | Allumer (lot C) + tester | ChatGPT (Vercel) + Maxime | Capture après allumage |
+| C035 | 12.2 | Critères de recherche : jeux, plateformes, disponibilités, mode compétitif ou détente, niveau | `GAME_LEVELS_ENABLED` (allumé en Production, contrôlé le 26/11), `GAME_LEVELS_MATCHMAKING_ENABLED` (allumé en Production, contrôlé le 26/11) | Codé, allumé, non vérifié en réel | Corriger le filtre de recherche : sur /joueurs, choisir un jeu seul provoque « Les filtres sont invalides ». La page émet deux champs `level` quand les deux interrupteurs sont actifs; les filtres ne peuvent donc pas être validés ensemble. Tester les champs séparément et combinés avec au moins une annonce de test, sans écriture Production avant sauvegarde Neon | Freebuff + ChatGPT | Essai Production du 26/11 avec Melah : Black Desert seul a modifié l’URL mais affiché une erreur; aucune annonce active donc filtrage des résultats non mesurable. Contrôle lecture seule. |
 | C036 | 12.2 | Critères de recherche : langue, préférences communautaires, habitudes de jeu, centres d'intérêt | `PLAYER_MATCHING_ENABLED` (éteint) | Codé, éteint | Allumer (lot C) + tester | ChatGPT (Vercel) + Maxime | Tests verts : `lib/player-matching-rules.test.ts` (PR #527 fusionnée, migration `player_matching_profile` appliquée) ; capture après allumage |
 | C037 | 12.3 | Parcours « Qui joue ce soir ? », « Je cherche une partie », recherche par jeu, profils publics, recrutement | `WHO_PLAYS_TONIGHT_ENABLED` (éteint) | Codé, éteint | Allumer (lot C) + tester | ChatGPT (Vercel) + Maxime | Tests verts : `lib/tonight.integration.test.ts` ; sélecteurs de jeux sans doublon : `app/ce-soir/page.test.tsx`, `app/joueurs/page.test.tsx`, `lib/game-search.test.ts` ; capture après allumage |
 | C038 | 12.3 | Proposition de partenaires compatibles | `PLAYER_MATCHING_ENABLED` (éteint) | Codé, éteint | Allumer (lot C) + tester | ChatGPT (Vercel) + Maxime | Tests verts : `lib/player-matching-rules.test.ts` (PR #527 fusionnée, migration `player_matching_profile` appliquée) ; capture après allumage |
