@@ -8,11 +8,20 @@ import { completeOnboardingAction, skipSteamOnboardingAction } from "@/app/onboa
 import type { OnboardingProgress } from "@/lib/onboarding";
 
 const TOUR = [
-  { title: "Ton planning", icon: "📅", text: "Indique tes créneaux habituels et tes exceptions. Le calendrier du groupe aide ensuite à choisir une date commune.", href: "/disponibilites", label: "Renseigner mon planning" },
-  { title: "Tes jeux et ceux du groupe", icon: "🎮", text: "Steam importe les jeux accessibles de ta bibliothèque. Tu peux aussi ajouter des jeux à la main, consulter la bibliothèque du groupe et organiser ta tierlist.", href: "/bibliotheque/groupe", label: "Voir les jeux du groupe", secondHref: "/profil/tierlist", secondLabel: "Ma tierlist" },
-  { title: "Soirées et calendrier", icon: "🌙", text: "Crée une soirée pour plus tard, invite tes potes et vote pour le jeu. Avec des places activées, les inscriptions supplémentaires passent en liste d’attente.", href: "/sessions", label: "Voir les soirées", secondHref: "/calendrier", secondLabel: "Le calendrier" },
-  { title: "Roulette ou partie immédiate", icon: "🎲", text: "La roulette choisit un jeu : maintenant pour partir directement, ou plus tard pour organiser une soirée. Jouer maintenant ouvre une partie que les membres de ton serveur peuvent rejoindre.", href: "/roulette?mode=instant", label: "Roulette maintenant", secondHref: "/jouer-maintenant", secondLabel: "Jouer maintenant" },
-  { title: "Tournois et progression", icon: "🏆", text: "Inscris-toi aux tournois et suis les matchs. XP, badges et classement sont propres au serveur choisi : tu peux changer de communauté dans la navigation.", href: "/tournois", label: "Voir les tournois", secondHref: "/classement", secondLabel: "Le classement" },
+  { title: "Ton planning", icon: "🗓️", text: "Indique tes créneaux habituels et tes exceptions. Le calendrier du groupe aide ensuite à choisir une date commune.", actions: [{ href: "/disponibilites", label: "Renseigner mon planning" }] },
+  { title: "Jeux, rôles et plateformes", icon: "🎮", text: "Choisis les jeux et rôles qui t'intéressent avec /role dans Discord. Ajoute aussi tes jeux à ta bibliothèque GameNight et indique les plateformes sur lesquelles tu peux jouer.", actions: [
+    { href: "/bibliotheque", label: "Ajouter mes jeux" },
+    { href: "https://discord.com/channels/553922938101825536/1574568215856807936", label: "Choisir mes jeux avec /role", external: true },
+    { href: "/profil/parametres#player-equipment", label: "Renseigner mes plateformes" },
+  ] },
+  { title: "Ton premier objectif d'étage", icon: "🏆", text: "Les défis font progresser tes étages. Choisis ton premier défi avec /tower defi dans le salon des commandes, puis suis son avancée dans GameNight.", actions: [
+    { href: "/tower", label: "Voir ma progression" },
+    { href: "https://discord.com/channels/553922938101825536/1574568215856807936", label: "Choisir un défi avec /tower defi", external: true },
+  ] },
+  { title: "Jouer avec le groupe", icon: "🕹️", text: "Organise une soirée planifiée ou lance une partie maintenant. Les parcours disponibles dépendent des réglages de ta communauté.", actions: [
+    { href: "/sessions", label: "Organiser une soirée" },
+    { href: "/jouer-maintenant", label: "Trouver une partie maintenant" },
+  ] },
 ] as const;
 
 export function OnboardingFlow({ progress, initialStep }: { progress: OnboardingProgress; initialStep?: string }) {
@@ -44,15 +53,19 @@ export function OnboardingFlow({ progress, initialStep }: { progress: Onboarding
       <div role="progressbar" aria-label="Réglages du profil" aria-valuemin={0} aria-valuemax={2} aria-valuenow={completed} className="mt-3 h-2 overflow-hidden rounded-full bg-surface-hover"><div className="h-full bg-accent transition-all" style={{ width: `${completed * 50}%` }} /></div>
       <ul className="mt-3 flex flex-wrap gap-x-5 gap-y-2 text-sm"><li>{needsSteam ? "○" : "✓"} Steam {progress.steamSkipped && !progress.steamLinked ? "(non utilisé)" : progress.steamLinked ? "lié" : "à lier"}</li><li>{progress.planningReady ? "✓ Planning renseigné" : "○ Planning à renseigner"}</li></ul>
     </div>
-    <nav className="flex flex-wrap gap-2" aria-label="Étapes du guide">
-      {["Steam", ...TOUR.map(step => step.title)].map((label, i) => <button key={label} type="button" onClick={() => setScreen(i)} aria-current={screen === i ? "step" : undefined} className={`rounded-lg border px-3 py-2 text-xs ${screen === i ? "border-accent bg-accent/10 text-foreground" : "border-border text-muted"}`}>{i + 1}. {label}</button>)}
+    <nav aria-label="Étapes du guide">
+      <ol className="grid grid-cols-2 gap-2 sm:grid-cols-5">
+        {["Steam", ...TOUR.map(step => step.title)].map((label, i) => <li key={label} aria-current={screen === i ? "step" : undefined} className={`rounded-lg border px-3 py-2 text-xs ${screen === i ? "border-accent bg-accent/10 text-foreground" : "border-border text-muted"}`}><span className="font-semibold">{i + 1}.</span> {label}</li>)}
+      </ol>
     </nav>
     <div className="rounded-2xl border-2 border-border bg-surface p-5 sm:p-7" aria-live="polite">
       <span className="text-4xl" aria-hidden>{current?.icon ?? "🎮"}</span>
       <h2 className="mt-4 text-xl font-bold">{current?.title ?? "Lie ton compte Steam"}</h2>
       <p className="mt-3 text-sm leading-relaxed text-muted">{current?.text ?? "Retrouve tes jeux sans les saisir un par un. Connecte-toi sur Steam pour autoriser la liaison ; GameNight ne demande jamais ton mot de passe. Une bibliothèque privée peut demander un réglage de visibilité ou un ajout manuel."}</p>
-      <div className="mt-5 flex flex-wrap gap-3">
-        {screen === 0 ? <><a className="gn-button gn-button-primary rounded-lg bg-accent px-4 py-3 text-sm font-semibold text-accent-foreground" href="/api/steam/link">{progress.steamLinked ? "Changer mon compte Steam" : "Lier mon compte Steam"}</a>{needsSteam && <Button variant="secondary" disabled={pending} onClick={skipSteam}>Je n’utilise pas Steam</Button>}</> : current && <><ButtonLink href={current.href}>{current.label}</ButtonLink>{"secondHref" in current && <ButtonLink variant="ghost" href={current.secondHref}>{current.secondLabel}</ButtonLink>}</>}
+      <div aria-label="Actions de cette étape" className="mt-5 grid gap-3 sm:grid-cols-2">
+        {screen === 0 ? <><a className="gn-button gn-button-primary rounded-lg bg-accent px-4 py-3 text-sm font-semibold text-accent-foreground" href="/api/steam/link">{progress.steamLinked ? "Changer mon compte Steam" : "Lier mon compte Steam"}</a>{needsSteam && <Button variant="secondary" disabled={pending} onClick={skipSteam}>Je n’utilise pas Steam</Button>}</> : current?.actions.map(action => "external" in action && action.external
+          ? <a key={action.label} href={action.href} target="_blank" rel="noreferrer" className="gn-button rounded-lg border border-border px-4 py-3 text-sm font-semibold text-foreground">{action.label}</a>
+          : <ButtonLink key={action.label} href={action.href}>{action.label}</ButtonLink>)}
       </div>
       {screen <= 1 && <p className="mt-4 text-xs text-muted">Cette étape se valide quand le réglage est enregistré. <button type="button" onClick={() => router.refresh()} className="underline">Vérifier mon avancée</button></p>}
     </div>

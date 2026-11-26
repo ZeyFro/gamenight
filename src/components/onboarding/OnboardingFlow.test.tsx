@@ -19,13 +19,33 @@ describe("guide assisté : pas de validation fictive", () => {
     expect(screen.getByRole("link", { name: "Renseigner mon planning" }).getAttribute("href")).toBe("/disponibilites");
     expect(screen.getByRole("progressbar").getAttribute("aria-valuenow")).toBe("0");
     expect(mocks.complete).not.toHaveBeenCalled();
-    for (let i = 0; i < 4; i++) fireEvent.click(screen.getByRole("button", { name: "Suivant" }));
+    for (let i = 0; i < 3; i++) fireEvent.click(screen.getByRole("button", { name: "Suivant" }));
     expect(screen.getByRole("button", { name: "Terminer le guide" })).toHaveProperty("disabled", true);
   });
   it("reprend directement au planning si Steam est déjà lié", () => {
     render(<OnboardingFlow progress={{ ...empty, steamLinked: true }} />);
     expect(screen.getByRole("heading", { name: "Ton planning" })).toBeTruthy();
     expect(screen.getByRole("progressbar").getAttribute("aria-valuenow")).toBe("1");
+  });
+  it("guide vers jeux, /role et plateformes avec trois actions au maximum", () => {
+    render(<OnboardingFlow progress={{ ...empty, steamSkipped: true }} />);
+    fireEvent.click(screen.getByRole("button", { name: "Suivant" }));
+    expect(screen.getByRole("heading", { name: "Jeux, rôles et plateformes" })).toBeTruthy();
+    expect(screen.getByRole("link", { name: "Ajouter mes jeux" }).getAttribute("href")).toBe("/bibliotheque");
+    expect(screen.getByRole("link", { name: "Choisir mes jeux avec /role" }).getAttribute("href")).toContain("discord.com/channels/");
+    expect(screen.getByRole("link", { name: "Renseigner mes plateformes" }).getAttribute("href")).toBe("/profil/parametres#player-equipment");
+    expect(screen.getByLabelText("Actions de cette étape").querySelectorAll("a")).toHaveLength(3);
+  });
+  it("présente le premier objectif d'étage puis les parcours de jeu", () => {
+    render(<OnboardingFlow progress={{ ...empty, steamSkipped: true, planningReady: true }} />);
+    fireEvent.click(screen.getByRole("button", { name: "Suivant" }));
+    expect(screen.getByRole("heading", { name: "Ton premier objectif d'étage" })).toBeTruthy();
+    expect(screen.getByRole("link", { name: "Choisir un défi avec /tower defi" })).toBeTruthy();
+    expect(screen.getByLabelText("Actions de cette étape").querySelectorAll("a")).toHaveLength(2);
+    fireEvent.click(screen.getByRole("button", { name: "Suivant" }));
+    expect(screen.getByRole("heading", { name: "Jouer avec le groupe" })).toBeTruthy();
+    expect(screen.getByRole("link", { name: "Organiser une soirée" })).toBeTruthy();
+    expect(screen.getByRole("link", { name: "Trouver une partie maintenant" })).toBeTruthy();
   });
   it("persiste le choix sans Steam avant de poursuivre, et montre un échec", async () => {
     mocks.skip.mockResolvedValueOnce(false).mockResolvedValueOnce(true);
@@ -45,7 +65,7 @@ describe("guide assisté : pas de validation fictive", () => {
   it("la fin exige aussi l'accord de l'action serveur", async () => {
     mocks.complete.mockResolvedValue(false);
     render(<OnboardingFlow progress={{ ...empty, steamLinked: true, planningReady: true }} />);
-    for (let i = 0; i < 3; i++) fireEvent.click(screen.getByRole("button", { name: "Suivant" }));
+    for (let i = 0; i < 2; i++) fireEvent.click(screen.getByRole("button", { name: "Suivant" }));
     fireEvent.click(screen.getByRole("button", { name: "Terminer le guide" }));
     await waitFor(() => expect(mocks.complete).toHaveBeenCalledTimes(1));
     expect(mocks.push).not.toHaveBeenCalled();
