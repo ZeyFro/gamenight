@@ -16,6 +16,7 @@ import { uniqueGameOptions } from "@/lib/game-search";
 import type { NotifyRecipientCandidate } from "@/components/NotifyRecipientsField";
 import { pageMetadata } from "@/lib/page-title";
 import { plural } from "@/lib/plural";
+import { teamRivalriesEnabled } from "@/lib/team-rivalries-rules";
 
 export const metadata = pageMetadata("Jouer maintenant");
 
@@ -43,6 +44,7 @@ export default async function JouerMaintenantPage({
 
   const { error } = await searchParams;
   const errorMessage = error ? (ERROR_MESSAGES[error] ?? null) : null;
+  const maxDurationLabel = teamRivalriesEnabled() ? "2 h maximum" : "3 h maximum";
 
   const [activeSessions, myActiveSession, gamesRaw, potesRaw] = await Promise.all([
     listActiveInstantSessions(user.id),
@@ -67,7 +69,7 @@ export default async function JouerMaintenantPage({
       <PageHeader
         eyebrow="Une partie spontanée"
         title="Jouer maintenant"
-        description="Démarre un jeu, tes potes rejoignent librement tant qu’elle est active (3h maximum). Distinct des soirées planifiées et de la roulette."
+        description={`Démarre un jeu, tes potes rejoignent librement tant qu’elle est active (${maxDurationLabel}). Distinct des soirées planifiées et de la roulette.`}
       />
       <div className="flex flex-wrap gap-3">
         <Link href="/joueurs" className="text-sm font-medium text-accent">Il te manque un joueur ? Publie une annonce →</Link>
