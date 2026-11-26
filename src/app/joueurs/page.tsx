@@ -1,4 +1,4 @@
-import { GAME_LEVELS, GAME_LEVEL_LABELS, isGameLevelsEnabled, isGameLevelsMatchmakingEnabled } from "@/lib/game-levels-rules";
+import { GAME_LEVELS, GAME_LEVEL_LABELS, isGameLevelsEnabled } from "@/lib/game-levels-rules";
 import { parsePlayerClassifiedFilters, type PlayerClassifiedSearchParams } from "@/lib/player-classified-filters";
 import { PLAYER_PLATFORMS } from "@/lib/player-equipment";
 import { PLAYER_CLASSIFIED_MICROPHONE_REQUIREMENTS, PLAYER_CLASSIFIED_PARTY_TYPES } from "@/lib/player-classifieds-rules";
@@ -135,6 +135,9 @@ export default async function PlayerClassifiedsPage({
             <option value="">Tous les jeux</option>
             {games.map(game => <option key={game.id} value={game.id}>{game.name}</option>)}
           </select>
+          {/* Un seul champ `level` : le parseur attend une chaîne, et `levelMatch` couvre déjà
+              « ce niveau ou plus » (défaut) comme « exactement ». Un second sélecteur `level`
+              (matchmaking) envoyait deux valeurs dans l'URL et invalidait tous les filtres. */}
           {isGameLevelsEnabled() && <fieldset className="flex flex-col gap-2 rounded-lg border border-border p-3">
             <legend className="px-1 text-sm font-medium">Niveau de jeu (exige un jeu choisi ci-dessus)</legend>
             <label htmlFor="filter-level" className="text-xs text-muted">Niveau déclaré du joueur pour ce jeu</label>
@@ -147,7 +150,7 @@ export default async function PlayerClassifiedsPage({
               <option value="">Ce niveau ou plus</option>
               <option value="exact">Ce niveau exactement</option>
             </select>
-            <p className="text-xs text-muted">Niveaux auto-déclarés ; les profils masqués ne sont jamais trouvés par ce filtre.</p>
+            <p className="text-xs text-muted">Niveaux auto-déclarés ; un joueur sans niveau déclaré est écarté quand ce filtre est actif. Les profils masqués ne sont jamais trouvés par ce filtre.</p>
           </fieldset>}
           <label htmlFor="filter-platform">Plateforme déclarée du joueur</label>
           <select id="filter-platform" name="platform" className="rounded-lg border border-border bg-background px-3 py-3 text-base text-foreground" defaultValue={filters.platform ?? ""}>
@@ -176,14 +179,6 @@ export default async function PlayerClassifiedsPage({
             <option value="">Tous</option>
             {PLAYER_CLASSIFIED_PARTY_TYPES.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}
           </select>
-          {isGameLevelsMatchmakingEnabled() && <>
-            <label htmlFor="filter-level">Niveau minimum du joueur pour le jeu</label>
-            <select id="filter-level" name="level" className="rounded-lg border border-border bg-background px-3 py-3 text-base text-foreground" defaultValue={filters.level ?? ""}>
-              <option value="">Tous les niveaux</option>
-              {GAME_LEVELS.map(level => <option key={level} value={level}>{GAME_LEVEL_LABELS[level]} ou plus</option>)}
-            </select>
-            <p className="text-xs text-muted">Niveau auto-déclaré sur le profil ; un joueur sans niveau déclaré est écarté quand ce filtre est actif.</p>
-          </>}
           <fieldset className="flex flex-col gap-2 rounded-lg border border-border p-3">
             <legend className="px-1 text-sm font-medium">Horaire de la partie (heure de Paris)</legend>
             <label htmlFor="filter-starts-after-date" className="text-xs text-muted">À partir du</label>
