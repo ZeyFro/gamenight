@@ -21,7 +21,7 @@ export default async function TowerWelcomePanelAdminPage() {
     <main className="mx-auto w-full max-w-3xl space-y-6 px-4 py-8">
       <header className="space-y-2">
         <p className="text-sm text-muted">The Tower · Administration</p>
-        <h1 className="text-2xl font-semibold">Panneau d'accueil Discord</h1>
+        <h1 className="text-2xl font-semibold">Panneau d’accueil Discord</h1>
         <p className="text-sm text-muted">Publication manuelle réservée au propriétaire. Aucun message n’est envoyé par cron ou lors d’un déploiement.</p>
       </header>
       <TowerWelcomePanelPublisher enabled={enabled} />
