@@ -1,6 +1,6 @@
 # Recette des 61 lignes actives du cahier
 
-Relevé du 26/11/2026 sur `main` `4eec09f9`. **Ce document ne change aucun statut** de [CAHIER_FINAL.md](CAHIER_FINAL.md) ([décision D1](DECISIONS_PRODUIT_20261126.md)). Une ligne ne devient verte qu'après un **test réel fait par un compte non-admin, daté et consigné** dans le cahier, avec sa preuve. Un flag allumé, une page affichée ou un test automatisé ne suffisent pas.
+Relevé du 26/11/2026 sur `main` `4eec09f9`. Cette PR corrige aussi, dans le cahier, le **texte** de quatre incohérences, n°1, 2, 4 et 6 de la dernière section (la n°3 attend Maxime). **Aucun statut n'est changé** de [CAHIER_FINAL.md](CAHIER_FINAL.md) ([décision D1](DECISIONS_PRODUIT_20261126.md)). Une ligne ne devient verte qu'après un **test réel fait par un compte non-admin, daté et consigné** dans le cahier, avec sa preuve. Un flag allumé, une page affichée ou un test automatisé ne suffisent pas.
 
 **Périmètre** : les 148 lignes du cahier, moins les 77 « ✅ Fait » et les 9 reportées (C095 à C103), soit 61 lignes actives : 15 « codé, allumé, non vérifié », 4 « codé, non vérifié », 6 « partiel côté Discord », 24 « codé, éteint » et 12 « sans code ».
 
@@ -74,7 +74,7 @@ Relevé du 26/11/2026 sur `main` `4eec09f9`. **Ce document ne change aucun statu
 | C029 | `COMMUNITY_HIGHLIGHTS_ENABLED` allumé | M | Une fois des données réelles disponibles (un défi validé, un exploit saisi par un admin), ouvrir `/tower/palmares` et Profil → Lore. | Capture d'un exploit affiché. Un essai du 26/11 en lecture seule (#632, non fusionnée) n'a trouvé que des tableaux vides. | Agent |
 | C052 | `TOWER_CHALLENGES_ENABLED`, `TEAM_RIVALRIES_ENABLED` allumés | M | Ouvrir classements, Hall of Fame et Rankers après des défis et des rivalités réels. | Captures avec données. Tableaux vides le 26/11 (#632). | Agent |
 | C057 | `DISCORD_REPORT_COMMAND_ENABLED`, `TOWER_DISCORD_ANNOUNCE_ENABLED` allumés | M, M2 | Déposer une preuve et un signalement avec M. Vérifier que M2 ne voit ni la preuve privée, ni le ticket, ni le journal. | Captures vues par M2 (accès refusé ou contenu absent). **D14 en est une partie.** | Agent |
-| C078 | `TOWER_DISCORD_VOTES_ENABLED` allumé | M2 (membre depuis ≥ 7 jours) | Voter ✅ ou ❌ sur une preuve de M, ouvrir le fil de la preuve, changer son vote. | Captures du compteur mis à jour et du fil ; SELECT sur les votes. Le cahier dit « ≥ 3 jours », le code et `CLAUDE.md` disent **7 jours** (incohérence 3). | Agent |
+| C078 | `TOWER_DISCORD_VOTES_ENABLED` allumé | M2 (membre depuis ≥ 3 jours) | Voter ✅ ou ❌ sur une preuve de M, ouvrir le fil de la preuve, changer son vote. | Captures du compteur mis à jour et du fil ; SELECT sur les votes. Ancienneté appliquée : **3 jours** (code, `CLAUDE.md`, cahier). Le cahier des charges §27.2 B dit 7 jours (incohérence 3). | Agent |
 | C088 | `DISCORD_REPORT_COMMAND_ENABLED` allumé | M | Comme D14. | Même preuve que D14 (ligne en double). | Agent |
 
 ---
@@ -126,7 +126,7 @@ Chaque lot s'allume entier, avec l'accord de Maxime ([ALLUMAGES.md](ALLUMAGES.md
 | **C** | D09 | `NOTIFICATION_CENTER_ENABLED`, `SESSION_VISIBILITY_ENABLED` | M (créateur), M2 (abonné au jeu) | Soirée publique d'un seul jeu : le rôle du jeu est mentionné ; M n'est jamais mentionné. | Capture du message ; liste des mentions autorisées. | Agent |
 | **G** | C007 | `DISCORD_ROLE_COMMAND_ENABLED` | M | `/role` : choisir un rôle de jeu (D2 : rôles de jeu = GameNight). | Capture privée et rôle obtenu. | Agent |
 | **G** | C082 | `DISCORD_ROLE_AUTOCREATE_ENABLED` | M | `/role` sur un jeu sans rôle : création par la file, une seule fois par semaine. | Captures ; SELECT sur `DiscordRoleRequest`. **D2 : l'alerte à 200 rôles sur 250 et le blocage à 200 sont à vérifier.** | Agent |
-| **G** | C089 | `DISCORD_BOOSTERS_ENABLED` | Un vrai booster | Comme D15. | **Incohérence 2** : le cahier dit ce flag allumé pour C001 (Vercel 25/11) et éteint pour C089. | Maxime |
+| **G** | C089 | `DISCORD_BOOSTERS_ENABLED` (déjà `true` en Production, relevé Vercel du 26/11) | Un vrai booster | Comme D15. | Captures (voir D15). Le statut « codé, éteint » est à revoir par Maxime (incohérence 2). | Maxime |
 
 ---
 
@@ -140,12 +140,12 @@ Chaque lot s'allume entier, avec l'accord de Maxime ([ALLUMAGES.md](ALLUMAGES.md
 - **C085 ≈ D09 ≈ C076** : notifications.
 
 **Incohérences**
-1. **États de flags périmés** : C035 et C128 sont dits « éteint » dans le cahier ; #632 (non fusionnée) a observé le 26/11 les niveaux de jeu et Potes **actifs** en Production. Relever les flags dans Vercel avant de tester.
-2. **`DISCORD_BOOSTERS_ENABLED`** : « allumé » dans la ligne C001, « éteint » dans la ligne C089.
-3. **C078** : « votants ≥ 3 jours » dans le cahier ; `CLAUDE.md` et le code disent **7 jours**.
-4. **`NOTIFICATION_CENTER_ENABLED`** : lot G dans le cahier (C044, C085), lot C dans `ALLUMAGES.md`.
+1. **États de flags périmés** : C035 et C128 étaient dits « éteint » ; #632 (non fusionnée) a observé le 26/11 les niveaux de jeu et Potes **actifs** en Production. Le relevé Vercel du 26/11 est **incomplet** (liste tronquée : ces flags n'y figurent pas). **Texte corrigé dans le cahier** : « état à revérifier dans Vercel ».
+2. **`DISCORD_BOOSTERS_ENABLED`** : « allumé » en C001, « éteint » en C089. Le relevé Vercel du 26/11 donne `true` en Production (mis à jour le 24/11). **Texte de C089 corrigé** ; son statut « Codé, éteint » est laissé tel quel : c'est à Maxime de le revoir.
+3. **C078, ancienneté des votants** : le cahier, le code (`TOWER_VOTER_MIN_TENURE_MS`), `CLAUDE.md` et `TOWER_VOTES_DISCORD.md` disent **3 jours**. Seul le cahier des charges (§27.2 B, décisions du 18/11) dit **7 jours**. Le passage à 3 jours vient d'une décision de Maxime du 23/11 (constat 1.4, commit `91be15bc`). `DECISIONS_TOWER.md` du 17/11 ne fixe aucune ancienneté. **Rien n'est tranché ici : Maxime doit dire quelle décision fait foi.**
+4. **`NOTIFICATION_CENTER_ENABLED`** : lot G dans le cahier (C044, C085, D09), lot C dans `ALLUMAGES.md`. **Texte du cahier corrigé** : lot C.
 5. **C042** (« ✅ Fait », hors des 61) : #632 en conteste le contenu ICS. À regarder avant le lancement, même si la ligne n'est pas comptée ici.
-6. **Lignes sans code** : `PLAN_TESTS.md` est cité comme « procédure », mais n'a aucune section par ligne. Les étapes du groupe A1 en tiennent lieu.
+6. **Lignes sans code** : `PLAN_TESTS.md` était cité comme « procédure », mais n'a aucune section par ligne. **Texte des 12 lignes corrigé dans le cahier** : la procédure renvoie au groupe A1 ci-dessus.
 
 ## Ce que ce document ne prouve pas
 
