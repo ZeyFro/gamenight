@@ -1,13 +1,23 @@
 # Cahier des charges — la ligne d'arrivée
 
-> Relevé mis à jour le 25 novembre 2026. **Un seul lancement, cahier entièrement terminé** (décision de Maxime du 23/11). Ce tableau et [LANCEMENT_GO.md](LANCEMENT_GO.md) forment la ligne d'arrivée : on lance quand **chaque ligne** est « ✅ Fait », ou « Reporté » avec la réponse de Maxime.
+> Relevé éditorial mis à jour le 26 novembre 2026. **Aucune date de lancement fixe** : l’ouverture intervient lorsque les **61 lignes actives** sont toutes vertes. Les lignes C095 à C103 (9 exigences reportées) restent hors lancement ; **C098 ne sera jamais activée en v1**. Le présent tableau et [LANCEMENT_GO.md](LANCEMENT_GO.md) forment la ligne d’arrivée.
 >
-> **Source** : les 127 exigences de [COUVERTURE_CAHIER.md](COUVERTURE_CAHIER.md) et les 20 décisions du 17-18/11, avec le verdict testé de la traçabilité (`docs/preuves/tracabilite.json`, PR #514). Cela fait **147 éléments**. La demande en citait 148 : l'écart d'une ligne vient du découpage, et aucune exigence du cahier n'est omise. **Ajout du 23/11** : C128 (Potes = amis), besoin nouveau de Maxime, soit 148 éléments. L'état des interrupteurs est celui lu dans Vercel le 22/11.
+> **Périmètre** : 148 lignes au total. Le jalon d’ouverture couvre 61 lignes actives ; C095–C103 (9 lignes reportées) sont hors lancement. C098 reste désactivée en v1. Les états plus anciens ci-dessous ne valent pas validation actuelle : seuls les tests réels d’un compte non-admin, datés et consignés, peuvent faire passer une ligne au vert.
 >
 > **Plan d'allumage** : [ALLUMAGES.md](ALLUMAGES.md), lots A à H, faits par ChatGPT dans Vercel, un lot à la fois. **Questions** : [QUESTIONS_MAXIME.md](QUESTIONS_MAXIME.md). **Lots de code** : section « Lots de code » en fin de page.
-> **Contrôle Vercel du 25/11/2026** : quinze lignes auparavant « Codé, éteint » ont leur interrupteur `true` en Production et un déploiement Production `READY` (`b43496a`, `dpl_2Ni4UCqz7KDGSDD9QeUQpriEqggV`). Leur comportement de bout en bout reste à tester ; aucune n'est passée au vert sur la seule base de ce réglage.
+> **Règle de preuve** (26/11/2026) : un flag activé, une page affichée ou un test automatisé seul ne valide pas une exigence fonctionnelle. Consigner le compte non-admin, le scénario observé, la date et le résultat. Aucun flag ne sera allumé sans accord explicite de Maxime.
 
-## Résumé
+## Suivi hebdomadaire et seuil d’ouverture
+
+- Total du cahier : **148 lignes**.
+- Seuil d’ouverture : **61 lignes actives vertes sur 61**.
+- Hors lancement : **9 lignes reportées, C095–C103** ; **C098 ne s’allume jamais en v1**.
+- Pour chaque relevé hebdomadaire, indiquer la date, le nombre de lignes vertes sur 148, le nombre de lignes bloquées et leurs identifiants. Une ligne compte verte uniquement avec une preuve réelle, datée et faite par un compte non-admin.
+- **Relevé du 26/11/2026 : non recalculé** selon cette règle de preuve ; aucun total courant n’est déduit des anciens statuts du tableau.
+
+## Résumé historique — relevé antérieur du 25/11/2026
+
+Les nombres ci-dessous décrivent l’ancien relevé et ne constituent pas le décompte courant selon la règle de preuve du 26/11.
 
 | Statut | Nombre |
 | --- | ---: |
