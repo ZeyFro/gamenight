@@ -647,7 +647,7 @@ export async function listChannelMessages(input: {
   now?: Date;
 }): Promise<DiscordRestResult<{ messages: ChannelMessageSummary[] }>> {
   const limit = input.limit ?? 100;
-  if (!/^\\d{16,20}$/.test(input.channelId) || !Number.isInteger(limit) || limit < 1 || limit > 100) {
+  if (!/^\d{16,20}$/.test(input.channelId) || !Number.isInteger(limit) || limit < 1 || limit > 100) {
     return { ok: false, kind: "invalid_request", message: "Référence de salon ou limite invalide.", retryable: false };
   }
   return discordRequest({
