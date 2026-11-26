@@ -12,6 +12,10 @@ describe("normalizeSensitiveOperation", () => {
     expect(normalizeSensitiveOperation({ actorId: "", action: "auth.force_relogin", outcome: "ok" }).actorId).toBeNull();
     expect(normalizeSensitiveOperation({ actorId: "u1", action: "auth.force_relogin", target: "x".repeat(192), outcome: "ok" }).target).toBeNull();
   });
+  it("autorise la publication du panneau après le contrôle propriétaire", () => {
+    expect(normalizeSensitiveOperation({ actorId: "u1", action: "discord.welcome_panel_publish", target: "123456789012345678", outcome: "published" }))
+      .toMatchObject({ actorId: "u1", action: "discord.welcome_panel_publish", target: "123456789012345678", outcome: "published" });
+  });
   it("refuse une action inconnue (liste fermée)", () => {
     expect(() => normalizeSensitiveOperation({ actorId: "u1", action: "inconnue" as never, outcome: "ok" })).toThrow(/inconnue/);
   });

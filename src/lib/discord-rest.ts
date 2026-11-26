@@ -563,6 +563,8 @@ function hasContent(input: MessageContentInput): boolean {
 
 export interface SendMessageInput extends MessageContentInput {
   channelId: string;
+  /** Stable short nonce for Discord-side de-duplication on retries (max 25 chars). */
+  nonce?: string;
   /** `true` si `channelId` est un canal de MP — affine la classification
    * d'un éventuel refus 403 (voir `classifyForbiddenOrUnauthorized`). */
   isDirectMessage?: boolean;
@@ -573,6 +575,9 @@ export interface SendMessageInput extends MessageContentInput {
 /** Envoie un message dans un salon (guilde, fil, ou canal de MP — même
  * endpoint pour les trois, voir `sendThreadMessage`). */
 export async function sendChannelMessage(input: SendMessageInput): Promise<DiscordRestResult<SentMessage>> {
+  if (input.nonce !== undefined && (input.nonce.length < 1 || input.nonce.length > 25)) {
+    return { ok: false, kind: "invalid_request", message: "Nonce Discord invalide.", retryable: false };
+  }
   if (!hasContent(input)) {
     return {
       ok: false,
@@ -584,7 +589,10 @@ export async function sendChannelMessage(input: SendMessageInput): Promise<Disco
   return discordRequest({
     method: "POST",
     path: `/channels/${input.channelId}/messages`,
-    body: buildMessageBody(input),
+    body: {
+      ...buildMessageBody(input),
+      ...(input.nonce ? { nonce: input.nonce, enforce_nonce: true } : {}),
+    },
     deadline: input.deadline,
     now: input.now,
     isDirectMessage: input.isDirectMessage,
@@ -610,6 +618,55 @@ export async function getChannel(input: GetChannelInput): Promise<DiscordRestRes
     deadline: input.deadline,
     now: input.now,
     parse: parseChannelInfo,
+  });
+}
+
+const channelMessageSummarySchema = z.array(z.object({
+  id: z.string(),
+  channel_id: z.string(),
+  content: z.string().default(""),
+  author: z.object({ bot: z.boolean().optional() }),
+  components: z.array(z.object({
+    components: z.array(z.object({ custom_id: z.string().optional() }).passthrough()).default([]),
+  }).passthrough()).default([]),
+}).passthrough());
+
+export interface ChannelMessageSummary {
+  messageId: string;
+  channelId: string;
+  content: string;
+  authorIsBot: boolean;
+  componentIds: string[];
+}
+
+/** Read-only, bounded recent message listing for idempotent setup workflows. */
+export async function listChannelMessages(input: {
+  channelId: string;
+  limit?: number;
+  deadline: Date;
+  now?: Date;
+}): Promise<DiscordRestResult<{ messages: ChannelMessageSummary[] }>> {
+  const limit = input.limit ?? 100;
+  if (!/^\d{16,20}$/.test(input.channelId) || !Number.isInteger(limit) || limit < 1 || limit > 100) {
+    return { ok: false, kind: "invalid_request", message: "Référence de salon ou limite invalide.", retryable: false };
+  }
+  return discordRequest({
+    method: "GET",
+    path: `/channels/${input.channelId}/messages?limit=${limit}`,
+    deadline: input.deadline,
+    now: input.now,
+    parse: (json) => {
+      const parsed = channelMessageSummarySchema.safeParse(json);
+      return parsed.success ? {
+        messages: parsed.data.map(message => ({
+          messageId: message.id,
+          channelId: message.channel_id,
+          content: message.content,
+          authorIsBot: message.author.bot === true,
+          componentIds: message.components.flatMap(row => row.components.flatMap(component => component.custom_id ? [component.custom_id] : [])),
+        })),
+      } : null;
+    },
   });
 }
 

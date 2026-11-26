@@ -21,6 +21,7 @@ const SANS_LIEN: Record<string, string> = {
   "/admin/messages": "ancienne adresse conservée : redirige vers l’onglet correspondant de /admin",
   "/admin/superlatifs": "ancienne adresse conservée : redirige vers l’onglet correspondant de /admin",
   "/admin/tower-layout": "outil du propriétaire Tower, ouvert par son adresse ; écriture suspendue (audit V4-25)",
+  "/admin/tower-onboarding-panel": "console du propriétaire Tower, sans lien membre ; publication manuelle protégée (C006)",
 };
 
 /** Un nom de page cité dans un commentaire n’est pas un lien. */

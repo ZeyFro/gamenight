@@ -17,6 +17,7 @@ export const SENSITIVE_OPERATIONS = [
   "cleanup.retry_reward", "cleanup.retry_discord",
   "discord.commands_execute",
   "discord.commands_bulk",
+  "discord.welcome_panel_publish",
   "admin.badges", "admin.free_games", "admin.game_stats", "admin.messages", "admin.superlatives",
   "tower.irregular_grant", "tower.irregular_revoke", "tower.participant_confirm",
 ] as const;
