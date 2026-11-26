@@ -137,6 +137,36 @@ suite("calendar feed integration", () => {
     expect(guestCalendar).not.toContain("Jeu B");
   });
 
+  it("n'émet ni date passée, ni soirée annulée ou terminée, et garde les soirées futures actives (C042)", async () => {
+    const now = wallClockNow();
+    const past = new Date(now.getTime() - 11 * 24 * 60 * 60 * 1000); // 15/11 : la date du rapport TinyFish
+    const future = new Date(now.getTime() + 22 * 60 * 60 * 1000);
+    await db.session.createMany({ data: [
+      { id: "past-voting", communityId: "default", createdById: "owner", date: past, status: "VOTING" },
+      { id: "past-scheduled", communityId: "default", createdById: "owner", date: past, status: "SCHEDULED" },
+      { id: "future-cancelled", communityId: "default", createdById: "owner", date: future, status: "CANCELLED" },
+      { id: "future-done", communityId: "default", createdById: "owner", date: future, status: "DONE" },
+      { id: "future-voting", communityId: "default", createdById: "owner", date: future, status: "VOTING" },
+      { id: "future-scheduled", communityId: "default", createdById: "owner", date: future, status: "SCHEDULED" },
+    ] });
+    const { token } = (await feed.createCalendarFeedToken("owner"))!;
+
+    const calendar = (await feed.readCalendarFeed(token, "https://gamenight.example"))!;
+    // Lignes brutes : un VEVENT par soirée retenue, rien d'autre.
+    expect(calendar.match(/BEGIN:VEVENT/g)).toHaveLength(2);
+    expect(calendar).toContain("/sessions/future-voting");
+    expect(calendar).toContain("/sessions/future-scheduled");
+    for (const excluded of ["past-voting", "past-scheduled", "future-cancelled", "future-done"]) {
+      expect(calendar).not.toContain(`/sessions/${excluded}`);
+    }
+    expect(calendar).not.toContain("STATUS:CANCELLED");
+
+    // Confidentialité : le flux d'un autre membre ne reprend aucune de ces soirées.
+    const { token: guestToken } = (await feed.createCalendarFeedToken("guest"))!;
+    const guestCalendar = (await feed.readCalendarFeed(guestToken, "https://gamenight.example"))!;
+    expect(guestCalendar).not.toContain("BEGIN:VEVENT");
+  });
+
   it("refuse les jetons inconnus et n’émet rien pour un membre retiré", async () => {
     expect(await feed.readCalendarFeed("A".repeat(43), "https://gamenight.example")).toBeNull();
     await db.membership.updateMany({ where: { userId: "owner" }, data: { status: "REMOVED" } });
