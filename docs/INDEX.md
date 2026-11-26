@@ -22,6 +22,7 @@
 - [Réponses Discord aux soirées](DISCORD_REPONSES_SOIREES.md).
 - [Commandes Discord The Tower (403, invitation, enregistrement)](DISCORD_COMMANDES.md).
 - [Messages à publier dans chaque salon Discord](MESSAGES_SALONS.md) — un message court par salon, avec les commandes exactes et les liens du site.
+- [Recette des 61 lignes actives](RECETTE_61_LIGNES.md) — prérequis, compte, étapes, preuve et responsable par ligne (groupes A stables, B après le code neuf, C par lot d’allumage) ; aucun statut changé.
 - [Procédures de preuve](PROCEDURES_PREUVES.md) — comment prouver, étape par étape et en lecture seule, les 17 éléments du cahier « non vérifiés en réel » ou « côté Discord ».
 - [Défis Discord The Tower](tower-challenges.md) — lot préparé en brouillon, activation et enregistrement des commandes séparés.
 - [Audit final du 23/11/2026](AUDIT_FINAL.md) — constats, corrections, restants et ce qui n'a pas pu être vérifié ; détails dans [`audit/`](audit/01-securite-owasp.md).
