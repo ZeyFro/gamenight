@@ -37,7 +37,7 @@ const base = {
   forumThreadId: null,
   forumClosedAt: null,
   game: { id: "game-1", name: "Hades II" },
-  createdBy: { discordId: "333333333333333333", discordName: "alice" },
+  createdBy: { discordId: "333333333333333333", discordName: "alice", profileVisibility: null },
   community: { discordGuildId: GUILD },
 };
 
@@ -58,6 +58,16 @@ describe("runPlayerClassifiedForumAction", () => {
     );
     expect(result).toEqual({ ok: true, data: { threadId: "444444444444444444" } });
     expect(mocks.createPost).not.toHaveBeenCalled();
+  });
+
+  it("ne relaie jamais une annonce dont l'auteur a un profil masqué", async () => {
+    mocks.findUnique.mockResolvedValue({ ...base, createdBy: { ...base.createdBy, profileVisibility: { visibility: "HIDDEN" } } });
+    const result = await runPlayerClassifiedForumAction(
+      { intent: "post", listingId: "listing-1", communityId: "c1" }, DEADLINE,
+    );
+    expect(result).toEqual({ ok: false, kind: "not_found", message: "Profil masqué : annonce non relayée.", retryable: false });
+    expect(mocks.createPost).not.toHaveBeenCalled();
+    expect(mocks.updateMany).not.toHaveBeenCalled();
   });
 
   it("crée un post unique et persiste son identifiant", async () => {

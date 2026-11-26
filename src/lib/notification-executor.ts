@@ -284,6 +284,8 @@ export type ResolvedAction =
       intent: PlayerClassifiedForumIntent;
       listingId: string;
       communityId: string;
+      /** Fermeture d'un fil dont l'annonce a déjà été retirée. */
+      threadId?: string;
     };
 
 /** Raisons de non-éligibilité — voir `classifyResolutionFailure` pour leur
@@ -726,7 +728,7 @@ export async function performDiscordAction(
     case "relay_player_classified_forum": {
       return mapDiscordResult(
         await runPlayerClassifiedForumAction(
-          { intent: action.intent, listingId: action.listingId, communityId: action.communityId },
+          { intent: action.intent, listingId: action.listingId, communityId: action.communityId, threadId: action.threadId },
           deadline
         ),
         () => ({})
