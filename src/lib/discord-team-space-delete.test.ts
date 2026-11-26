@@ -1,9 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const mocks = vi.hoisted(() => ({ findTeam: vi.fn(), record: vi.fn() }));
+const mocks = vi.hoisted(() => ({ findTeam: vi.fn(), record: vi.fn(), openReports: vi.fn() }));
 
 vi.mock("@/lib/community-scoped-client", () => ({
-  scopedPrisma: () => ({ communityTeam: { findFirst: mocks.findTeam } }),
+  scopedPrisma: () => ({ communityTeam: { findFirst: mocks.findTeam }, moderationReport: { count: mocks.openReports } }),
 }));
 vi.mock("@/lib/sensitive-operation-log", () => ({ recordSensitiveOperation: mocks.record }));
 
@@ -24,6 +24,7 @@ const team = () => ({
 
 function fakeApi(channels: Array<{ id: string; name: string; type: number }>, failOn?: string) {
   const deleted: string[] = [];
+  const removed: string[] = [];
   const api: TeamSpaceDiscordApi = {
     snapshot: async () => ({ channels, roles: [] }),
     createRole: async () => "role",
@@ -31,12 +32,13 @@ function fakeApi(channels: Array<{ id: string; name: string; type: number }>, fa
     renameChannel: async () => undefined,
     addMemberRole: async () => undefined,
     removeMemberRole: async () => undefined,
+    setMemberPermission: async (channelId, userId) => { removed.push(`${channelId}:${userId}`); },
     deleteChannel: async (channelId) => {
       if (channelId === failOn) throw new Error("discord_server_error");
       deleted.push(channelId);
     },
   };
-  return { api, deleted };
+  return { api, deleted, removed };
 }
 
 const store = () =>
@@ -50,6 +52,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   mocks.findTeam.mockResolvedValue(team());
   mocks.record.mockResolvedValue(undefined);
+  mocks.openReports.mockResolvedValue(0);
 });
 
 describe("deleteTeamSpace", () => {
@@ -81,6 +84,37 @@ describe("deleteTeamSpace", () => {
     const result = await deleteTeamSpace({ teamId: TEAM, communityId: "community-1", api, store: store(), actorId: "user-1", env: enabled });
     expect(result).toEqual({ status: "already_deleted", channelIds: [] });
     expect(deleted).toEqual([]);
+  });
+
+  it("refuse à l'exécution une équipe qui n'est plus dissoute", async () => {
+    mocks.findTeam.mockResolvedValue({ ...team(), members: [{ userId: "u1", user: { discordId: "123456789012345678", memberships: [{ id: "m1" }] } }] });
+    const { api, deleted } = fakeApi(existing);
+    const result = await deleteTeamSpace({ teamId: TEAM, communityId: "community-1", api, store: store(), env: enabled });
+    expect(result).toEqual({ status: "not_dissolved", channelIds: [] });
+    expect(deleted).toEqual([]);
+  });
+
+  it("refuse à l'exécution tant qu'un signalement est ouvert", async () => {
+    mocks.openReports.mockResolvedValue(1);
+    const { api, deleted } = fakeApi(existing);
+    const result = await deleteTeamSpace({ teamId: TEAM, communityId: "community-1", api, store: store(), env: enabled });
+    expect(result).toEqual({ status: "open_report", channelIds: [] });
+    expect(deleted).toEqual([]);
+    expect(mocks.record).not.toHaveBeenCalled();
+  });
+
+  it("retire les accès des anciens membres avant de supprimer les salons", async () => {
+    const { api, deleted, removed } = fakeApi(existing, "chan-1");
+    const result = await deleteTeamSpace({
+      teamId: TEAM, communityId: "community-1", api, store: store(), env: enabled,
+      formerMemberDiscordIds: ["111111111111111111", "222222222222222222"],
+    });
+    expect(result.status).toBe("partial");
+    expect(removed).toEqual([
+      "chan-1:111111111111111111", "chan-1:222222222222222222",
+      "voice-1:111111111111111111", "voice-1:222222222222222222",
+    ]);
+    expect(deleted).toEqual(["voice-1"]);
   });
 
   it("échec partiel puis rejeu : le lien reste, le rejeu termine sans doublon", async () => {

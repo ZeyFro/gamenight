@@ -16,7 +16,7 @@ import { PLAYER_CLASSIFIED_FORUM_NAME, type PlayerClassifiedForumIntent } from "
  * crash ne crée pas de second post si `forumThreadId` est déjà écrit.
  */
 export async function runPlayerClassifiedForumAction(
-  input: { intent: PlayerClassifiedForumIntent; listingId: string; communityId: string },
+  input: { intent: PlayerClassifiedForumIntent; listingId: string; communityId: string; threadId?: string },
   deadline: Date,
 ): Promise<DiscordRestResult<{ threadId?: string }>> {
   const scopedDb = scopedPrisma(null);
@@ -30,11 +30,22 @@ export async function runPlayerClassifiedForumAction(
       forumThreadId: true,
       forumClosedAt: true,
       game: { select: { id: true, name: true } },
-      createdBy: { select: { discordId: true, discordName: true } },
+      createdBy: { select: { discordId: true, discordName: true, profileVisibility: { select: { visibility: true } } } },
       community: { select: { discordGuildId: true } },
     },
   });
-  if (!listing || listing.communityId !== input.communityId || !listing.community.discordGuildId) {
+
+  // Annonce retirée : la ligne n'existe plus, mais le fil à fermer est porté par
+  // l'événement. Aucune autre lecture n'est nécessaire.
+  if (!listing) {
+    if (input.intent === "close" && input.threadId) {
+      const archived = await archiveThread({ threadId: input.threadId, locked: false, deadline });
+      if (!archived.ok && archived.kind !== "not_found") return archived;
+      return { ok: true, data: { threadId: input.threadId } };
+    }
+    return { ok: false, kind: "not_found", message: "Annonce introuvable.", retryable: false };
+  }
+  if (listing.communityId !== input.communityId || !listing.community.discordGuildId) {
     return { ok: false, kind: "not_found", message: "Annonce introuvable.", retryable: false };
   }
 
@@ -54,6 +65,10 @@ export async function runPlayerClassifiedForumAction(
   }
 
   if (listing.forumThreadId) return { ok: true, data: { threadId: listing.forumThreadId } };
+  // Un profil masqué ne fuit jamais son annonce dans le forum public.
+  if (listing.createdBy.profileVisibility?.visibility === "HIDDEN") {
+    return { ok: false, kind: "not_found", message: "Profil masqué : annonce non relayée.", retryable: false };
+  }
 
   const forums = await listDiscordForumChannels({
     guildId: listing.community.discordGuildId,

@@ -450,7 +450,7 @@ export async function reactivateTeamSpace(input: {
 }
 
 export type SpaceDeleteResult = {
-  status: "deleted" | "already_deleted" | "dry_run" | "unlinked" | "disabled" | "partial" | "failed";
+  status: "deleted" | "already_deleted" | "dry_run" | "unlinked" | "disabled" | "partial" | "failed" | "not_dissolved" | "open_report";
   /** Identifiants vérifiés dans `DiscordTeamSpace` ; jamais un nom. */
   channelIds: string[];
 };
@@ -468,6 +468,8 @@ export async function deleteTeamSpace(input: {
   store?: SpaceLinkStore;
   dryRun?: boolean;
   actorId?: string;
+  /** Membres présents avant la dissolution : leurs accès sont retirés AVANT toute suppression. */
+  formerMemberDiscordIds?: readonly string[];
   env?: NodeJS.ProcessEnv;
 }): Promise<SpaceDeleteResult> {
   const env = input.env ?? process.env;
@@ -479,6 +481,12 @@ export async function deleteTeamSpace(input: {
     const link = await store.find(team.id);
     if (!link?.channelId) return { status: "unlinked", channelIds: [] };
     const channelIds = [link.channelId, link.voiceChannelId].filter((id): id is string => Boolean(id));
+    // L'exécution ne fait pas confiance à l'état au moment de l'enqueue :
+    // une équipe repeuplée ou un signalement ouvert annule la suppression.
+    if (team.members.length > 0) return { status: "not_dissolved", channelIds: [] };
+    const openReports = await scopedPrisma({ communityIds: [input.communityId], includesDefault: false })
+      .moderationReport.count({ where: { communityId: input.communityId, channelId: { in: channelIds }, closedAt: null } });
+    if (openReports > 0) return { status: "open_report", channelIds: [] };
     const snapshot = await input.api.snapshot(team.guildId);
     const existing = new Set(snapshot.channels.map((channel) => channel.id));
     const present = channelIds.filter((id) => existing.has(id));
@@ -488,6 +496,17 @@ export async function deleteTeamSpace(input: {
       return { status: "already_deleted", channelIds: [] };
     }
     if (!input.api.deleteChannel) return { status: "failed", channelIds: present };
+    // D5 : révoquer d'abord les accès nominatifs des anciens membres. Si la
+    // suppression échoue ensuite, plus personne ne garde l'accès aux salons.
+    if (input.formerMemberDiscordIds?.length) {
+      if (!input.api.setMemberPermission) return { status: "failed", channelIds: present };
+      const discordIds = [...new Set(input.formerMemberDiscordIds)].filter((id) => /^[0-9]{16,20}$/.test(id));
+      for (const channelId of present) {
+        for (const discordId of discordIds) {
+          await input.api.setMemberPermission(channelId, discordId, "0", "remove");
+        }
+      }
+    }
     for (const channelId of [...present].reverse()) {
       await input.api.deleteChannel(channelId);
     }

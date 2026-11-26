@@ -13,7 +13,13 @@ import { logger } from "@/lib/logger";
 export const PLAYER_CLASSIFIED_DAILY_PINGS = 3;
 
 export function playerClassifiedPingDay(now: Date): Date {
-  return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+  // Le plafond est quotidien pour les joueurs : le jour se lit à Paris, jamais en UTC
+  // (23 h 30 UTC restent le même jour pour un joueur français).
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Europe/Paris", year: "numeric", month: "2-digit", day: "2-digit",
+  }).formatToParts(now);
+  const value = (type: string) => Number(parts.find((part) => part.type === type)?.value);
+  return new Date(Date.UTC(value("year"), value("month") - 1, value("day")));
 }
 
 export async function consumePlayerClassifiedPing(input: {

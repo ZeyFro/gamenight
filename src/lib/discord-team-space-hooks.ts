@@ -79,5 +79,6 @@ export async function requestTeamSpaceAfterDissolution(input: {
     communityId: input.communityId,
     teamId: input.teamId,
     actorUserId: input.actorUserId,
+    formerMemberDiscordIds: input.formerMemberDiscordIds,
   });
 }

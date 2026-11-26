@@ -34,6 +34,8 @@ export async function enqueuePlayerClassifiedForum(input: {
   listingId: string;
   communityId: string;
   intent: PlayerClassifiedForumIntent;
+  /** Fermeture après retrait : la ligne peut déjà être supprimée à l'exécution. */
+  threadId?: string;
 }): Promise<ForumEnqueueResult> {
   if (!playerClassifiedForumEnabled()) return "disabled";
   try {
@@ -48,7 +50,7 @@ export async function enqueuePlayerClassifiedForum(input: {
       eventType: PLAYER_CLASSIFIED_FORUM_EVENT,
       sourceId: input.listingId,
       occurrence: input.intent,
-      payload: { intent: input.intent },
+      payload: { intent: input.intent, ...(input.threadId ? { threadId: input.threadId } : {}) },
     });
     await enqueueDelivery({
       eventId: event.id,
@@ -73,17 +75,26 @@ export const playerClassifiedForumResolver: DeliveryResolver = {
     if (event.category !== "ADMIN" || event.eventType !== PLAYER_CLASSIFIED_FORUM_EVENT || !event.communityId) {
       return { eligible: false, reason: "unresolvable" };
     }
-    const payload = z.object({ intent: intentSchema }).safeParse(event.payload);
+    const payload = z.object({ intent: intentSchema, threadId: z.string().min(1).max(32).optional() }).safeParse(event.payload);
     if (!payload.success) return { eligible: false, reason: "unresolvable" };
     if (!process.env.DISCORD_BOT_TOKEN?.trim()) return { eligible: false, reason: "configuration_unavailable" };
     const listing = await scopedPrisma(null).playerClassified.findUnique({
       where: { id: event.sourceId },
-      select: { communityId: true, forumThreadId: true, forumClosedAt: true },
+      select: { communityId: true, forumThreadId: true, forumClosedAt: true,
+        createdBy: { select: { profileVisibility: { select: { visibility: true } } } } },
     });
-    if (!listing || listing.communityId !== event.communityId) return { eligible: false, reason: "expired" };
-    if (payload.data.intent === "post" && listing.forumThreadId) return { eligible: false, reason: "expired" };
-    if (payload.data.intent === "close" && (!listing.forumThreadId || listing.forumClosedAt)) {
-      return { eligible: false, reason: "expired" };
+    const closeThreadId = payload.data.threadId;
+    if (!listing) {
+      if (payload.data.intent !== "close" || !closeThreadId) return { eligible: false, reason: "expired" };
+    } else {
+      if (listing.communityId !== event.communityId) return { eligible: false, reason: "expired" };
+      if (payload.data.intent === "post" && listing.forumThreadId) return { eligible: false, reason: "expired" };
+      if (payload.data.intent === "post" && listing.createdBy.profileVisibility?.visibility === "HIDDEN") {
+        return { eligible: false, reason: "expired" };
+      }
+      if (payload.data.intent === "close" && (!listing.forumThreadId || listing.forumClosedAt)) {
+        return { eligible: false, reason: "expired" };
+      }
     }
     const community = await scopedPrisma(null).community.findUnique({
       where: { id: event.communityId },
@@ -102,6 +113,7 @@ export const playerClassifiedForumResolver: DeliveryResolver = {
         intent: payload.data.intent,
         listingId: event.sourceId,
         communityId: event.communityId,
+        ...(closeThreadId ? { threadId: closeThreadId } : {}),
       },
     };
   },

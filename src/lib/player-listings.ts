@@ -142,10 +142,20 @@ export async function deletePlayerListing(input: {
   const scopedDb = await getScopedPrisma(input.userId);
   const listing = await scopedDb.playerClassified.findFirst({
     where: { id: input.listingId, communityId: input.communityId },
-    select: { id: true, createdById: true },
+    select: { id: true, createdById: true, forumThreadId: true },
   });
   if (!listing) return "missing";
   if (listing.createdById !== input.userId && !input.isAdmin) return "not_owner";
+  // Le fil est fermé même si la ligne disparaît : l'identifiant du fil est porté
+  // par l'événement, donc l'executor n'a pas besoin de relire l'annonce.
+  if (listing.forumThreadId && playerClassifiedForumEnabled()) {
+    await enqueuePlayerClassifiedForum({
+      listingId: listing.id,
+      communityId: input.communityId,
+      intent: "close",
+      threadId: listing.forumThreadId,
+    });
+  }
   const removed = await scopedDb.playerClassified.deleteMany({
     where: { id: listing.id, communityId: input.communityId },
   });

@@ -92,7 +92,7 @@ describe("accroches d'espace d'équipe — aucun appel Discord, uniquement la fi
       formerMemberDiscordIds: [DISCORD_A, DISCORD_B],
     });
     expect(mocks.enqueue.mock.calls.map((call) => call[0])).toEqual([
-      { intent: "delete", communityId: "c1", teamId: "team-1", actorUserId: "user-1" },
+      { intent: "delete", communityId: "c1", teamId: "team-1", actorUserId: "user-1", formerMemberDiscordIds: [DISCORD_A, DISCORD_B] },
     ]);
   });
 

@@ -221,21 +221,44 @@ export async function joinCommunityTeam(userId: string, communityId: string, tea
 /** Départ volontaire. Le capitaine passe la main au plus ancien membre ACTIF (joinedAt, userId) dans la même
  * transaction sérialisable, puis quitte avec le délai habituel ; « leader » seulement s'il est seul.
  */
-export async function leaveCommunityTeam(userId: string, communityId: string, teamId: string): Promise<"left" | "dissolved_last_member" | "leader" | "missing" | "unavailable"> {
+export async function leaveCommunityTeam(
+  userId: string, communityId: string, teamId: string,
+  options: { confirmDissolution?: boolean } = {},
+): Promise<"left" | "dissolved_last_member" | "confirm_dissolution" | "active_challenges" | "open_report_or_appeal" | "leader" | "missing" | "unavailable"> {
   if (await getCommunityTeamsCommunityId(userId) !== communityId) return "unavailable";
   const attempt = () => prisma.$transaction(async (tx) => {
     if (!await canUseTeams(tx, userId, communityId)) return "unavailable";
     const scopedDb = scopedTransactionPrisma(tx, { communityIds: [communityId], includesDefault: false });
     const team = await scopedDb.communityTeam.findFirst({ where: { id: teamId, communityId }, select: { createdById: true, captainId: true } });
     if (!team) return "missing";
+    const activeMember = await scopedDb.communityTeamMember.count({
+      where: { teamId, communityId, userId, ...activeTeamMemberWhere(communityId) },
+    });
+    if (!activeMember) return "missing";
     if ((team.captainId ?? team.createdById) === userId) {
       const successor = await scopedDb.communityTeamMember.findFirst({
         where: { teamId, communityId, userId: { not: userId }, ...activeTeamMemberWhere(communityId) },
         orderBy: [{ joinedAt: "asc" }, { userId: "asc" }], select: { userId: true },
       });
       if (!successor) {
-        // Dernier membre : l'équipe est dissoute logiquement, ses deux salons
-        // seront supprimés par la file (identifiants DiscordTeamSpace).
+        // Dernier membre : mêmes gardes que la dissolution manuelle, puis
+        // confirmation explicite avant la dissolution logique.
+        const pending = await scopedDb.towerChallengeAttempt.count({
+          where: { communityId, teamId, status: { in: ["ASSIGNED", "SUBMITTED"] } },
+        });
+        if (pending) return "active_challenges";
+        const space = await scopedDb.discordTeamSpace.findUnique({
+          where: { teamId }, select: { channelId: true, voiceChannelId: true },
+        });
+        const channels = [space?.channelId, space?.voiceChannelId].filter((id): id is string => Boolean(id));
+        const openReports = channels.length
+          ? await scopedDb.moderationReport.count({ where: { communityId, channelId: { in: channels }, closedAt: null } })
+          : 0;
+        const openAppeals = await scopedDb.towerChallengeAppeal.count({
+          where: { communityId, status: "OPEN", attempt: { teamId } },
+        });
+        if (openReports || openAppeals) return "open_report_or_appeal";
+        if (!options.confirmDissolution) return "confirm_dissolution";
         await scopedDb.communityTeam.updateMany({
           where: { id: teamId, communityId },
           data: { isRecruiting: false },

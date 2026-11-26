@@ -26,6 +26,7 @@ const payloadSchema = z.object({
   intent: z.enum(["provision", "member", "reconcile", "delete"]),
   discordId: z.string().regex(/^[0-9]{16,20}$/).optional(),
   actorUserId: z.string().min(1).max(191).optional(),
+  formerMemberDiscordIds: z.array(z.string().regex(/^[0-9]{16,20}$/)).max(50).optional(),
 });
 
 export type TeamSpaceEnqueueResult = "queued" | "disabled" | "unavailable";
@@ -45,7 +46,7 @@ const slotFor = (guildId: string, teamId: string, intent: TeamSpaceIntent, disco
  * demande encore en attente (`supersedeStaleDeliveries`) ; l'état final est relu à l'exécution.
  */
 export async function enqueueTeamSpaceSync(
-  input: { teamId: string; communityId: string; intent: TeamSpaceIntent; discordId?: string; actorUserId?: string },
+  input: { teamId: string; communityId: string; intent: TeamSpaceIntent; discordId?: string; actorUserId?: string; formerMemberDiscordIds?: readonly string[] },
   now: Date = new Date()
 ): Promise<TeamSpaceEnqueueResult> {
   if (!teamSpaceQueueEnabled()) return "disabled";
@@ -68,6 +69,7 @@ export async function enqueueTeamSpaceSync(
         intent: input.intent,
         ...(input.discordId ? { discordId: input.discordId } : {}),
         ...(input.actorUserId ? { actorUserId: input.actorUserId } : {}),
+        ...(input.formerMemberDiscordIds?.length ? { formerMemberDiscordIds: [...input.formerMemberDiscordIds] } : {}),
       },
     });
     await enqueueDelivery({
@@ -95,7 +97,7 @@ export const teamSpaceSyncResolver: DeliveryResolver = {
     }
     const payload = payloadSchema.safeParse(event.payload);
     if (!payload.success) return { eligible: false, reason: "unresolvable" };
-    const { intent, discordId, actorUserId } = payload.data;
+    const { intent, discordId, actorUserId, formerMemberDiscordIds } = payload.data;
     if (!teamSpacesEnabled()) return { eligible: false, reason: "not_configured" };
     if (!process.env.DISCORD_BOT_TOKEN?.trim()) return { eligible: false, reason: "configuration_unavailable" };
     const community = await prisma.community.findUnique({
@@ -110,6 +112,6 @@ export const teamSpaceSyncResolver: DeliveryResolver = {
       delivery.targetSlot !== slotFor(community.discordGuildId, event.sourceId, intent, discordId)) {
       return { eligible: false, reason: "unresolvable" };
     }
-    return { eligible: true, action: { kind: "sync_team_space", intent, teamId: event.sourceId, communityId: event.communityId, discordId, actorUserId } };
+    return { eligible: true, action: { kind: "sync_team_space", intent, teamId: event.sourceId, communityId: event.communityId, discordId, actorUserId, formerMemberDiscordIds } };
   },
 };

@@ -238,6 +238,7 @@ export type ResolvedAction =
       discordId?: string;
       /** Acteur de la dissolution, journalisé par la suppression réelle. */
       actorUserId?: string;
+      formerMemberDiscordIds?: string[];
     }
   | {
       /** Soutiens Nitro (DISCORD_BOOSTERS_ENABLED) : création unique du rôle « Soutien de la Tour »
@@ -286,6 +287,8 @@ export type ResolvedAction =
       intent: PlayerClassifiedForumIntent;
       listingId: string;
       communityId: string;
+      /** Fermeture d'un fil dont l'annonce a déjà été retirée. */
+      threadId?: string;
     };
 
 /** Raisons de non-éligibilité — voir `classifyResolutionFailure` pour leur
@@ -698,7 +701,7 @@ export async function performDiscordAction(
     case "sync_team_space": {
       return mapDiscordResult(
         await runTeamSpaceAction(
-          { intent: action.intent, teamId: action.teamId, communityId: action.communityId, discordId: action.discordId, actorUserId: action.actorUserId },
+          { intent: action.intent, teamId: action.teamId, communityId: action.communityId, discordId: action.discordId, actorUserId: action.actorUserId, formerMemberDiscordIds: action.formerMemberDiscordIds },
           deadline
         ),
         () => ({})
@@ -728,7 +731,7 @@ export async function performDiscordAction(
     case "relay_player_classified_forum": {
       return mapDiscordResult(
         await runPlayerClassifiedForumAction(
-          { intent: action.intent, listingId: action.listingId, communityId: action.communityId },
+          { intent: action.intent, listingId: action.listingId, communityId: action.communityId, threadId: action.threadId },
           deadline
         ),
         () => ({})

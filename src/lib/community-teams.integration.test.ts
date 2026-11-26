@@ -45,7 +45,8 @@ describe.skipIf(!TEST_DATABASE_URL)("équipes communautaires : PostgreSQL isolé
     row = await db.communityTeam.findFirstOrThrow({ where: { id: row.id }, include: { members: true } });
     const joined = row.members.find((m) => m.userId !== ids.leader)!;
     expect(await teams.leaveCommunityTeam(joined.userId, ids.community, row.id)).toBe("left");
-    expect(await teams.leaveCommunityTeam(ids.leader, ids.community, row.id)).toBe("dissolved_last_member");
+    expect(await teams.leaveCommunityTeam(ids.leader, ids.community, row.id)).toBe("confirm_dissolution");
+    expect(await teams.leaveCommunityTeam(ids.leader, ids.community, row.id, { confirmDissolution: true })).toBe("dissolved_last_member");
     expect(await db.communityTeamMember.count({ where: { teamId: row.id } })).toBe(0);
   });
 
@@ -223,9 +224,11 @@ describe.skipIf(!TEST_DATABASE_URL)("équipes communautaires : PostgreSQL isolé
       expect((await db.communityTeam.findUniqueOrThrow({ where: { id: team.id } })).captainId).toBe(ids.member);
     });
 
-    it("dissout l'équipe quand le dernier membre actif la quitte", async () => {
+    it("demande confirmation puis dissout l'équipe quand le dernier membre actif la quitte", async () => {
       const team = await setup();
-      expect(await teams.leaveCommunityTeam(ids.leader, ids.community, team.id)).toBe("dissolved_last_member");
+      expect(await teams.leaveCommunityTeam(ids.leader, ids.community, team.id)).toBe("confirm_dissolution");
+      expect(await db.communityTeamMember.count({ where: { teamId: team.id } })).toBe(1);
+      expect(await teams.leaveCommunityTeam(ids.leader, ids.community, team.id, { confirmDissolution: true })).toBe("dissolved_last_member");
       expect(await db.communityTeamMember.count({ where: { teamId: team.id } })).toBe(0);
       expect((await db.communityTeam.findUniqueOrThrow({ where: { id: team.id } })).isRecruiting).toBe(false);
       const membership = await db.membership.findUniqueOrThrow({ where: { communityId_userId: { communityId: ids.community, userId: ids.leader } }, select: { lastTeamLeftAt: true } });
@@ -234,6 +237,27 @@ describe.skipIf(!TEST_DATABASE_URL)("équipes communautaires : PostgreSQL isolé
       await join(ids.racer, team.id, new Date("2030-01-02"));
       await db.membership.update({ where: { communityId_userId: { communityId: ids.community, userId: ids.racer } }, data: { status: "LEFT" } });
       expect(await teams.leaveCommunityTeam(ids.leader, ids.community, team.id)).toBe("missing");
+    });
+
+    it("applique les blocages de dissolution au dernier membre", async () => {
+      const team = await setup();
+      await db.discordTeamSpace.create({ data: { teamId: team.id, communityId: ids.community,
+        guildId: "guild-last", channelId: "chan-last", voiceChannelId: "voice-last" } });
+      const report = await db.moderationReport.create({ data: { communityId: ids.community, guildId: "guild-last",
+        channelId: "chan-last", messageId: "msg-last", authorDiscordId: "author", reporterDiscordId: "reporter",
+        messageUrl: "https://discord.com/channels/guild-last/chan-last/msg-last", excerpt: "message signalé" } });
+      expect(await teams.leaveCommunityTeam(ids.leader, ids.community, team.id, { confirmDissolution: true })).toBe("open_report_or_appeal");
+      expect(await db.communityTeamMember.count({ where: { teamId: team.id } })).toBe(1);
+      await db.moderationReport.update({ where: { id: report.id }, data: { closedAt: new Date() } });
+
+      const definition = await db.towerChallengeDefinition.create({ data: { communityId: ids.community,
+        title: "Défi", instructions: "Réaliser le défi.", rewardFloors: 1 } });
+      await db.towerChallengeAttempt.create({ data: { communityId: ids.community, userId: ids.leader,
+        teamId: team.id, definitionId: definition.id, requestKey: "req-last", title: "Défi",
+        instructions: "Réaliser le défi.", rewardFloors: 1, assignedAt: new Date("2030-01-01T00:00:00Z"),
+        expiresAt: new Date("2030-01-03T00:00:00Z") } });
+      expect(await teams.leaveCommunityTeam(ids.leader, ids.community, team.id, { confirmDissolution: true })).toBe("active_challenges");
+      expect(await db.communityTeamMember.count({ where: { teamId: team.id } })).toBe(1);
     });
 
     it("est atomique : un échec en fin de transaction annule la passation", async () => {

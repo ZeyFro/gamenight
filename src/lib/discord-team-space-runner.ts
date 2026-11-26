@@ -30,6 +30,8 @@ export interface TeamSpaceActionInput {
   discordId?: string;
   /** Acteur de la dissolution, transporté jusqu'au journal C055. */
   actorUserId?: string;
+  /** Membres présents avant dissolution : accès retirés avant la suppression. */
+  formerMemberDiscordIds?: readonly string[];
 }
 
 const retryable = (message: string): DiscordRestFailure => ({ ok: false, kind: "server_error", message, retryable: true });
@@ -50,6 +52,9 @@ function fromStatus(status: string): DiscordRestResult<Record<string, never>> {
     // Rien à faire : espace pas encore créé ou plus de lien (aucune ressource à toucher).
     case "unlinked":
     case "not_provisioned":
+    // L'équipe a été repeuplée ou un signalement s'est ouvert : rien à supprimer.
+    case "not_dissolved":
+    case "open_report":
       return ok;
     case "partial":
     case "failed":
@@ -72,7 +77,9 @@ export async function runTeamSpaceAction(
   try {
     if (input.intent === "provision") return fromStatus((await provisionTeamSpace(base)).status);
     if (input.intent === "reconcile") return fromStatus((await reconcileTeamSpace(base)).status);
-    if (input.intent === "delete") return fromStatus((await deleteTeamSpace({ ...base, actorId: input.actorUserId })).status);
+    if (input.intent === "delete") return fromStatus((await deleteTeamSpace({
+      ...base, actorId: input.actorUserId, formerMemberDiscordIds: input.formerMemberDiscordIds,
+    })).status);
     if (!input.discordId) return definitive("Membre Discord manquant pour la synchronisation d'accès.");
     const join = await syncTeamSpaceMember({ ...base, discordId: input.discordId, action: "join" });
     // Plus membre actif de l'équipe : retrait du seul rôle de CETTE équipe.

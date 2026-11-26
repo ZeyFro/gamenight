@@ -61,10 +61,14 @@ export async function leaveCommunityTeamAction(formData: FormData): Promise<void
   const { user, communityId } = await authorizedUser("leaveCommunityTeam");
   const teamId = idSchema.safeParse(formData.get("teamId"));
   if (!teamId.success) done("invalid");
-  const result = await leaveCommunityTeam(user.id, communityId, teamId.data);
+  // Lu AVANT le départ : après la dissolution, la liste des anciens membres est vide.
+  const formerMemberDiscordIds = await listTeamMemberDiscordIds(communityId, teamId.data);
+  const result = await leaveCommunityTeam(user.id, communityId, teamId.data, {
+    confirmDissolution: formData.get("confirm") === "dissolution",
+  });
   if (result === "left") await requestTeamSpaceMemberSync({ communityId, teamId: teamId.data, discordId: user.discordId });
   if (result === "dissolved_last_member") {
-    await requestTeamSpaceAfterDissolution({ communityId, teamId: teamId.data, actorUserId: user.id, formerMemberDiscordIds: [] });
+    await requestTeamSpaceAfterDissolution({ communityId, teamId: teamId.data, actorUserId: user.id, formerMemberDiscordIds });
   }
   done(result);
 }
