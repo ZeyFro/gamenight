@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({ user: vi.fn(), games: vi.fn() }));
 vi.mock("@/lib/current-user", () => ({ getCurrentUser: mocks.user }));
@@ -33,6 +33,10 @@ const GAMES = [
   { id: "reatomized", name: "60 Seconds! Reatomized", igdbId: 1002, steamAppId: null },
 ];
 
+afterEach(() => {
+  vi.unstubAllEnvs();
+});
+
 beforeEach(() => {
   vi.clearAllMocks();
   mocks.user.mockResolvedValue({ id: "viewer" });
@@ -47,5 +51,21 @@ describe("sélecteur de jeu de /jouer-maintenant", () => {
     expect(html).not.toContain(">60 parsecs!<");
     expect(occurrences(html, ">60 Seconds!<")).toBe(1);
     expect(occurrences(html, ">60 Seconds! Reatomized<")).toBe(1);
+  });
+
+  it("affiche la limite de 2 h quand les rivalités sont activées", async () => {
+    vi.stubEnv("TEAM_RIVALRIES_ENABLED", "true");
+    const html = renderToStaticMarkup(await Page({ searchParams: Promise.resolve({}) }));
+
+    expect(html).toContain("2 h maximum");
+    expect(html).not.toContain("3 h maximum");
+  });
+
+  it("conserve la limite de 3 h quand les rivalités sont désactivées", async () => {
+    vi.stubEnv("TEAM_RIVALRIES_ENABLED", "false");
+    const html = renderToStaticMarkup(await Page({ searchParams: Promise.resolve({}) }));
+
+    expect(html).toContain("3 h maximum");
+    expect(html).not.toContain("2 h maximum");
   });
 });
