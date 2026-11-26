@@ -11,12 +11,12 @@ const TOUR = [
   { title: "Ton planning", icon: "🗓️", text: "Indique tes créneaux habituels et tes exceptions. Le calendrier du groupe aide ensuite à choisir une date commune.", actions: [{ href: "/disponibilites", label: "Renseigner mon planning" }] },
   { title: "Jeux, rôles et plateformes", icon: "🎮", text: "Choisis les jeux et rôles qui t'intéressent avec /role dans Discord. Ajoute aussi tes jeux à ta bibliothèque GameNight et indique les plateformes sur lesquelles tu peux jouer.", actions: [
     { href: "/bibliotheque", label: "Ajouter mes jeux" },
-    { href: "https://discord.com/channels/553922938101825536/1574568215856807936", label: "Choisir mes jeux avec /role", external: true },
+    { href: "/community-commands", label: "Choisir mes jeux avec /role", external: true },
     { href: "/profil/parametres#player-equipment", label: "Renseigner mes plateformes" },
   ] },
   { title: "Ton premier objectif d'étage", icon: "🏆", text: "Les défis font progresser tes étages. Choisis ton premier défi avec /tower defi dans le salon des commandes, puis suis son avancée dans GameNight.", actions: [
     { href: "/tower", label: "Voir ma progression" },
-    { href: "https://discord.com/channels/553922938101825536/1574568215856807936", label: "Choisir un défi avec /tower defi", external: true },
+    { href: "/community-commands", label: "Choisir un défi avec /tower defi", external: true },
   ] },
   { title: "Jouer avec le groupe", icon: "🕹️", text: "Organise une soirée planifiée ou lance une partie maintenant. Les parcours disponibles dépendent des réglages de ta communauté.", actions: [
     { href: "/sessions", label: "Organiser une soirée" },
@@ -24,7 +24,7 @@ const TOUR = [
   ] },
 ] as const;
 
-export function OnboardingFlow({ progress, initialStep }: { progress: OnboardingProgress; initialStep?: string }) {
+export function OnboardingFlow({ progress, initialStep, commandsChannelUrl }: { progress: OnboardingProgress; initialStep?: string; commandsChannelUrl?: string | null }) {
   const router = useRouter();
   const needsSteam = !progress.steamLinked && !progress.steamSkipped;
   const [screen, setScreen] = useState(initialStep === "planning" ? 1 : initialStep === "steam" || needsSteam ? 0 : !progress.planningReady ? 1 : 2);
@@ -64,7 +64,7 @@ export function OnboardingFlow({ progress, initialStep }: { progress: Onboarding
       <p className="mt-3 text-sm leading-relaxed text-muted">{current?.text ?? "Retrouve tes jeux sans les saisir un par un. Connecte-toi sur Steam pour autoriser la liaison ; GameNight ne demande jamais ton mot de passe. Une bibliothèque privée peut demander un réglage de visibilité ou un ajout manuel."}</p>
       <div aria-label="Actions de cette étape" className="mt-5 grid gap-3 sm:grid-cols-2">
         {screen === 0 ? <><a className="gn-button gn-button-primary rounded-lg bg-accent px-4 py-3 text-sm font-semibold text-accent-foreground" href="/api/steam/link">{progress.steamLinked ? "Changer mon compte Steam" : "Lier mon compte Steam"}</a>{needsSteam && <Button variant="secondary" disabled={pending} onClick={skipSteam}>Je n’utilise pas Steam</Button>}</> : current?.actions.map(action => "external" in action && action.external
-          ? <a key={action.label} href={action.href} target="_blank" rel="noreferrer" className="gn-button rounded-lg border border-border px-4 py-3 text-sm font-semibold text-foreground">{action.label}</a>
+          ? (commandsChannelUrl ? <a key={action.label} href={commandsChannelUrl} target="_blank" rel="noreferrer" className="gn-button rounded-lg border border-border px-4 py-3 text-sm font-semibold text-foreground">{action.label}</a> : null)
           : <ButtonLink key={action.label} href={action.href}>{action.label}</ButtonLink>)}
       </div>
       {screen <= 1 && <p className="mt-4 text-xs text-muted">Cette étape se valide quand le réglage est enregistré. <button type="button" onClick={() => router.refresh()} className="underline">Vérifier mon avancée</button></p>}

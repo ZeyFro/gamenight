@@ -28,13 +28,20 @@ describe("guide assisté : pas de validation fictive", () => {
     expect(screen.getByRole("progressbar").getAttribute("aria-valuenow")).toBe("1");
   });
   it("guide vers jeux, /role et plateformes avec trois actions au maximum", () => {
-    render(<OnboardingFlow progress={{ ...empty, steamSkipped: true }} />);
+    render(<OnboardingFlow progress={{ ...empty, steamSkipped: true }} commandsChannelUrl="https://discord.com/channels/123456789012345678/234567890123456789" />);
     fireEvent.click(screen.getByRole("button", { name: "Suivant" }));
     expect(screen.getByRole("heading", { name: "Jeux, rôles et plateformes" })).toBeTruthy();
     expect(screen.getByRole("link", { name: "Ajouter mes jeux" }).getAttribute("href")).toBe("/bibliotheque");
-    expect(screen.getByRole("link", { name: "Choisir mes jeux avec /role" }).getAttribute("href")).toContain("discord.com/channels/");
+    expect(screen.getByRole("link", { name: "Choisir mes jeux avec /role" }).getAttribute("href")).toBe("https://discord.com/channels/123456789012345678/234567890123456789");
     expect(screen.getByRole("link", { name: "Renseigner mes plateformes" }).getAttribute("href")).toBe("/profil/parametres#player-equipment");
     expect(screen.getByLabelText("Actions de cette étape").querySelectorAll("a")).toHaveLength(3);
+    fireEvent.click(screen.getByRole("button", { name: "Suivant" }));
+    expect(screen.getByRole("link", { name: "Choisir un défi avec /tower defi" }).getAttribute("href")).toBe("https://discord.com/channels/123456789012345678/234567890123456789");
+  });
+  it("masque le raccourci Discord quand la communauté ne fournit pas de salon de commandes", () => {
+    render(<OnboardingFlow progress={{ ...empty, steamSkipped: true }} />);
+    fireEvent.click(screen.getByRole("button", { name: "Suivant" }));
+    expect(screen.queryByRole("link", { name: "Choisir mes jeux avec /role" })).toBeNull();
   });
   it("présente le premier objectif d'étage puis les parcours de jeu", () => {
     render(<OnboardingFlow progress={{ ...empty, steamSkipped: true, planningReady: true }} />);
