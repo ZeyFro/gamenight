@@ -90,7 +90,9 @@ function renderState(state: State) {
   const components: DiscordActionRow[] = [{ type: 1, components: buttons }];
   if (state.attempts.length > 1) components.push({ type: 1, components: state.attempts.slice(0,5).map((attempt, index) =>
     button(`Défi ${index + 1} : ${attempt.title.slice(0,60)}`, `gn:tower:view:${attempt.id}`)) });
-  return { content: `🏰 **Étage ${state.floor}**\n${history}${details}`.slice(0,1900), components };
+  // `state.floor` est le PROCHAIN étage (gagnés + 1, lu depuis `floorsClimbed`) : on annonce les étages réellement gagnés, comme /tower.
+  const floorsWon = Math.max(0, Number.parseInt(state.floor, 10) - 1);
+  return { content: `🏰 **${floorsWon} ${floorsWon === 1 ? "étage gagné" : "étages gagnés"}** par les défis\n${history}${details}`.slice(0,1900), components };
 }
 type TeamState = Extract<Awaited<ReturnType<typeof getTeamDailyTowerChallenge>>, { status: "TEAM_CHALLENGE" }>;
 function renderTeamState(state: TeamState) {
