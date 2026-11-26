@@ -180,16 +180,16 @@ export default async function PotesPage({ searchParams }: { searchParams?: Promi
           <label className="grid gap-1 text-sm">Jeu
             <select name="gameId" defaultValue={levelFilter.gameId ?? ""} className="rounded-lg border border-border bg-background px-3 py-2 text-base"><option value="">Choisir un jeu</option>{levelGames.map((game) => <option key={game.id} value={game.id}>{game.name}</option>)}</select>
           </label>
-          <label className="grid gap-1 text-sm">Niveau
+          <label className="grid gap-1 text-sm">Niveau de jeu
             <select name="level" defaultValue={levelFilter.level ?? ""} className="rounded-lg border border-border bg-background px-3 py-2 text-base"><option value="">Tous</option>{GAME_LEVELS.map((level) => <option key={level} value={level}>{GAME_LEVEL_LABELS[level]}</option>)}</select>
           </label>
           <label className="grid gap-1 text-sm">Comparaison
             <select name="levelMatch" defaultValue={levelFilter.levelMatch ?? ""} className="rounded-lg border border-border bg-background px-3 py-2 text-base"><option value="">Ce niveau ou plus</option><option value="exact">Ce niveau exactement</option></select>
           </label>
-          <Button type="submit" size="sm">Filtrer par niveau</Button>
+          <Button type="submit" size="sm">Filtrer par niveau de jeu</Button>
           <Link href="/potes" className="text-sm text-accent">Réinitialiser</Link>
         </form>
-        {levelFilterInvalid && <p role="alert" className="mt-2 text-sm text-destructive">Choisis un jeu pour filtrer par niveau.</p>}
+        {levelFilterInvalid && <p role="alert" className="mt-2 text-sm text-destructive">Choisis un jeu pour filtrer par niveau de jeu.</p>}
       </Card>}
 
       {matchingEnabled && <Card>
@@ -276,7 +276,7 @@ export default async function PotesPage({ searchParams }: { searchParams?: Promi
                           <span className="truncate">{pote.discordName}</span>
                           <ColorDot color={pote.color} />
                           {levelByPote.get(levelKey(pote.id, levelFilter.gameId ?? "")) && (
-                            <span className="rounded-full bg-accent/10 px-2 py-0.5 text-[11px] font-medium text-accent">Niveau {GAME_LEVEL_LABELS[levelByPote.get(levelKey(pote.id, levelFilter.gameId ?? ""))!]}</span>
+                            <span className="rounded-full bg-accent/10 px-2 py-0.5 text-[11px] font-medium text-accent">Niveau de jeu {GAME_LEVEL_LABELS[levelByPote.get(levelKey(pote.id, levelFilter.gameId ?? ""))!]}</span>
                           )}
                           {activeDebtorIds.has(pote.id) && (
                             <span title="Dette de gage active">💀</span>
