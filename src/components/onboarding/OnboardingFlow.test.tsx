@@ -44,7 +44,7 @@ describe("guide assisté : pas de validation fictive", () => {
     expect(screen.queryByRole("link", { name: "Choisir mes jeux avec /role" })).toBeNull();
   });
   it("présente le premier objectif d'étage puis les parcours de jeu", () => {
-    render(<OnboardingFlow progress={{ ...empty, steamSkipped: true, planningReady: true }} />);
+    render(<OnboardingFlow progress={{ ...empty, steamSkipped: true, planningReady: true }} commandsChannelUrl="https://discord.com/channels/123456789012345678/234567890123456789" />);
     fireEvent.click(screen.getByRole("button", { name: "Suivant" }));
     expect(screen.getByRole("heading", { name: "Ton premier objectif d'étage" })).toBeTruthy();
     expect(screen.getByRole("link", { name: "Choisir un défi avec /tower defi" })).toBeTruthy();
