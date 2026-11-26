@@ -63,6 +63,9 @@ export async function leaveCommunityTeamAction(formData: FormData): Promise<void
   if (!teamId.success) done("invalid");
   const result = await leaveCommunityTeam(user.id, communityId, teamId.data);
   if (result === "left") await requestTeamSpaceMemberSync({ communityId, teamId: teamId.data, discordId: user.discordId });
+  if (result === "dissolved_last_member") {
+    await requestTeamSpaceAfterDissolution({ communityId, teamId: teamId.data, actorUserId: user.id, formerMemberDiscordIds: [] });
+  }
   done(result);
 }
 
@@ -115,6 +118,6 @@ export async function dissolveCommunityTeamAction(formData: FormData): Promise<v
   if (!teamId.success || formData.get("confirm") !== "DISSOLVE") done("invalid");
   const formerMemberDiscordIds = await listTeamMemberDiscordIds(communityId, teamId.data);
   const result = await dissolveCommunityTeam(user.id, communityId, teamId.data);
-  if (result === "dissolved") await requestTeamSpaceAfterDissolution({ communityId, teamId: teamId.data, formerMemberDiscordIds });
+  if (result === "dissolved") await requestTeamSpaceAfterDissolution({ communityId, teamId: teamId.data, actorUserId: user.id, formerMemberDiscordIds });
   doneManagement(result);
 }

@@ -283,7 +283,6 @@ export function planTeamSpace(input: TeamSpaceInput): TeamSpacePlan {
   const link = verifiedLink(input);
   const channelId = resolveSpaceChannelId(input);
   const voiceChannelId = resolveSpaceVoiceChannelId(input);
-  const roleId = link?.roleId && input.existing.roles.some((role) => role.id === link.roleId) ? link.roleId : null;
   const maxSpaces = input.limits?.maxSpacesPerCommunity ?? teamSpaceLimit();
   if (!link && !channelId && (input.managedSpaces?.length ?? 0) >= maxSpaces) {
     return { status: "ineligible", reason: "quota" };
@@ -293,22 +292,16 @@ export function planTeamSpace(input: TeamSpaceInput): TeamSpacePlan {
   // Archivage impossible sans identifiant vérifié : on refuse au lieu de deviner.
   if (archived && !channelId) return { status: "ineligible", reason: "unmanaged" };
 
-  // Capacité Discord : deux salons par équipe (texte + vocal), un rôle partagé.
+  // Capacité Discord : deux salons par équipe (texte + vocal). Aucun rôle
+  // d'équipe n'est créé, donc la limite de 250 rôles ne s'applique plus ici.
   // Un archivage ne crée rien (renommage seul) : aucune capacité consommée.
   const channelsToCreate = archived ? 0 : (channelId ? 0 : 1) + (voiceChannelId ? 0 : 1);
-  const rolesToCreate = archived || roleId ? 0 : 1;
   const channelLimit = input.limits?.guildChannelLimit ?? GUILD_CHANNEL_LIMIT;
-  const roleLimit = input.limits?.guildRoleLimit ?? GUILD_ROLE_LIMIT;
   if (input.existing.channels.length + channelsToCreate > channelLimit) {
     return { status: "ineligible", reason: "capacity" };
   }
-  if (input.existing.roles.length + rolesToCreate > roleLimit) {
-    return { status: "ineligible", reason: "capacity" };
-  }
   const warningRatio = input.limits?.capacityWarningRatio ?? CAPACITY_WARNING_RATIO;
-  const capacityWarning =
-    capacityUsage(input.existing.channels.length + channelsToCreate, channelLimit) >= warningRatio ||
-    capacityUsage(input.existing.roles.length + rolesToCreate, roleLimit) >= warningRatio;
+  const capacityWarning = capacityUsage(input.existing.channels.length + channelsToCreate, channelLimit) >= warningRatio;
 
   const channelAction = (verifiedId: string | null): "create" | "reuse" | "restore" =>
     verifiedId ? (input.previousArchived ? "restore" : "reuse") : "create";
@@ -402,6 +395,7 @@ export interface TeamSpaceClient {
     reason: string;
   }): Promise<{ id: string }>;
   editChannel?(input: { id: string; name: string; reason: string }): Promise<unknown>;
+  setMemberPermission?(input: { channelId: string; userId: string; allow: string; action: "allow" | "remove" }): Promise<unknown>;
 }
 
 export type TeamSpaceApplyResult = {
@@ -480,9 +474,38 @@ export async function applyTeamSpacePlan(
   }
 
   const memberStep = plan.steps.find((step) => step.kind === "members");
-  if (memberStep) {
+  if (memberStep && memberStep.kind === "members") {
     const spaceReady = Boolean(channelId) && (Boolean(voiceChannelId) || plan.archived);
-    steps.push({ key: plan.spaceKey, kind: "members", status: spaceReady && !textFailed && !voiceFailed ? "ok" : "skipped" });
+    if (!spaceReady || textFailed || voiceFailed || !client.setMemberPermission) {
+      steps.push({ key: plan.spaceKey, kind: "members", status: "skipped" });
+    } else {
+      let memberFailed = false;
+      const channels: Array<{ id: string; allow: string }> = [];
+      if (channelId) channels.push({ id: channelId, allow: TEXT_CHANNEL_ALLOW });
+      if (voiceChannelId) channels.push({ id: voiceChannelId, allow: VOICE_CHANNEL_ALLOW });
+      for (const userId of memberStep.members) {
+        for (const channel of channels) {
+          try {
+            await client.setMemberPermission({ channelId: channel.id, userId, allow: channel.allow, action: "allow" });
+          } catch {
+            // Arrêt au premier échec : le rejeu reprend sans confirmer un accès partiel.
+            memberFailed = true;
+            break;
+          }
+        }
+        if (memberFailed) break;
+      }
+      for (const userId of memberStep.departed) {
+        for (const channel of channels) {
+          try {
+            await client.setMemberPermission({ channelId: channel.id, userId, allow: channel.allow, action: "remove" });
+          } catch {
+            memberFailed = true;
+          }
+        }
+      }
+      steps.push({ key: plan.spaceKey, kind: "members", status: memberFailed ? "failed" : "ok" });
+    }
   }
 
   const failed = steps.some((step) => step.status === "failed");

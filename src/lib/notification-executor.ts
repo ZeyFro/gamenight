@@ -236,6 +236,8 @@ export type ResolvedAction =
       teamId: string;
       communityId: string;
       discordId?: string;
+      /** Acteur de la dissolution, journalisé par la suppression réelle. */
+      actorUserId?: string;
     }
   | {
       /** Soutiens Nitro (DISCORD_BOOSTERS_ENABLED) : création unique du rôle « Soutien de la Tour »
@@ -696,7 +698,7 @@ export async function performDiscordAction(
     case "sync_team_space": {
       return mapDiscordResult(
         await runTeamSpaceAction(
-          { intent: action.intent, teamId: action.teamId, communityId: action.communityId, discordId: action.discordId },
+          { intent: action.intent, teamId: action.teamId, communityId: action.communityId, discordId: action.discordId, actorUserId: action.actorUserId },
           deadline
         ),
         () => ({})

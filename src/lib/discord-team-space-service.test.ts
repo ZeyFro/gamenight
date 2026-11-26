@@ -57,6 +57,12 @@ function fakeApi() {
       calls.push({ op: "createRole", args: [guildId, name] });
       return "role-new";
     },
+    setMemberPermission: async (channelId, userId, allow, action) => {
+      calls.push({ op: "setMemberPermission", args: [channelId, userId, allow, action] });
+    },
+    deleteChannel: async (channelId) => {
+      calls.push({ op: "deleteChannel", args: [channelId] });
+    },
     createChannel: async (guildId, name, type, overwrites) => {
       calls.push({ op: "createChannel", args: [guildId, name, type, overwrites] });
       return type === 2 ? "voice-new" : "chan-new";
@@ -93,34 +99,35 @@ describe("provisionTeamSpace", () => {
     expect(calls).toEqual([]);
   });
 
-  it("crée rôle + salon privé, associe les membres et persiste le lien", async () => {
+  it("crée deux salons privés par membre et persiste le lien sans rôle", async () => {
     const store = createMemorySpaceLinkStore();
     const { api, calls, ops } = fakeApi();
     const result = await provisionTeamSpace({ teamId: TEAM, communityId: "community-1", api, store, env: enabled });
     expect(result.status).toBe("created");
-    expect(result.roleId).toBe("role-new");
     expect(result.channelId).toBe("chan-new");
     expect(result.voiceChannelId).toBe("voice-new");
-    expect(ops("createRole")[0].args).toEqual([GUILD, "GN · Les Dragons"]);
+    expect(ops("createRole")).toHaveLength(0);
     // Deux salons permanents, privés, avec les mêmes overwrites.
     expect(ops("createChannel").map((call) => call.args.slice(1, 3))).toEqual([
       [spaceChannelName({ id: TEAM, name: "Les Dragons" }), 0],
       [spaceVoiceChannelName({ id: TEAM, name: "Les Dragons" }), 2],
     ]);
-    // Mêmes règles de confidentialité, permissions d'usage adaptées au type de salon.
+    // Permissions nominatives, sans rôle d'équipe.
     expect(ops("createChannel")[0].args[3]).toEqual([
       { target: "everyone", deny: VIEW_CHANNEL },
-      { target: "team-role", allow: TEXT_CHANNEL_ALLOW },
+      { target: "member", userId: "100000000000000011", allow: TEXT_CHANNEL_ALLOW },
+      { target: "member", userId: "100000000000000012", allow: TEXT_CHANNEL_ALLOW },
     ]);
     expect(ops("createChannel")[1].args[3]).toEqual([
       { target: "everyone", deny: VIEW_CHANNEL },
-      { target: "team-role", allow: VOICE_CHANNEL_ALLOW },
+      { target: "member", userId: "100000000000000011", allow: VOICE_CHANNEL_ALLOW },
+      { target: "member", userId: "100000000000000012", allow: VOICE_CHANNEL_ALLOW },
     ]);
-    expect(ops("addMemberRole")).toHaveLength(2);
+    expect(ops("addMemberRole")).toHaveLength(0);
     expect(await store.find(TEAM)).toMatchObject({
       channelId: "chan-new",
       voiceChannelId: "voice-new",
-      roleId: "role-new",
+      roleId: null,
       archived: false,
     });
     // Le salon historique et celui d'une autre équipe ne sont jamais touchés.
@@ -190,7 +197,9 @@ describe("membres", () => {
       env: enabled,
     });
     expect(result.status).toBe("updated");
-    expect(ops("addMemberRole")).toEqual([{ op: "addMemberRole", args: [GUILD, "100000000000000012", "role-1"] }]);
+    expect(ops("setMemberPermission")).toEqual([
+      { op: "setMemberPermission", args: ["chan-1", "100000000000000012", TEXT_CHANNEL_ALLOW, "allow"] },
+    ]);
   });
 
   it("refuse un non-membre, un espace non provisionné et un membership Discord fermé", async () => {
@@ -252,7 +261,8 @@ describe("membres", () => {
       env: enabled,
     });
     expect(result.status).toBe("removed");
-    expect(calls.map((call) => call.op)).toEqual(["removeMemberRole"]);
+    expect(calls.map((call) => call.op)).toEqual(["setMemberPermission"]);
+    expect(calls[0].args[3]).toBe("remove");
   });
 });
 
@@ -312,7 +322,7 @@ describe("réconciliation", () => {
     const result = await reconcileTeamSpace({ teamId: TEAM, communityId: "community-1", api, store: linked(), env: enabled });
     expect(result.status).toBe("consistent");
     expect(result.steps).toContain("members_resynced");
-    expect(calls.filter((call) => call.op === "addMemberRole")).toHaveLength(2);
+    expect(calls.filter((call) => call.op === "setMemberPermission")).toHaveLength(2);
     expect(calls.some((call) => call.op === "createChannel" || call.op === "createRole")).toBe(false);
   });
 
@@ -379,7 +389,7 @@ describe("option A — salon vocal permanent", () => {
     expect(ops("createRole")).toHaveLength(0);
     expect(ops("createChannel")).toHaveLength(1);
     expect(ops("createChannel")[0].args[2]).toBe(2);
-    expect(calls.filter((call) => call.op === "addMemberRole")).toHaveLength(2);
+    expect(calls.filter((call) => call.op === "setMemberPermission")).toHaveLength(4);
     expect(await store.find(TEAM)).toMatchObject({ channelId: "chan-1", voiceChannelId: "voice-new" });
   });
 
@@ -391,11 +401,6 @@ describe("option A — salon vocal permanent", () => {
     };
     const { api, ops } = fakeApi();
     api.snapshot = async () => ({ channels: [...created.channels], roles: [...created.roles] });
-    api.createRole = async (_guildId, name) => {
-      const id = `role-${created.roles.length + 1}`;
-      created.roles.push({ id, name });
-      return id;
-    };
     let voiceFailed = false;
     api.createChannel = async (_guildId, name, type) => {
       if (type === 2 && !voiceFailed) {
@@ -411,16 +416,16 @@ describe("option A — salon vocal permanent", () => {
     expect(first.status).toBe("partial");
     // Le rôle et le textuel sont persistés : le rejeu ne les recrée pas.
     expect(await store.find(TEAM)).toMatchObject({ channelId: "chan-1", voiceChannelId: null });
-    expect(ops("addMemberRole")).toHaveLength(0);
+    expect(ops("setMemberPermission")).toHaveLength(0);
 
     const second = await provisionTeamSpace({ teamId: TEAM, communityId: "community-1", api, store, env: enabled });
     expect(second.status).toBe("reused");
     expect(second.voiceChannelId).toBe("voice-2");
-    expect(created.roles).toHaveLength(1);
+    expect(created.roles).toHaveLength(0);
     expect(created.channels.filter((channel) => channel.type === 0)).toHaveLength(1);
     expect(created.channels.filter((channel) => channel.type === 2)).toHaveLength(1);
     expect(await store.find(TEAM)).toMatchObject({ channelId: "chan-1", voiceChannelId: "voice-2" });
-    expect(ops("addMemberRole")).toHaveLength(2);
+    expect(ops("setMemberPermission")).toHaveLength(4);
   });
 
   it.each([1, 2])("reprend les accès après %i échec(s) membre sans recréer les salons, et ne confirme pas l'exécution avant réparation", async failures => {
@@ -437,11 +442,6 @@ describe("option A — salon vocal permanent", () => {
     };
     const { api } = fakeApi();
     api.snapshot = async () => resources;
-    api.createRole = async (_guild, name) => {
-      const id = `role-${resources.roles.length + 1}`;
-      resources.roles.push({ id, name });
-      return id;
-    };
     api.createChannel = async (_guild, name, type) => {
       const id = `${type === 2 ? "voice" : "text"}-${resources.channels.length + 1}`;
       resources.channels.push({ id, name, type });
@@ -449,7 +449,7 @@ describe("option A — salon vocal permanent", () => {
     };
     const granted = new Set<string>();
     let remainingFailures = failures;
-    api.addMemberRole = async (_guild, userId) => {
+    api.setMemberPermission = async (_channelId, userId) => {
       if (userId === "100000000000000012" && remainingFailures-- > 0) throw new Error("discord_server_error");
       granted.add(userId);
     };
@@ -461,11 +461,11 @@ describe("option A — salon vocal permanent", () => {
       // doit rester retentable, même lorsque les deux salons sont déjà persistés.
       expect(await runTeamSpaceAction(action, deadline, api)).toMatchObject({ ok: false, retryable: true });
       expect(granted.has("100000000000000012")).toBe(false);
-      expect(await store.find(TEAM)).toMatchObject({ roleId: "role-1", channelId: "text-1", voiceChannelId: "voice-2" });
+      expect(await store.find(TEAM)).toMatchObject({ roleId: null, channelId: "text-1", voiceChannelId: "voice-2" });
     }
     expect(await runTeamSpaceAction(action, deadline, api)).toEqual({ ok: true, data: {} });
     expect([...granted].sort()).toEqual(["100000000000000011", "100000000000000012"]);
-    expect(resources.roles).toHaveLength(1);
+    expect(resources.roles).toHaveLength(0);
     expect(resources.channels.map(channel => channel.type).sort()).toEqual([0, 2]);
   });
 

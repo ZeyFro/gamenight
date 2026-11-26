@@ -28,6 +28,8 @@ export interface TeamSpaceActionInput {
   communityId: string;
   /** Requis pour `member` : l'état courant décide de l'ajout ou du retrait du rôle. */
   discordId?: string;
+  /** Acteur de la dissolution, transporté jusqu'au journal C055. */
+  actorUserId?: string;
 }
 
 const retryable = (message: string): DiscordRestFailure => ({ ok: false, kind: "server_error", message, retryable: true });
@@ -70,7 +72,7 @@ export async function runTeamSpaceAction(
   try {
     if (input.intent === "provision") return fromStatus((await provisionTeamSpace(base)).status);
     if (input.intent === "reconcile") return fromStatus((await reconcileTeamSpace(base)).status);
-    if (input.intent === "delete") return fromStatus((await deleteTeamSpace(base)).status);
+    if (input.intent === "delete") return fromStatus((await deleteTeamSpace({ ...base, actorId: input.actorUserId })).status);
     if (!input.discordId) return definitive("Membre Discord manquant pour la synchronisation d'accès.");
     const join = await syncTeamSpaceMember({ ...base, discordId: input.discordId, action: "join" });
     // Plus membre actif de l'équipe : retrait du seul rôle de CETTE équipe.

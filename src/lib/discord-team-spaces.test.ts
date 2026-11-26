@@ -41,7 +41,6 @@ const input = (over: Partial<TeamSpaceInput> = {}): TeamSpaceInput => ({
 const client = (): TeamSpaceClient => {
   let created = 0;
   return {
-    createRole: vi.fn(async () => ({ id: "role-new" })),
     createChannel: vi.fn(async (channel: { type: number }) => ({ id: `new-${channel.type}-${++created}` })),
     editChannel: vi.fn(async () => ({ ok: true })),
   };
@@ -248,14 +247,16 @@ describe("capitaine, membres et permissions", () => {
     expect(plan.status).toBe("planned");
     if (plan.status !== "planned") return;
     expect(plan.rolePermissions).toBe("0");
-    // @everyone ne voit rien ; le rôle d'équipe reçoit le strict nécessaire.
+    // @everyone ne voit rien ; chaque membre reçoit le strict nécessaire, sans rôle d'équipe.
     expect(plan.textOverwrites).toEqual([
       { target: "everyone", deny: VIEW_CHANNEL },
-      { target: "team-role", allow: TEXT_CHANNEL_ALLOW },
+      { target: "member", userId: "100000000000000002", allow: TEXT_CHANNEL_ALLOW },
+      { target: "member", userId: "100000000000000001", allow: TEXT_CHANNEL_ALLOW },
     ]);
     expect(plan.voiceOverwrites).toEqual([
       { target: "everyone", deny: VIEW_CHANNEL },
-      { target: "team-role", allow: VOICE_CHANNEL_ALLOW },
+      { target: "member", userId: "100000000000000002", allow: VOICE_CHANNEL_ALLOW },
+      { target: "member", userId: "100000000000000001", allow: VOICE_CHANNEL_ALLOW },
     ]);
     // Aucune permission d'administration (bit 3 = 8) ni de gestion du serveur dans les deux salons.
     for (const allow of [TEXT_CHANNEL_ALLOW, VOICE_CHANNEL_ALLOW]) {
@@ -297,6 +298,7 @@ describe("capacité Discord", () => {
       status: "ineligible",
       reason: "capacity",
     });
+    // Plus aucun rôle d'équipe n'est créé : 250 rôles existants ne bloquent pas.
     expect(
       planTeamSpace(
         input({
@@ -305,8 +307,8 @@ describe("capacité Discord", () => {
             roles: Array.from({ length: 250 }, (_, index) => ({ id: `role-${index}`, name: `R${index}` })),
           },
         })
-      )
-    ).toEqual({ status: "ineligible", reason: "capacity" });
+      ).status
+    ).toBe("planned");
   });
 
   it("signale un seuil d’alerte à 80 % sans bloquer le provisionnement", () => {
@@ -342,53 +344,38 @@ describe("application", () => {
     const fake = client();
     const result = await applyTeamSpacePlan(planTeamSpace(input()), fake, {} as NodeJS.ProcessEnv);
     expect(result).toEqual({ status: "disabled", steps: [] });
-    expect(fake.createRole).not.toHaveBeenCalled();
     expect(fake.createChannel).not.toHaveBeenCalled();
   });
 
-  it("crée le rôle puis le salon textuel ET le salon vocal avec le flag ouvert", async () => {
+  it("crée le salon textuel ET le salon vocal avec le flag ouvert, sans rôle", async () => {
     vi.stubEnv("DISCORD_TEAM_SPACES_ENABLED", "true");
     const fake = client();
     const plan = planTeamSpace(input());
     const result = await applyTeamSpacePlan(plan, fake);
     expect(result.status).toBe("applied");
-    expect(fake.createRole).toHaveBeenCalledWith({
-      name: "GN · Aventure Minecraft",
-      permissions: "0",
-      mentionable: false,
-      hoist: false,
-    });
     expect(fake.createChannel).toHaveBeenNthCalledWith(1, {
       name: spaceChannelName(team()),
       type: 0,
-      overwrites: [
-        { target: "everyone", deny: VIEW_CHANNEL },
-        { target: "team-role", allow: TEXT_CHANNEL_ALLOW },
-      ],
+      overwrites: plan.status === "planned" ? plan.textOverwrites : [],
       reason: "gn-team-space",
     });
     expect(fake.createChannel).toHaveBeenNthCalledWith(2, {
       name: spaceVoiceChannelName(team()),
       type: 2,
-      overwrites: [
-        { target: "everyone", deny: VIEW_CHANNEL },
-        { target: "team-role", allow: VOICE_CHANNEL_ALLOW },
-      ],
+      overwrites: plan.status === "planned" ? plan.voiceOverwrites : [],
       reason: "gn-team-space",
     });
     expect(result.voiceChannelId).toBe("new-2-2");
   });
 
-  it("échoue proprement sans salon orphelin si le rôle échoue", async () => {
+  it("échoue proprement sans salon orphelin si le premier salon échoue", async () => {
     vi.stubEnv("DISCORD_TEAM_SPACES_ENABLED", "true");
     const fake = client();
-    fn(fake.createRole).mockRejectedValue(new Error("missing_permissions"));
+    fn(fake.createChannel).mockRejectedValue(new Error("missing_permissions"));
     const result = await applyTeamSpacePlan(planTeamSpace(input()), fake);
     expect(result.status).toBe("partial");
-    expect(fake.createChannel).not.toHaveBeenCalled();
     expect(result.steps).toEqual([
-      expect.objectContaining({ kind: "role", status: "failed", detail: "missing_permissions" }),
-      expect.objectContaining({ kind: "channel", status: "skipped" }),
+      expect.objectContaining({ kind: "channel", status: "failed", detail: "missing_permissions" }),
       expect.objectContaining({ kind: "channel", status: "skipped" }),
       expect.objectContaining({ kind: "members", status: "skipped" }),
     ]);
@@ -402,7 +389,6 @@ describe("application", () => {
     expect(result.status).toBe("partial");
     expect(fake.createChannel).toHaveBeenCalledTimes(1);
     expect(result.steps).toEqual([
-      expect.objectContaining({ kind: "role", status: "ok" }),
       expect.objectContaining({ kind: "channel", status: "failed" }),
       expect.objectContaining({ kind: "channel", status: "skipped", detail: "text_failed" }),
       expect.objectContaining({ kind: "members", status: "skipped" }),
@@ -429,7 +415,6 @@ describe("application", () => {
     ]);
     const result = await applyTeamSpacePlan(plan, fake);
     expect(result.status).toBe("applied");
-    expect(fake.createRole).not.toHaveBeenCalled();
     expect(fake.createChannel).toHaveBeenCalledTimes(1);
     expect(fn(fake.createChannel).mock.calls[0][0]).toMatchObject({ type: 2 });
   });
@@ -451,7 +436,6 @@ describe("application", () => {
     );
     const result = await applyTeamSpacePlan(plan, fake);
     expect(result.status).toBe("applied");
-    expect(fake.createRole).not.toHaveBeenCalled();
     expect(fake.createChannel).not.toHaveBeenCalled();
   });
 });

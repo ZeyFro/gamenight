@@ -212,6 +212,10 @@ function clientFrom(api: TeamSpaceDiscordApi, guildId: string): TeamSpaceClient 
     async editChannel(input) {
       await api.renameChannel(input.id, input.name);
     },
+    async setMemberPermission(input) {
+      if (!api.setMemberPermission) throw new Error("setMemberPermission indisponible");
+      await api.setMemberPermission(input.channelId, input.userId, input.allow, input.action);
+    },
   };
 }
 
@@ -464,6 +468,7 @@ export async function deleteTeamSpace(input: {
   api: TeamSpaceDiscordApi;
   store?: SpaceLinkStore;
   dryRun?: boolean;
+  actorId?: string;
   env?: NodeJS.ProcessEnv;
 }): Promise<SpaceDeleteResult> {
   const env = input.env ?? process.env;
@@ -489,7 +494,7 @@ export async function deleteTeamSpace(input: {
     }
     await store.markDeleted?.(team.id, new Date());
     await recordSensitiveOperation({
-      actorId: null,
+      actorId: input.actorId ?? null,
       action: "discord.team_space_delete",
       communityId: input.communityId,
       target: input.teamId,
@@ -503,7 +508,7 @@ export async function deleteTeamSpace(input: {
       errorType: error instanceof Error ? error.name : "unknown",
     });
     await recordSensitiveOperation({
-      actorId: null,
+      actorId: input.actorId ?? null,
       action: "discord.team_space_delete",
       communityId: input.communityId,
       target: input.teamId,

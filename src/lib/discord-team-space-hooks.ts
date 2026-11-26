@@ -70,8 +70,14 @@ export async function listTeamMemberDiscordIds(communityId: string, teamId: stri
 export async function requestTeamSpaceAfterDissolution(input: {
   communityId: string;
   teamId: string;
+  actorUserId?: string;
   formerMemberDiscordIds: readonly string[];
 }): Promise<void> {
   if (!teamSpaceQueueEnabled()) return;
-  await enqueueTeamSpaceSync({ intent: "delete", communityId: input.communityId, teamId: input.teamId });
+  await enqueueTeamSpaceSync({
+    intent: "delete",
+    communityId: input.communityId,
+    teamId: input.teamId,
+    actorUserId: input.actorUserId,
+  });
 }

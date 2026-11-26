@@ -221,7 +221,7 @@ export async function joinCommunityTeam(userId: string, communityId: string, tea
 /** Départ volontaire. Le capitaine passe la main au plus ancien membre ACTIF (joinedAt, userId) dans la même
  * transaction sérialisable, puis quitte avec le délai habituel ; « leader » seulement s'il est seul.
  */
-export async function leaveCommunityTeam(userId: string, communityId: string, teamId: string): Promise<"left" | "leader" | "missing" | "unavailable"> {
+export async function leaveCommunityTeam(userId: string, communityId: string, teamId: string): Promise<"left" | "dissolved_last_member" | "leader" | "missing" | "unavailable"> {
   if (await getCommunityTeamsCommunityId(userId) !== communityId) return "unavailable";
   const attempt = () => prisma.$transaction(async (tx) => {
     if (!await canUseTeams(tx, userId, communityId)) return "unavailable";
@@ -233,7 +233,21 @@ export async function leaveCommunityTeam(userId: string, communityId: string, te
         where: { teamId, communityId, userId: { not: userId }, ...activeTeamMemberWhere(communityId) },
         orderBy: [{ joinedAt: "asc" }, { userId: "asc" }], select: { userId: true },
       });
-      if (!successor) return "leader";
+      if (!successor) {
+        // Dernier membre : l'équipe est dissoute logiquement, ses deux salons
+        // seront supprimés par la file (identifiants DiscordTeamSpace).
+        await scopedDb.communityTeam.updateMany({
+          where: { id: teamId, communityId },
+          data: { isRecruiting: false },
+        });
+        const deleted = await scopedDb.communityTeamMember.deleteMany({ where: { teamId, communityId, userId } });
+        if (!deleted.count) throw new Error("team_leave_member_missing");
+        await clearTeamRecruiterRoles(tx, communityId, teamId, userId);
+        await tx.membership.update({
+          where: { communityId_userId: { communityId, userId } }, data: { lastTeamLeftAt: new Date() },
+        });
+        return "dissolved_last_member";
+      }
       const changed = await scopedDb.communityTeam.updateMany({
         where: { id: teamId, communityId, captainId: team.captainId },
         data: { captainId: successor.userId, captainLastActivityAt: new Date() },
