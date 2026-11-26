@@ -140,7 +140,7 @@ export default async function PlayerClassifiedsPage({
               (matchmaking) envoyait deux valeurs dans l'URL et invalidait tous les filtres. */}
           {isGameLevelsEnabled() && <fieldset className="flex flex-col gap-2 rounded-lg border border-border p-3">
             <legend className="px-1 text-sm font-medium">Niveau de jeu (exige un jeu choisi ci-dessus)</legend>
-            <label htmlFor="filter-level" className="text-xs text-muted">Niveau déclaré du joueur pour ce jeu</label>
+            <label htmlFor="filter-level" className="text-xs text-muted">Niveau de jeu déclaré pour ce jeu</label>
             <select id="filter-level" name="level" className="rounded-lg border border-border bg-background px-3 py-3 text-base text-foreground" defaultValue={filters.level ?? ""}>
               <option value="">Tous les niveaux</option>
               {GAME_LEVELS.map(level => <option key={level} value={level}>{GAME_LEVEL_LABELS[level]}</option>)}
@@ -150,7 +150,7 @@ export default async function PlayerClassifiedsPage({
               <option value="">Ce niveau ou plus</option>
               <option value="exact">Ce niveau exactement</option>
             </select>
-            <p className="text-xs text-muted">Niveaux auto-déclarés ; un joueur sans niveau déclaré est écarté quand ce filtre est actif. Les profils masqués n’apparaissent jamais, avec ou sans ce filtre.</p>
+            <p className="text-xs text-muted">Niveaux de jeu auto-déclarés ; un joueur sans niveau de jeu déclaré est écarté quand ce filtre est actif. Les profils masqués n’apparaissent jamais, avec ou sans ce filtre.</p>
           </fieldset>}
           <label htmlFor="filter-platform">Plateforme déclarée du joueur</label>
           <select id="filter-platform" name="platform" className="rounded-lg border border-border bg-background px-3 py-3 text-base text-foreground" defaultValue={filters.platform ?? ""}>
@@ -209,7 +209,7 @@ export default async function PlayerClassifiedsPage({
                   <div className="flex items-start justify-between gap-3">
                     <div>
                       <p className="font-medium text-foreground">{listing.game.name}</p>
-                      <p className="text-xs text-muted">Par {listing.createdBy.discordName}{listing.authorLevel ? <span className="ml-2 rounded-full bg-accent/10 px-2 py-0.5 text-accent">Niveau {GAME_LEVEL_LABELS[listing.authorLevel]}</span> : listing.posterLevel && ` · ${GAME_LEVEL_LABELS[listing.posterLevel.level]}`}</p>
+                      <p className="text-xs text-muted">Par {listing.createdBy.discordName}{listing.authorLevel ? <span className="ml-2 rounded-full bg-accent/10 px-2 py-0.5 text-accent">Niveau de jeu {GAME_LEVEL_LABELS[listing.authorLevel]}</span> : listing.posterLevel && ` · ${GAME_LEVEL_LABELS[listing.posterLevel.level]}`}</p>
                     </div>
                     {(listing.createdBy.id === user.id || admin) && (
                       <form action={deletePlayerClassifiedAction}>
