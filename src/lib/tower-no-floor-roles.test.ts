@@ -28,8 +28,6 @@ const ROLE_CREATION_FILES = [
   "src/lib/discord-role-autocreate.ts",
   "src/lib/discord-role-command.ts",
   "src/lib/discord-team-space-api.ts",
-  "src/lib/discord-team-space-service.ts",
-  "src/lib/discord-team-spaces.ts",
 ].sort();
 
 const floorModules = [
