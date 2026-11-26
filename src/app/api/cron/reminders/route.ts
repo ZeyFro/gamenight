@@ -5,6 +5,7 @@ import { sendSessionReminder } from "@/lib/discord-reminder";
 import { WEBHOOK_ANNOUNCE_DISABLED_FOR_PRIVACY } from "@/lib/discord";
 import { enqueueSessionReminderDelivery } from "@/lib/session-announce";
 import { runProjectLifecycle } from "@/lib/project-space-queue";
+import { runPlayerClassifiedForumLifecycle } from "@/lib/player-classified-forum";
 import { scheduleSessionSpaces } from "@/lib/session-space-queue";
 import { logger } from "@/lib/logger";
 import { persistServerError } from "@/lib/error-log";
@@ -285,11 +286,18 @@ export async function GET(request: Request) {
       return null;
     });
 
+    // Annonces joueurs (PLAYER_CLASSIFIED_FORUM_RELAY_ENABLED) : fermeture des posts expirés (file seulement).
+    const playerListings = await runPlayerClassifiedForumLifecycle(now).catch((error: unknown) => {
+      persistServerError("cron:reminders", error, { route: "cron/reminders" });
+      logger.error("cron:reminders", error, { step: "player-classified-forum" });
+      return null;
+    });
+
     logger.info(
       "cron:reminders",
       `${sent.length} rappel(s) envoyé(s), ${failed.length} échec(s), ${staleSkipped.length} seuil(s) obsolète(s) consommé(s) sans envoi, sur ${sessions.length} session(s) vérifiée(s).`
     );
-    return NextResponse.json({ checked: sessions.length, sent, failed, staleSkipped, ...(spaces?.enabled ? { sessionSpaces: spaces } : {}), ...(projects?.enabled ? { projects } : {}) });
+    return NextResponse.json({ checked: sessions.length, sent, failed, staleSkipped, ...(spaces?.enabled ? { sessionSpaces: spaces } : {}), ...(projects?.enabled ? { projects } : {}), ...(playerListings?.enabled ? { playerListings } : {}) });
   } catch (error) {
     // Ne jamais laisser une erreur inattendue remonter en 500 non
     // capturé — cron-job.org compte ça comme un échec et finit par

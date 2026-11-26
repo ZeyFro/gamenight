@@ -1079,6 +1079,33 @@ export async function startPublicThread(input: {
   });
 }
 
+/**
+ * Post de forum (`POST /channels/{forum}/threads`) : le message initial est
+ * obligatoire pour un salon forum. Réservé au relais des annonces joueurs.
+ */
+export async function createForumPost(input: {
+  forumChannelId: string;
+  name: string;
+  content: string;
+  allowedMentions: MessageContentInput["allowedMentions"];
+  autoArchiveDuration?: 60 | 1440 | 4320 | 10080;
+  deadline: Date;
+  now?: Date;
+}): Promise<DiscordRestResult<ThreadInfo>> {
+  return discordRequest({
+    method: "POST",
+    path: `/channels/${input.forumChannelId}/threads`,
+    body: {
+      name: normalizeThreadName(input.name),
+      auto_archive_duration: input.autoArchiveDuration ?? 1440,
+      message: { content: input.content, allowed_mentions: input.allowedMentions },
+    },
+    deadline: input.deadline,
+    now: input.now,
+    parse: parseThread,
+  });
+}
+
 export interface SendThreadMessageInput extends MessageContentInput {
   threadId: string;
   deadline: Date;

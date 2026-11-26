@@ -1,6 +1,8 @@
 import { getScopedPrisma } from "@/lib/community-scoped-client";
 import { checkRateLimit } from "@/lib/rate-limit";
 import { wallClockNow } from "@/lib/wallclock";
+import { consumePlayerClassifiedPing } from "@/lib/player-classified-pings";
+import { enqueuePlayerClassifiedForum } from "@/lib/player-classified-forum";
 import type { PlayerClassifiedFilters } from "@/lib/player-classified-filters";
 import type { GameLevel } from "@/lib/game-levels-rules";
 import {
@@ -103,6 +105,25 @@ export async function createPlayerListing(input: {
       ...extras,
     } as Parameters<typeof scopedDb.playerClassified.create>[0]["data"],
     select: { id: true, expiresAt: true },
+  });
+  // Relais forum : le ping de rôle est consommé avant l'enqueue (plafond
+  // atomique de 3 par joueur et par jour). Une panne du relais ne bloque
+  // jamais la création de l'annonce.
+  const pinged = await consumePlayerClassifiedPing({
+    communityId: input.communityId,
+    userId: input.userId,
+    now: createdAt,
+  });
+  if (pinged) {
+    await scopedDb.playerClassified.updateMany({
+      where: { id: listing.id, communityId: input.communityId, pingedAt: null },
+      data: { pingedAt: createdAt },
+    });
+  }
+  await enqueuePlayerClassifiedForum({
+    listingId: listing.id,
+    communityId: input.communityId,
+    intent: "post",
   });
   return { status: "created", id: listing.id, expiresAt: listing.expiresAt };
 }

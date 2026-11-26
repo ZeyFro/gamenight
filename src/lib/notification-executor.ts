@@ -41,6 +41,8 @@ import { runTeamSpaceAction, type TeamSpaceIntent } from "@/lib/discord-team-spa
 import { runBoosterSyncAction } from "@/lib/booster-support-runner";
 import { runProjectSpaceAction, type ProjectSpaceIntent } from "@/lib/project-space-runner";
 import { runRoleCreationAction } from "@/lib/discord-role-autocreate";
+import { runPlayerClassifiedForumAction } from "@/lib/player-classified-forum-runner";
+import type { PlayerClassifiedForumIntent } from "@/lib/player-classified-forum";
 import { runSessionSpaceAction } from "@/lib/session-space-runner";
 import type { SessionSpaceIntent } from "@/lib/session-space-plan";
 
@@ -273,6 +275,15 @@ export type ResolvedAction =
       sessionId: string;
       communityId: string;
       discordId?: string;
+    }
+  | {
+      /** Relais forum d'une annonce de joueur (D3) : création du post unique ou
+       * fermeture à l'expiration. Réservée au résolveur
+       * `playerClassifiedForumResolver` (ADMIN / PLAYER_CLASSIFIED_FORUM). */
+      kind: "relay_player_classified_forum";
+      intent: PlayerClassifiedForumIntent;
+      listingId: string;
+      communityId: string;
     };
 
 /** Raisons de non-éligibilité — voir `classifyResolutionFailure` pour leur
@@ -707,6 +718,15 @@ export async function performDiscordAction(
       return mapDiscordResult(
         await runSessionSpaceAction(
           { intent: action.intent, sessionId: action.sessionId, communityId: action.communityId, discordId: action.discordId },
+          deadline
+        ),
+        () => ({})
+      );
+    }
+    case "relay_player_classified_forum": {
+      return mapDiscordResult(
+        await runPlayerClassifiedForumAction(
+          { intent: action.intent, listingId: action.listingId, communityId: action.communityId },
           deadline
         ),
         () => ({})
