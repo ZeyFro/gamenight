@@ -9,6 +9,7 @@ import {
   sessionEndedAt,
   sessionSpaceDue,
   sessionVisibilityEnabled,
+  type SessionVisibilityValue,
 } from "@/lib/session-visibility";
 import { selectSpaceMembers, sessionSpaceName } from "@/lib/session-space-plan";
 
@@ -52,6 +53,7 @@ export interface SessionSpaceStore {
 
 export interface SessionSpaceSession {
   id: string;
+  visibility: SessionVisibilityValue;
   status: string;
   date: Date;
   communityId: string;
@@ -59,6 +61,8 @@ export interface SessionSpaceSession {
   destination: { guildId: string; channelId: string } | null;
   /** Identifiants Discord des participants (créateur, coorganisateur, invités actifs / places confirmées), ordonnés. */
   roster: string[];
+  /** Tout participant ayant pu recevoir un accès historique ; sert au retrait final. */
+  cleanupRoster?: string[];
 }
 
 export interface SessionSpaceSource {
@@ -103,29 +107,41 @@ export function createPrismaSessionSpaceSource(): SessionSpaceSource {
       const session = await scopedDb.session.findUnique({
         where: { id: sessionId },
         select: {
-          id: true, status: true, date: true, communityId: true, createdById: true, coOrganizerId: true, attendanceCapacity: true,
-          invites: { where: { status: "ACTIVE" }, orderBy: { createdAt: "asc" }, select: { userId: true } },
+          id: true, visibility: true, status: true, date: true, communityId: true, createdById: true, coOrganizerId: true, attendanceCapacity: true,
+          invites: { orderBy: { createdAt: "asc" }, select: { userId: true, status: true } },
           seats: { where: { status: "CONFIRMED" }, select: { userId: true } },
         },
       });
       if (!session) return null;
       const communityId = session.communityId ?? (await getDefaultCommunityId());
       const confirmed = new Set(session.seats.map((seat) => seat.userId));
-      const invited = session.invites.map((invite) => invite.userId).filter((id) => session.attendanceCapacity === null || confirmed.has(id));
+      const activeInvites = session.invites.filter((invite) => invite.status === "ACTIVE");
+      const invited = activeInvites.map((invite) => invite.userId).filter((id) => session.attendanceCapacity === null || confirmed.has(id));
       const orderedIds = [...new Set([session.createdById, ...(session.coOrganizerId ? [session.coOrganizerId] : []), ...invited])];
+      const cleanupIds = [...new Set([
+        ...orderedIds,
+        ...session.invites.map((invite) => invite.userId),
+        ...session.seats.map((seat) => seat.userId),
+      ])];
       // Seuls les membres encore actifs de la communauté de la soirée reçoivent un accès.
-      const users = await prisma.user.findMany({
-        where: { id: { in: orderedIds }, ...(await communityMemberUserWhere(session.communityId)) },
-        select: { id: true, discordId: true },
-      });
+      const [users, cleanupUsers] = await Promise.all([
+        prisma.user.findMany({
+          where: { id: { in: orderedIds }, ...(await communityMemberUserWhere(session.communityId)) },
+          select: { id: true, discordId: true },
+        }),
+        prisma.user.findMany({ where: { id: { in: cleanupIds } }, select: { id: true, discordId: true } }),
+      ]);
       const discordById = new Map(users.map((user) => [user.id, user.discordId]));
+      const cleanupDiscordById = new Map(cleanupUsers.map((user) => [user.id, user.discordId]));
       return {
         id: session.id,
+        visibility: session.visibility,
         status: session.status,
         date: session.date,
         communityId,
         destination: await resolveSessionAnnounceConfig(session.communityId),
         roster: selectSpaceMembers(orderedIds.map((id) => discordById.get(id))),
+        cleanupRoster: selectSpaceMembers(cleanupIds.map((id) => cleanupDiscordById.get(id))),
       };
     },
   };
@@ -151,6 +167,9 @@ export async function provisionSessionSpace(input: {
   try {
     const session = await source.load(input.sessionId);
     if (!session) return { status: "not_found" };
+    // Les soirées publiques utilisent les espaces communs. Les espaces Discord
+    // temporaires et privés sont réservés aux modes sur candidature et privé.
+    if (session.visibility === "PUBLIC") return { status: "nothing_to_do" };
     if (!sessionSpaceDue(session, input.now ?? wallClockNow())) return { status: "not_due" };
     if (!session.destination) return { status: "not_configured" };
     // Une soirée solo n'a pas besoin d'espace : ni fil ni vocal pour une seule personne.
@@ -245,8 +264,13 @@ export async function cleanupSessionSpace(input: {
     const session = await source.load(input.sessionId);
     if (!session) return { status: "not_found" };
     if (!sessionEndedAt(session, input.now ?? wallClockNow())) return { status: "not_ended" };
+    // Couper les accès avant d'attendre que le vocal soit vide ou de le supprimer.
+    for (const discordId of session.cleanupRoster ?? session.roster) {
+      if (link.threadId) await input.api.removeThreadMember(link.threadId, discordId);
+      if (link.voiceChannelId) await input.api.denyVoiceMember(link.voiceChannelId, discordId);
+    }
     if (link.voiceChannelId) {
-      for (const discordId of session.roster) {
+      for (const discordId of session.cleanupRoster ?? session.roster) {
         if ((await input.api.memberVoiceChannel(link.guildId, discordId)) === link.voiceChannelId) return { status: "occupied" };
       }
       await input.api.deleteChannel(link.voiceChannelId);

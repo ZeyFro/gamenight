@@ -19,13 +19,14 @@ const GUILD = "100000000000000001";
 const PARENT = "100000000000000002";
 const A = "200000000000000001";
 const B = "200000000000000002";
+const C = "200000000000000003";
 const START = new Date("2026-11-20T20:00:00.000Z");
 const BEFORE_START = new Date(START.getTime() - 20 * 60_000);
 const AFTER_END = new Date(START.getTime() + 7 * 3_600_000);
 
 function makeSession(overrides: Partial<SessionSpaceSession> = {}): SessionSpaceSession {
   return {
-    id: "s1", status: "SCHEDULED", date: START, communityId: "c1",
+    id: "s1", visibility: "APPLICATION", status: "SCHEDULED", date: START, communityId: "c1",
     destination: { guildId: GUILD, channelId: PARENT }, roster: [A, B], ...overrides,
   };
 }
@@ -92,6 +93,21 @@ describe("provisionSessionSpace", () => {
     expect(store.row).toMatchObject({ threadId: "300000000000000001", voiceChannelId: "400000000000000001", guildId: GUILD });
   });
 
+  it.each(["APPLICATION", "PRIVATE"] as const)("crée des espaces temporaires pour le mode %s", async visibility => {
+    const { api, calls } = fakeApi();
+    const result = await provisionSessionSpace({ sessionId: "s1", api, store: memoryStore(), source: memorySource(makeSession({ visibility })), env: ENV, now: BEFORE_START });
+    expect(result.status).toBe("created");
+    expect(calls).toContain(`thread:${PARENT}`);
+    expect(calls).toContain(`voice:${A},${B}`);
+  });
+
+  it("ne crée pas de salon temporaire pour une soirée publique", async () => {
+    const { api, calls } = fakeApi();
+    const result = await provisionSessionSpace({ sessionId: "s1", api, store: memoryStore(), source: memorySource(makeSession({ visibility: "PUBLIC" })), env: ENV, now: BEFORE_START });
+    expect(result.status).toBe("nothing_to_do");
+    expect(calls).toEqual([]);
+  });
+
   it("n'est pas dû plus de 30 min avant, ni pour une soirée non planifiée", async () => {
     const { api, calls } = fakeApi();
     const early = await provisionSessionSpace({ sessionId: "s1", api, store: memoryStore(), source: memorySource(makeSession()), env: ENV, now: new Date(START.getTime() - 45 * 60_000) });
@@ -146,12 +162,14 @@ describe("cleanupSessionSpace", () => {
     expect(calls).toEqual([]);
   });
 
-  it("ne supprime rien si un participant est encore dans le vocal", async () => {
-    const { api, calls } = fakeApi({ memberVoiceChannel: vi.fn(async (_g: string, id: string) => (id === B ? "400000000000000001" : null)) });
+  it("retire les accès à la fin même si un participant reste dans le vocal, puis attend avant suppression", async () => {
+    const { api, calls } = fakeApi({ memberVoiceChannel: vi.fn(async (_g: string, id: string) => (id === C ? "400000000000000001" : null)) });
     const store = memoryStore(fullLink());
-    const result = await cleanupSessionSpace({ sessionId: "s1", api, store, source: memorySource(makeSession()), env: ENV, now: AFTER_END });
+    const result = await cleanupSessionSpace({ sessionId: "s1", api, store, source: memorySource(makeSession({ cleanupRoster: [A, B, C] })), env: ENV, now: AFTER_END });
     expect(result.status).toBe("occupied");
-    expect(calls).toEqual([]);
+    expect(calls).toEqual([
+      `thread-remove:${A}`, `voice-deny:${A}`, `thread-remove:${B}`, `voice-deny:${B}`, `thread-remove:${C}`, `voice-deny:${C}`,
+    ]);
     expect(store.row?.cleanedAt).toBeNull();
   });
 
@@ -159,7 +177,10 @@ describe("cleanupSessionSpace", () => {
     const { api, calls } = fakeApi({ memberVoiceChannel: vi.fn(async () => "999999999999999999") });
     const result = await cleanupSessionSpace({ sessionId: "s1", api, store: memoryStore(fullLink()), source: memorySource(makeSession()), env: ENV, now: AFTER_END });
     expect(result.status).toBe("cleaned");
-    expect(calls).toEqual(["delete:400000000000000001", "delete:300000000000000001"]);
+    expect(calls).toEqual([
+      `thread-remove:${A}`, `voice-deny:${A}`, `thread-remove:${B}`, `voice-deny:${B}`,
+      "delete:400000000000000001", "delete:300000000000000001",
+    ]);
   });
 
   it("vocal vide après la fin : supprime vocal puis fil et marque l'espace nettoyé", async () => {
@@ -167,7 +188,10 @@ describe("cleanupSessionSpace", () => {
     const store = memoryStore(fullLink());
     const result = await cleanupSessionSpace({ sessionId: "s1", api, store, source: memorySource(makeSession()), env: ENV, now: AFTER_END });
     expect(result.status).toBe("cleaned");
-    expect(calls).toEqual(["delete:400000000000000001", "delete:300000000000000001"]);
+    expect(calls).toEqual([
+      `thread-remove:${A}`, `voice-deny:${A}`, `thread-remove:${B}`, `voice-deny:${B}`,
+      "delete:400000000000000001", "delete:300000000000000001",
+    ]);
     expect(store.row?.cleanedAt).toBeInstanceOf(Date);
     const replay = await cleanupSessionSpace({ sessionId: "s1", api, store, source: memorySource(makeSession()), env: ENV, now: AFTER_END });
     expect(replay.status).toBe("nothing_to_do");
@@ -184,7 +208,7 @@ describe("cleanupSessionSpace", () => {
     const store = memoryStore(fullLink());
     const result = await cleanupSessionSpace({ sessionId: "s1", api, store, source: memorySource(makeSession()), env: ENV, now: AFTER_END });
     expect(result.status).toBe("failed");
-    expect(calls).toEqual([]);
+    expect(calls).toEqual([`thread-remove:${A}`, `voice-deny:${A}`, `thread-remove:${B}`, `voice-deny:${B}`]);
     expect(store.row?.cleanedAt).toBeNull();
   });
 

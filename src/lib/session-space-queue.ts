@@ -106,8 +106,9 @@ export const sessionSpaceSyncResolver: DeliveryResolver = {
     if (!sessionVisibilityEnabled()) return { eligible: false, reason: "not_configured" };
     if (!process.env.DISCORD_BOT_TOKEN?.trim()) return { eligible: false, reason: "configuration_unavailable" };
     const scopedDb = scopedPrisma(null);
-    const session = await scopedDb.session.findUnique({ where: { id: event.sourceId }, select: { communityId: true, status: true } });
+    const session = await scopedDb.session.findUnique({ where: { id: event.sourceId }, select: { communityId: true, status: true, visibility: true } });
     if (!session) return { eligible: false, reason: "expired" };
+    if (intent === "provision" && session.visibility === "PUBLIC") return { eligible: false, reason: "expired" };
     const destination = await resolveSessionAnnounceConfig(session.communityId);
     if (!destination) return { eligible: false, reason: "expired" };
     if (delivery.operation !== "SEND" || delivery.channel !== "DISCORD_CHANNEL" || delivery.transport !== "BOT" ||
@@ -144,6 +145,9 @@ export async function scheduleSessionSpaces(now: Date = wallClockNow(), nowMs: n
   const dueSoon = await scopedDb.session.findMany({
     where: {
       status: "SCHEDULED",
+      // Les soirées PUBLIC utilisent les espaces communs et ne reçoivent
+      // jamais de fil/vocal temporaires privés.
+      visibility: { in: ["APPLICATION", "PRIVATE"] },
       // Une soirée sans aucun invité actif n'a pas besoin d'espace : pas d'événement inutile.
       invites: { some: { status: "ACTIVE" } },
       date: { gt: new Date(now.getTime() - SESSION_ASSUMED_DURATION_MS), lte: new Date(now.getTime() + SESSION_SPACE_LEAD_MS) },
