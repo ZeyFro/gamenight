@@ -374,7 +374,6 @@ export async function syncTeamSpaceMember(input: {
   try {
     const team = await loadTeam(input.teamId, input.communityId);
     if (!team || !team.guildId) return { status: "not_member" };
-    const guildId = team.guildId;
     const link = await store.find(team.id);
     if (!link?.channelId) return { status: "not_provisioned" };
     const member = team.members.find((candidate) => candidate.discordId === input.discordId);
