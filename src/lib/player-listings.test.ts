@@ -80,6 +80,7 @@ vi.mock("@/lib/community-scoped-client", () => ({
             createdBy: { ...row.createdBy, discordAvatar: null, color: null },
           }));
       },
+      updateMany: async () => ({ count: 1 }),
       deleteMany: async ({ where }: { where: { id: string } }) => {
         const rows = mocks.rows as Row[];
         const index = rows.findIndex((row) => row.id === where.id);
