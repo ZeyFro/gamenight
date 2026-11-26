@@ -1,5 +1,6 @@
 import { renderToStaticMarkup } from "react-dom/server";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { GAME_LEVELS } from "@/lib/game-levels-rules";
 
 const mocks = vi.hoisted(() => ({ user: vi.fn(), community: vi.fn(), games: vi.fn(), list: vi.fn() }));
 vi.mock("@/lib/current-user", () => ({ getCurrentUser: mocks.user }));
@@ -24,6 +25,7 @@ const GAMES = [
 
 beforeEach(() => {
   vi.clearAllMocks();
+  vi.unstubAllEnvs();
   mocks.user.mockResolvedValue({ id: "viewer" });
   mocks.community.mockResolvedValue("community-a");
   mocks.games.mockResolvedValue(GAMES);
@@ -53,6 +55,66 @@ describe("recherche /joueurs", () => {
     await Page({ searchParams: Promise.resolve({}) });
     expect(mocks.list).not.toHaveBeenCalled();
     expect(mocks.games).not.toHaveBeenCalled();
+  });
+});
+
+describe("filtres de niveau de /joueurs (C035)", () => {
+  beforeEach(() => {
+    // Les deux interrupteurs allumés reproduisent la Production : c'est la
+    // combinaison qui émettait deux champs `level` et invalidait la requête.
+    vi.stubEnv("GAME_LEVELS_ENABLED", "true");
+    vi.stubEnv("GAME_LEVELS_MATCHMAKING_ENABLED", "true");
+  });
+  afterEach(() => vi.unstubAllEnvs());
+
+  it("accepte un jeu seul et n'affiche aucun filtre invalide", async () => {
+    const html = renderToStaticMarkup(await Page({ searchParams: Promise.resolve({ gameId: "game-1" }) }));
+
+    expect(html).not.toContain("Les filtres sont invalides");
+    expect(mocks.list).toHaveBeenCalledExactlyOnceWith("viewer", "community-a", expect.any(Date), { gameId: "game-1" });
+  });
+
+  it.each(GAME_LEVELS)("accepte le niveau %s associé à un jeu", async (level) => {
+    const html = renderToStaticMarkup(await Page({ searchParams: Promise.resolve({ gameId: "game-1", level }) }));
+
+    expect(html).not.toContain("Les filtres sont invalides");
+    expect(mocks.list).toHaveBeenCalledExactlyOnceWith("viewer", "community-a", expect.any(Date), { gameId: "game-1", level });
+    expect(html).toContain(`value="${level}" selected=""`);
+  });
+
+  it("combine le jeu, le niveau et la comparaison exacte", async () => {
+    const html = renderToStaticMarkup(
+      await Page({ searchParams: Promise.resolve({ gameId: "game-1", level: "CONFIRME", levelMatch: "exact" }) })
+    );
+
+    expect(html).not.toContain("Les filtres sont invalides");
+    expect(mocks.list).toHaveBeenCalledExactlyOnceWith(
+      "viewer",
+      "community-a",
+      expect.any(Date),
+      { gameId: "game-1", level: "CONFIRME", levelMatch: "exact" }
+    );
+    expect(html).toContain('value="CONFIRME" selected=""');
+    expect(html).toContain('value="exact" selected=""');
+  });
+
+  it("garde « ce niveau ou plus » par défaut, sans second champ level", async () => {
+    const html = renderToStaticMarkup(
+      await Page({ searchParams: Promise.resolve({ gameId: "game-1", level: "INTERMEDIAIRE" }) })
+    );
+
+    // Un seul champ `level` (et un seul id) : l'URL ne peut plus porter deux valeurs.
+    expect(html.match(/name="level"/g)).toHaveLength(1);
+    expect(html.match(/id="filter-level"/g)).toHaveLength(1);
+    expect(html).toContain("Ce niveau ou plus");
+    expect(html).toContain("Ce niveau exactement");
+  });
+
+  it("refuse toujours un niveau sans jeu, sans élargir les résultats", async () => {
+    const html = renderToStaticMarkup(await Page({ searchParams: Promise.resolve({ level: "DEBUTANT" }) }));
+
+    expect(mocks.list).not.toHaveBeenCalled();
+    expect(html).toContain("Les filtres sont invalides");
   });
 });
 
