@@ -171,56 +171,52 @@ describe.skipIf(!TEST_DATABASE_URL)("PostgreSQL isolé — espaces d'équipe Dis
 
   it("executor : création, adhésion, départ et archivage avec le vrai store SQL", async () => {
     vi.stubEnv("DISCORD_TEAM_SPACES_ENABLED", "true");
-    const calls = { roles: 0, channels: 0, added: [] as string[], removed: [] as string[], renamed: [] as string[] };
+    const calls = { channels: 0, permissions: [] as string[], removed: [] as string[], renamed: [] as string[] };
     const created: Array<{ id: string; name: string; type: number }> = [];
     const api = {
       // Reflète l'état Discord simulé : les ressources créées existent ensuite (reconcile ne recrée jamais).
-      snapshot: async () => ({
-        channels: [...created],
-        roles: calls.roles > 0 ? [{ id: "role-flow", name: "GN · Les Dragons" }] : [],
-      }),
-      createRole: async () => {
-        calls.roles += 1;
-        return "role-flow";
-      },
+      snapshot: async () => ({ channels: [...created], roles: [] }),
       createChannel: async (_guildId: string, name: string, type: number) => {
         calls.channels += 1;
         const id = type === 2 ? "voice-flow" : "chan-flow";
         created.push({ id, name, type });
         return id;
       },
+      setMemberPermission: async (channelId: string, userId: string, _allow: string, action: string) => {
+        (action === "remove" ? calls.removed : calls.permissions).push(`${channelId}:${userId}`);
+      },
       renameChannel: async (channelId: string) => {
         calls.renamed.push(channelId);
       },
-      addMemberRole: async (_g: string, userId: string) => {
-        calls.added.push(userId);
-      },
-      removeMemberRole: async (_g: string, userId: string) => {
-        calls.removed.push(userId);
-      },
+      deleteChannel: async () => undefined,
+      createRole: async () => "legacy-role",
+      addMemberRole: async () => undefined,
+      removeMemberRole: async () => undefined,
     };
     const run = (input: Parameters<typeof runner.runTeamSpaceAction>[0]) => runner.runTeamSpaceAction(input, new Date(Date.now() + 20_000), api);
     const base = { teamId: ids.team, communityId: ids.community };
 
     expect(await run({ ...base, intent: "provision" })).toEqual({ ok: true, data: {} });
     expect(await run({ ...base, intent: "provision" })).toEqual({ ok: true, data: {} });
-    // Option A : un rôle, un salon textuel ET un salon vocal par équipe.
-    expect({ roles: calls.roles, channels: calls.channels }).toEqual({ roles: 1, channels: 2 });
+    // D5 : aucun rôle d'équipe, un salon textuel et un vocal, permissions nominatives par membre.
+    expect(calls.channels).toBe(2);
     expect(created.map((channel) => channel.type).sort()).toEqual([0, 2]);
     expect(await db.discordTeamSpace.findUniqueOrThrow({ where: { teamId: ids.team } })).toMatchObject({
       channelId: "chan-flow",
       voiceChannelId: "voice-flow",
-      roleId: "role-flow",
+      roleId: null,
       guildId: GUILD,
     });
-    // Le second passage réconcilie les accès (PUT de rôle idempotent) : on compare les membres distincts.
-    expect([...new Set(calls.added)].sort()).toEqual([CREATOR_DISCORD, MEMBER_DISCORD]);
+    expect([...new Set(calls.permissions)].sort()).toEqual([
+      `chan-flow:${CREATOR_DISCORD}`, `chan-flow:${MEMBER_DISCORD}`,
+      `voice-flow:${CREATOR_DISCORD}`, `voice-flow:${MEMBER_DISCORD}`,
+    ]);
 
-    // Départ : l'état courant décide, le rôle de cette seule équipe est retiré, aucune progression écrite.
+    // Départ : les permissions nominatives des deux salons sont retirées, aucune progression écrite.
     await db.communityTeamMember.deleteMany({ where: { teamId: ids.team, userId: ids.member } });
     const xpBefore = await db.xpEvent.count();
     expect(await run({ ...base, intent: "member", discordId: MEMBER_DISCORD })).toEqual({ ok: true, data: {} });
-    expect(calls.removed).toEqual([MEMBER_DISCORD]);
+    expect([...new Set(calls.removed)].sort()).toEqual([`chan-flow:${MEMBER_DISCORD}`, `voice-flow:${MEMBER_DISCORD}`]);
     expect(await db.xpEvent.count()).toBe(xpBefore);
 
     // Dissolution : plus aucun membre, les DEUX salons associés (et eux seuls) sont archivés par renommage.
