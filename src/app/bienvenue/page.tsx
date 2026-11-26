@@ -19,26 +19,28 @@ const DISCORD_ID_PATTERN = /^\d{17,20}$/;
  * setting exists, other communities keep the slash-command instructions
  * without a cross-server link.
  */
-async function getOnboardingCommandsChannelUrl(userId: string): Promise<string | null> {
+async function getOnboardingConfiguration(userId: string): Promise<{ commandsChannelUrl: string | null; towerAvailable: boolean }> {
   const communityId = await resolveActiveCommunityId(userId);
-  if (!communityId) return null;
+  if (!communityId) return { commandsChannelUrl: null, towerAvailable: false };
   const community = await prisma.community.findUnique({
     where: { id: communityId },
-    select: { slug: true, status: true, discordGuildId: true },
+    select: { slug: true, status: true, discordGuildId: true, towerChallengesEnabled: true },
   });
+  const towerAvailable = process.env.TOWER_CHALLENGES_ENABLED === "true" &&
+    community?.status === "ACTIVE" && community.towerChallengesEnabled;
   const configuredGuildId = community?.discordGuildId?.trim();
   const defaultGuildId = process.env.DISCORD_BOT_GUILD_ID?.trim();
   const configuredChannelId = process.env.TOWER_DISCORD_COMMANDS_CHANNEL_ID?.trim();
-  if (
-    community?.status !== "ACTIVE" ||
-    community.slug !== DEFAULT_COMMUNITY_SLUG ||
-    !configuredGuildId ||
-    configuredGuildId !== defaultGuildId ||
-    !configuredChannelId ||
-    !DISCORD_ID_PATTERN.test(configuredGuildId) ||
-    !DISCORD_ID_PATTERN.test(configuredChannelId)
-  ) return null;
-  return `https://discord.com/channels/${configuredGuildId}/${configuredChannelId}`;
+  const commandsChannelUrl = community?.status === "ACTIVE" &&
+    community.slug === DEFAULT_COMMUNITY_SLUG &&
+    configuredGuildId &&
+    configuredGuildId === defaultGuildId &&
+    configuredChannelId &&
+    DISCORD_ID_PATTERN.test(configuredGuildId) &&
+    DISCORD_ID_PATTERN.test(configuredChannelId)
+    ? `https://discord.com/channels/${configuredGuildId}/${configuredChannelId}`
+    : null;
+  return { commandsChannelUrl, towerAvailable };
 }
 
 export default async function WelcomePage({ searchParams }: { searchParams: Promise<{ step?: string }> }) {
@@ -51,6 +53,6 @@ export default async function WelcomePage({ searchParams }: { searchParams: Prom
   }}><Button type="submit" variant="primary">Se connecter pour préparer mon profil</Button></form></LoginLanding>;
   const progress = await getOnboardingProgress(user.id);
   if (!progress) return null;
-  const commandsChannelUrl = await getOnboardingCommandsChannelUrl(user.id);
-  return <div className="mx-auto w-full max-w-3xl px-4 py-8 sm:px-6"><OnboardingFlow key={initialStep ?? "auto"} progress={progress} initialStep={initialStep} commandsChannelUrl={commandsChannelUrl} /></div>;
+  const onboardingConfig = await getOnboardingConfiguration(user.id);
+  return <div className="mx-auto w-full max-w-3xl px-4 py-8 sm:px-6"><OnboardingFlow key={initialStep ?? "auto"} progress={progress} initialStep={initialStep} commandsChannelUrl={onboardingConfig.commandsChannelUrl} towerAvailable={onboardingConfig.towerAvailable} /></div>;
 }

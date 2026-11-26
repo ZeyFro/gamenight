@@ -54,6 +54,16 @@ describe("guide assisté : pas de validation fictive", () => {
     expect(screen.getByRole("link", { name: "Organiser une soirée" })).toBeTruthy();
     expect(screen.getByRole("link", { name: "Trouver une partie maintenant" })).toBeTruthy();
   });
+  it("masque l’étape Tower si les défis sont désactivés pour la communauté", () => {
+    render(<OnboardingFlow progress={{ ...empty, steamSkipped: true, planningReady: true }} towerAvailable={false} />);
+    fireEvent.click(screen.getByRole("button", { name: "Suivant" }));
+    expect(screen.getByRole("heading", { name: "Jeux, rôles et plateformes" })).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Suivant" }));
+    expect(screen.getByRole("heading", { name: "Jouer avec le groupe" })).toBeTruthy();
+    expect(screen.queryByRole("heading", { name: "Ton premier objectif d'étage" })).toBeNull();
+    expect(screen.queryByText("Choisir un défi avec /tower defi")).toBeNull();
+    expect(screen.getByRole("button", { name: "Terminer le guide" })).toBeTruthy();
+  });
   it("persiste le choix sans Steam avant de poursuivre, et montre un échec", async () => {
     mocks.skip.mockResolvedValueOnce(false).mockResolvedValueOnce(true);
     render(<OnboardingFlow progress={empty} />);

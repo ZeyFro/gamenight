@@ -24,14 +24,15 @@ const TOUR = [
   ] },
 ] as const;
 
-export function OnboardingFlow({ progress, initialStep, commandsChannelUrl }: { progress: OnboardingProgress; initialStep?: string; commandsChannelUrl?: string | null }) {
+export function OnboardingFlow({ progress, initialStep, commandsChannelUrl, towerAvailable = true }: { progress: OnboardingProgress; initialStep?: string; commandsChannelUrl?: string | null; towerAvailable?: boolean }) {
   const router = useRouter();
   const needsSteam = !progress.steamLinked && !progress.steamSkipped;
   const [screen, setScreen] = useState(initialStep === "planning" ? 1 : initialStep === "steam" || needsSteam ? 0 : !progress.planningReady ? 1 : 2);
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState("");
   const completed = Number(!needsSteam) + Number(progress.planningReady);
-  const current = screen > 0 ? TOUR[screen - 1] : null;
+  const tour = towerAvailable ? TOUR : TOUR.filter(step => step.title !== "Ton premier objectif d'étage");
+  const current = screen > 0 ? tour[screen - 1] : null;
   function skipSteam() {
     setError("");
     startTransition(async () => {
@@ -55,7 +56,7 @@ export function OnboardingFlow({ progress, initialStep, commandsChannelUrl }: { 
     </div>
     <nav aria-label="Étapes du guide">
       <ol className="grid grid-cols-2 gap-2 sm:grid-cols-5">
-        {["Steam", ...TOUR.map(step => step.title)].map((label, i) => <li key={label} aria-current={screen === i ? "step" : undefined} className={`rounded-lg border px-3 py-2 text-xs ${screen === i ? "border-accent bg-accent/10 text-foreground" : "border-border text-muted"}`}><span className="font-semibold">{i + 1}.</span> {label}</li>)}
+        {["Steam", ...tour.map(step => step.title)].map((label, i) => <li key={label} aria-current={screen === i ? "step" : undefined} className={`rounded-lg border px-3 py-2 text-xs ${screen === i ? "border-accent bg-accent/10 text-foreground" : "border-border text-muted"}`}><span className="font-semibold">{i + 1}.</span> {label}</li>)}
       </ol>
     </nav>
     <div className="rounded-2xl border-2 border-border bg-surface p-5 sm:p-7" aria-live="polite">
@@ -72,7 +73,7 @@ export function OnboardingFlow({ progress, initialStep, commandsChannelUrl }: { 
     {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
     <div className="flex flex-wrap justify-between gap-3">
       <Button variant="ghost" disabled={screen === 0 || pending} onClick={() => setScreen(screen - 1)}>Précédent</Button>
-      {screen < TOUR.length ? <Button variant="primary" onClick={() => setScreen(screen + 1)}>Suivant</Button> : <Button variant="primary" disabled={pending || completed !== 2} onClick={finish}>Terminer le guide</Button>}
+      {screen < tour.length ? <Button variant="primary" onClick={() => setScreen(screen + 1)}>Suivant</Button> : <Button variant="primary" disabled={pending || completed !== 2} onClick={finish}>Terminer le guide</Button>}
     </div>
     {completed !== 2 && <p className="text-sm text-muted">À terminer : {needsSteam && <Link className="underline" href="/bienvenue?step=steam">Steam</Link>}{needsSteam && !progress.planningReady && " et "}{!progress.planningReady && <Link className="underline" href="/disponibilites">tes disponibilités</Link>}.</p>}
     <Link className="text-center text-sm text-muted underline" href="/">Revenir à l’application — mes étapes restent à terminer</Link>
