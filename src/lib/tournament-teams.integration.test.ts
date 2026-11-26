@@ -151,14 +151,18 @@ describe.skipIf(!TEST_DATABASE_URL)("tournois par équipes inscrites : PostgreSQ
     expect(await tt.resolveMatchByReferee(ids.org, ids.community, { matchId: match.id, winnerTeamId: match.team2Id! }, later)).toBe("already_decided");
   });
 
-  it("un ADMIN de la communauté peut trancher un capitaine absent, 24 h après la déclaration ; rien à trancher sans déclaration", async () => {
+  it("un ADMIN de la communauté peut trancher un capitaine absent, 24 h après la déclaration ; sans déclaration, 48 h après l'ouverture", async () => {
     await create(2);
     await enter("A", "a1");
     await enter("B", "b1");
     const match = await finalMatch();
+    // Ouverture du match = lancement (décision du 26/11 : départ du délai de repli).
+    expect(match.scheduledAt).toBeInstanceOf(Date);
     await db.membership.update({ where: { communityId_userId: { communityId: ids.community, userId: ids.outsider } }, data: { role: "ADMIN" } });
     const later = new Date(Date.now() + 25 * H);
-    expect(await tt.resolveMatchByReferee(ids.outsider, ids.community, { matchId: match.id, winnerTeamId: match.team1Id! }, later)).toBe("not_ready");
+    // Sans aucune déclaration : refusé à 25 h et à 47 h, puis possible 48 h après l'ouverture.
+    expect(await tt.resolveMatchByReferee(ids.outsider, ids.community, { matchId: match.id, winnerTeamId: match.team1Id! }, later)).toBe("too_early");
+    expect(await tt.resolveMatchByReferee(ids.outsider, ids.community, { matchId: match.id, winnerTeamId: match.team1Id! }, new Date(match.scheduledAt!.getTime() + 47 * H))).toBe("too_early");
     expect(await tt.submitMatchReport(ids.a1, ids.community, { matchId: match.id, winnerTeamId: match.team1Id! })).toBe("waiting");
     expect(await tt.resolveMatchByReferee(ids.outsider, ids.community, { matchId: match.id, winnerTeamId: match.team1Id! })).toBe("too_early");
     expect(await tt.resolveMatchByReferee(ids.outsider, ids.community, { matchId: match.id, winnerTeamId: match.team1Id! }, later)).toBe("resolved");
@@ -331,6 +335,25 @@ describe.skipIf(!TEST_DATABASE_URL)("tournois par équipes inscrites : PostgreSQ
     expect(await tt.launchTeamTournament(ids.org, ids.community, ids.tournament)).toBe("launched");
     expect(await db.tournamentTeamSettings.findUniqueOrThrow({ where: { tournamentId: ids.tournament } })).toMatchObject({ roundRobin: false });
     expect(await db.tournamentMatch.count({ where: { tournamentId: ids.tournament } })).toBe(7); // arbre de 8 : 4 + 2 + 1
+  });
+
+  it("repli d'arbitrage : un match d'arbre s'ouvre quand ses deux équipes sont connues, et 48 h sans déclaration suffisent", async () => {
+    await create(4);
+    for (const [letter, captain] of [["A", "a1"], ["B", "b1"], ["C", "c1"], ["D", "d1"]]) await enter(letter, captain);
+    const round1 = await db.tournamentMatch.findMany({ where: { tournamentId: ids.tournament, round: 1 }, orderBy: { position: "asc" } });
+    expect(round1).toHaveLength(2);
+    expect(round1.every((m) => m.scheduledAt instanceof Date)).toBe(true);
+    const finale = () => db.tournamentMatch.findFirstOrThrow({ where: { tournamentId: ids.tournament, round: 2 } });
+    expect((await finale()).scheduledAt).toBeNull(); // équipes pas encore connues : pas d'ouverture
+    // Les deux demi-finales sont tranchées par l'arbitre sans déclaration, 48 h après leur ouverture.
+    for (const m of round1) {
+      const after48 = new Date(m.scheduledAt!.getTime() + 48 * H);
+      expect(await tt.resolveMatchByReferee(ids.org, ids.community, { matchId: m.id, winnerTeamId: m.team1Id! }, new Date(after48.getTime() - 1))).toBe("too_early");
+      expect(await tt.resolveMatchByReferee(ids.org, ids.community, { matchId: m.id, winnerTeamId: m.team1Id! }, after48)).toBe("resolved");
+    }
+    const final = await finale();
+    expect(final.team1Id && final.team2Id).toBeTruthy();
+    expect(final.scheduledAt).toBeInstanceOf(Date); // ouverte quand la seconde équipe est connue
   });
 
   it("les tournois d'équipes sont redirigés hors des chemins individuels (garde)", async () => {

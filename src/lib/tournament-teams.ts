@@ -8,7 +8,7 @@ import { advanceWinner, bracketSizeFor, declareWinner, totalRoundsFor } from "@/
 import { isTournamentScoresEnabled } from "@/lib/tournament-scores";
 import { captainIdOf, captainSelect } from "@/lib/tournament-team-captain";
 import { enqueueTeamTournamentNotice } from "@/lib/tournament-team-notify";
-import { arbitrationOpen, roundRobinSchedule, usesRoundRobin } from "@/lib/tournament-round-robin";
+import { arbitrationOpen, arbitrationOpensAt, roundRobinSchedule, usesRoundRobin } from "@/lib/tournament-round-robin";
 import {
   agreedScores, compareReports, isTournamentTeamsEnabled, matchReportSchema, maxPlayersForTeams, registrationDeadlinePassed,
   REPORT_REMINDER_AFTER_MS, reportBlock, teamEntryBlock, type EntryBlock, type MatchReportContent, type ReportBlock,
@@ -251,8 +251,10 @@ export async function buildRegisteredTeamBracket(tx: Prisma.TransactionClient, t
     await scopedDb.tournamentTeamSettings.updateMany({ where: { tournamentId, communityId }, data: { roundRobin: true } });
     await scopedDb.tournament.update({ where: { id: tournamentId }, data: { status: "IN_PROGRESS" } });
     const days = roundRobinSchedule(competitorIds);
+    // Ouverture de chaque rencontre = lancement : départ du délai de repli de l'arbitrage (48 h sans déclaration).
+    const openedAt = wallClockNow();
     await scopedDb.tournamentMatch.createMany({
-      data: days.flatMap((day) => day.matches.map(([team1Id, team2Id], position) => ({ tournamentId, round: day.round, position, team1Id, team2Id }))),
+      data: days.flatMap((day) => day.matches.map(([team1Id, team2Id], position) => ({ tournamentId, round: day.round, position, team1Id, team2Id, scheduledAt: openedAt }))),
     });
     return "launched";
   }
@@ -261,7 +263,9 @@ export async function buildRegisteredTeamBracket(tx: Prisma.TransactionClient, t
     position, team1Id: competitorIds[position] ?? null, team2Id: competitorIds[matchCount + position] ?? null,
   }));
   await scopedDb.tournament.update({ where: { id: tournamentId }, data: { status: "IN_PROGRESS" } });
-  await scopedDb.tournamentMatch.createMany({ data: round1.map((match) => ({ tournamentId, round: 1, position: match.position, team1Id: match.team1Id, team2Id: match.team2Id })) });
+  // Un match du 1er tour qui oppose deux équipes est ouvert dès le lancement (départ du délai de repli de 48 h).
+  const openedAt = wallClockNow();
+  await scopedDb.tournamentMatch.createMany({ data: round1.map((match) => ({ tournamentId, round: 1, position: match.position, team1Id: match.team1Id, team2Id: match.team2Id, scheduledAt: match.team1Id && match.team2Id ? openedAt : null })) });
   for (let round = 2; round <= totalRounds; round++) {
     await scopedDb.tournamentMatch.createMany({
       data: Array.from({ length: bracketSize / 2 ** round }, (_, position) => ({ tournamentId, round, position })),
@@ -366,8 +370,8 @@ export type ResolveResult = "resolved" | "forbidden" | "invalid_winner" | "alrea
 
 /**
  * Désaccord (ou capitaine absent) : l'organisateur du tournoi ou un ADMIN/OWNER de la communauté tranche, mais seulement 24 h après la
- * dernière déclaration d'un capitaine (décision du 26/11/2026) : les capitaines ont d'abord le temps de s'accorder. Sans déclaration,
- * rien à arbitrer. La décision passe par le mécanisme existant avec l'organisateur comme autorité d'enregistrement ; les déclarations
+ * dernière déclaration d'un capitaine (décision du 26/11/2026) : les capitaines ont d'abord le temps de s'accorder. Sans aucune
+ * déclaration, repli : 48 h après l'ouverture du match (`scheduledAt`) ; sans date d'ouverture (tournoi lancé avant), rien à arbitrer. La décision passe par le mécanisme existant avec l'organisateur comme autorité d'enregistrement ; les déclarations
  * des capitaines restent conservées pour l'historique.
  */
 export async function resolveMatchByReferee(userId: string, communityId: string, input: { matchId: string; winnerTeamId: string; score1?: number; score2?: number }, now: Date = new Date()): Promise<ResolveResult> {
@@ -375,7 +379,7 @@ export async function resolveMatchByReferee(userId: string, communityId: string,
   const scopedDb = await getScopedPrisma(userId);
   const match = await scopedDb.tournamentMatch.findFirst({
     where: { id: input.matchId, tournament: { communityId, teamSettings: { isNot: null } } },
-    select: { completedAt: true, team1Id: true, team2Id: true, tournament: { select: { createdById: true, status: true } }, reports: { select: { createdAt: true } } },
+    select: { completedAt: true, team1Id: true, team2Id: true, scheduledAt: true, tournament: { select: { createdById: true, status: true } }, reports: { select: { createdAt: true } } },
   });
   if (!match) return "missing";
   const membership = await prisma.membership.findUnique({ where: { communityId_userId: { communityId, userId } }, select: { role: true, status: true } });
@@ -384,7 +388,8 @@ export async function resolveMatchByReferee(userId: string, communityId: string,
   if (match.completedAt) return "already_decided";
   if (match.tournament.status !== "IN_PROGRESS" || !match.team1Id || !match.team2Id) return "not_ready";
   if (input.winnerTeamId !== match.team1Id && input.winnerTeamId !== match.team2Id) return "invalid_winner";
-  if (!arbitrationOpen(match.reports.map((report) => report.createdAt), now)) return match.reports.length ? "too_early" : "not_ready";
+  const reportDates = match.reports.map((report) => report.createdAt);
+  if (!arbitrationOpen(reportDates, now, match.scheduledAt)) return arbitrationOpensAt(reportDates, match.scheduledAt) ? "too_early" : "not_ready";
   const scores = isTournamentScoresEnabled() && input.score1 !== undefined && input.score2 !== undefined ? { score1: input.score1, score2: input.score2 } : undefined;
   const result = await declareWinner(input.matchId, input.winnerTeamId, match.tournament.createdById, scores, { viaTeamConfirmation: true });
   if (result.ok) return "resolved";

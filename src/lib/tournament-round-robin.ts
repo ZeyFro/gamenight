@@ -7,10 +7,13 @@
  * - Classement : victoires, puis confrontation directe entre deux équipes à égalité, puis différence de score (si les scores sont
  *   saisis), puis ordre du tirage au lancement (`position`, tiré au hasard), pour qu'il n'y ait jamais deux équipes au même rang.
  * - Litige : si les deux capitaines ne s'accordent pas (ou si l'un ne déclare pas), l'arbitre ne tranche qu'après 24 h.
+ * - Repli (décision du 26/11/2026) : si AUCUN capitaine n'a déclaré, l'arbitre peut trancher 48 h après l'ouverture du match
+ *   (`TournamentMatch.scheduledAt`, posé quand les deux équipes sont connues : lancement, ou fin du match qui y mène).
  */
 
 export const ROUND_ROBIN_TEAM_COUNT = 5;
 export const ARBITRATION_DELAY_MS = 24 * 60 * 60 * 1000;
+export const ARBITRATION_FALLBACK_MS = 48 * 60 * 60 * 1000;
 
 /** Poule unique seulement pour exactement 5 équipes jouables au lancement. */
 export function usesRoundRobin(teamCount: number): boolean {
@@ -97,16 +100,20 @@ export function roundRobinComplete(matches: readonly { completedAt: Date | null 
 }
 
 /**
- * Moment à partir duquel l'arbitre peut trancher : 24 h après la dernière déclaration d'un capitaine (désaccord, ou capitaine adverse
- * qui ne confirme pas). Sans aucune déclaration, rien n'est à arbitrer (null).
+ * Moment à partir duquel l'arbitre peut trancher :
+ * - 24 h après la dernière déclaration d'un capitaine (désaccord, ou capitaine adverse qui ne confirme pas) ;
+ * - sans aucune déclaration, 48 h après l'ouverture du match (`openedAt`) ; sans date d'ouverture connue (tournoi lancé
+ *   avant cette règle), rien à arbitrer (null).
  */
-export function arbitrationOpensAt(reportDates: readonly Date[]): Date | null {
-  if (reportDates.length === 0) return null;
-  const latest = Math.max(...reportDates.map((date) => date.getTime()));
-  return new Date(latest + ARBITRATION_DELAY_MS);
+export function arbitrationOpensAt(reportDates: readonly Date[], openedAt: Date | null = null): Date | null {
+  if (reportDates.length > 0) {
+    const latest = Math.max(...reportDates.map((date) => date.getTime()));
+    return new Date(latest + ARBITRATION_DELAY_MS);
+  }
+  return openedAt ? new Date(openedAt.getTime() + ARBITRATION_FALLBACK_MS) : null;
 }
 
-export function arbitrationOpen(reportDates: readonly Date[], now: Date): boolean {
-  const opensAt = arbitrationOpensAt(reportDates);
+export function arbitrationOpen(reportDates: readonly Date[], now: Date, openedAt: Date | null = null): boolean {
+  const opensAt = arbitrationOpensAt(reportDates, openedAt);
   return opensAt !== null && opensAt.getTime() <= now.getTime();
 }

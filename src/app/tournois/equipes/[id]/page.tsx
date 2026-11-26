@@ -25,7 +25,7 @@ const MESSAGES: Record<string, string> = {
   report_already_reported: "Ta déclaration est verrouillée : tu as déjà déclaré ce résultat.", report_already_decided: "Ce match est déjà tranché.",
   report_not_ready: "Les deux équipes ne sont pas encore connues.", report_invalid_winner: "Gagnant invalide.", report_closed: "Le tournoi n’est pas en cours.", report_missing: "Match introuvable ou informations invalides.",
   resolve_resolved: "Match tranché.", resolve_forbidden: "Seuls l’organisateur et les administrateurs tranchent.", resolve_already_decided: "Ce match est déjà tranché.",
-  resolve_inconsistent: "Le gagnant doit avoir le score le plus élevé.", resolve_invalid_winner: "Gagnant invalide.", resolve_not_ready: "Match pas encore jouable.", resolve_too_early: "L’arbitre tranche seulement 24 h après la dernière déclaration d’un capitaine.", resolve_missing: "Match introuvable.",
+  resolve_inconsistent: "Le gagnant doit avoir le score le plus élevé.", resolve_invalid_winner: "Gagnant invalide.", resolve_not_ready: "Match pas encore jouable.", resolve_too_early: "L’arbitre tranche seulement 24 h après la dernière déclaration d’un capitaine, ou 48 h après l’ouverture du match si personne n’a déclaré.", resolve_missing: "Match introuvable.",
 };
 const ENTRY_LABELS = { INVITED: "Invitée", REGISTERED: "Inscrite", DECLINED: "A refusé", WITHDRAWN: "Retirée" } as const;
 const STATUS_LABELS = { REGISTRATION: "Inscriptions ouvertes", IN_PROGRESS: "En cours", DONE: "Terminé", CANCELLED: "Annulé" } as const;

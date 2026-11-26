@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
-  ARBITRATION_DELAY_MS, arbitrationOpen, arbitrationOpensAt, roundRobinComplete, roundRobinSchedule, roundRobinStandings, usesRoundRobin,
+  ARBITRATION_DELAY_MS, ARBITRATION_FALLBACK_MS, arbitrationOpen, arbitrationOpensAt, roundRobinComplete, roundRobinSchedule, roundRobinStandings, usesRoundRobin,
 } from "./tournament-round-robin";
 
 const TEAMS = ["A", "B", "C", "D", "E"];
@@ -83,8 +83,19 @@ describe("arbitrage après 24 h", () => {
     expect(arbitrationOpen([t0, later], new Date(later.getTime() + ARBITRATION_DELAY_MS - 1))).toBe(false);
     expect(arbitrationOpen([t0, later], new Date(later.getTime() + ARBITRATION_DELAY_MS))).toBe(true);
   });
-  it("sans déclaration, rien à arbitrer", () => {
+  it("sans déclaration ni date d'ouverture, rien à arbitrer", () => {
     expect(arbitrationOpensAt([])).toBeNull();
     expect(arbitrationOpen([], new Date("2030-01-01"))).toBe(false);
+  });
+  it("repli (décision du 26/11) : sans déclaration, 48 h après l'ouverture du match", () => {
+    expect(arbitrationOpensAt([], t0)?.getTime()).toBe(t0.getTime() + ARBITRATION_FALLBACK_MS);
+    expect(ARBITRATION_FALLBACK_MS).toBe(48 * 3_600_000);
+    expect(arbitrationOpen([], new Date(t0.getTime() + ARBITRATION_FALLBACK_MS - 1), t0)).toBe(false);
+    expect(arbitrationOpen([], new Date(t0.getTime() + ARBITRATION_FALLBACK_MS), t0)).toBe(true);
+  });
+  it("dès qu'une déclaration existe, c'est le délai de 24 h qui compte, pas l'ouverture", () => {
+    const reported = new Date(t0.getTime() + 47 * 3_600_000);
+    expect(arbitrationOpensAt([reported], t0)?.getTime()).toBe(reported.getTime() + ARBITRATION_DELAY_MS);
+    expect(arbitrationOpen([reported], new Date(t0.getTime() + 49 * 3_600_000), t0)).toBe(false);
   });
 });

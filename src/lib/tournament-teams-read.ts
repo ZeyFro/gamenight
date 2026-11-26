@@ -82,7 +82,7 @@ export async function getTeamTournamentView(userId: string, communityId: string,
       },
       matches: {
         select: {
-          id: true, round: true, position: true, team1Id: true, team2Id: true, winnerTeamId: true, completedAt: true, score1: true, score2: true,
+          id: true, round: true, position: true, team1Id: true, team2Id: true, winnerTeamId: true, completedAt: true, score1: true, score2: true, scheduledAt: true,
           team1: { select: { name: true } }, team2: { select: { name: true } },
           reports: { select: { teamId: true, winnerTeamId: true, score1: true, score2: true, createdAt: true } },
         },
@@ -101,7 +101,7 @@ export async function getTeamTournamentView(userId: string, communityId: string,
     entries: tournament.teamEntries.map((entry) => ({ teamId: entry.teamId, teamName: entry.team.name, status: entry.status })),
     matches: tournament.matches.map((match) => {
       const dates = match.reports.map((report) => report.createdAt);
-      return { ...match, arbitrationOpensAt: arbitrationOpensAt(dates), arbitrationOpen: arbitrationOpen(dates, now) };
+      return { ...match, arbitrationOpensAt: arbitrationOpensAt(dates, match.scheduledAt), arbitrationOpen: arbitrationOpen(dates, now, match.scheduledAt) };
     }),
     // Poule unique (décision du 26/11/2026) : calendrier par journée, équipe au repos et classement calculés à la lecture.
     roundRobin: tournament.teamSettings.roundRobin ? {

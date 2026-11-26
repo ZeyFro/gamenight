@@ -203,6 +203,14 @@ export async function advanceWinner(
     where: { tournamentId_round_position: { tournamentId, round: nextRound, position: nextPosition } },
     data: { [nextField]: winnerId },
   });
+  if (teamMode) {
+    // Tournoi d'équipes : le match suivant s'ouvre quand ses deux équipes sont connues (départ du délai de repli
+    // de l'arbitrage, décision du 26/11/2026). Posé une seule fois ; sans effet pour les tournois individuels.
+    await tx.tournamentMatch.updateMany({
+      where: { tournamentId, round: nextRound, position: nextPosition, team1Id: { not: null }, team2Id: { not: null }, scheduledAt: null },
+      data: { scheduledAt: wallClockNow() },
+    });
+  }
   return { tournamentFinalized: false };
 }
 

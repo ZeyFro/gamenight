@@ -19,7 +19,7 @@ marque un tournoi d'équipes), donc aucune lecture existante ne dépend de la mi
 - **Résultat confirmé par les deux capitaines** : chacun déclare le gagnant (et les scores si `TOURNAMENT_SCORES_ENABLED`, dont la cohérence gagnant/score est vérifiée) ; la déclaration
   est **verrouillée** (immuable). Concordantes = match validé. Discordantes = désaccord : l'organisateur est prévenu et tranche (ou un ADMIN/OWNER de la communauté, « arbitre »).
   L'organisateur peut aussi trancher un match dont un capitaine est absent. **Délai de 24 h** (décision du 26/11/2026) : l'arbitre ne tranche qu'à partir de 24 h après la dernière
-  déclaration d'un capitaine (`too_early` avant) ; sans aucune déclaration, rien à arbitrer. La page affiche l'heure d'ouverture de l'arbitrage.
+  déclaration d'un capitaine (`too_early` avant), pour **tous** les tournois d'équipes inscrites (décision du 26/11). **Repli** : si aucun capitaine n'a déclaré, l'arbitre tranche **48 h après l'ouverture du match** (`TournamentMatch.scheduledAt`, posé au lancement pour la poule et le 1er tour, puis quand les deux équipes d'un tour suivant sont connues ; un tournoi lancé avant cette règle n'a pas de date d'ouverture : rien à arbitrer sans déclaration). La page affiche l'heure d'ouverture de l'arbitrage. Un tournoi prévu pour 8 qui démarre avec exactement 5 équipes passe en poule.
 - **Annonces ciblées** (MP via la file, aucun appel direct, aucune mention, aucun message public) : invitation (capitaine), lancement (capitaines), déclaration à confirmer (capitaine adverse),
   **relance unique après 12 h** (cron `GET /api/cron/tournament-teams`), désaccord (organisateur). Le résolveur revérifie l'état à la livraison.
 - La victoire finale réutilise l'annonce de fin existante des tournois.
