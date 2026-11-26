@@ -33,6 +33,10 @@ const GAMES = [
   { id: "reatomized", name: "60 Seconds! Reatomized", igdbId: 1002, steamAppId: null },
 ];
 
+afterEach(() => {
+  vi.unstubAllEnvs();
+});
+
 beforeEach(() => {
   vi.clearAllMocks();
   mocks.user.mockResolvedValue({ id: "viewer" });
