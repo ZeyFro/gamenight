@@ -11,10 +11,10 @@
 
 | Statut | Nombre |
 | --- | ---: |
-| ✅ Fait | 77 |
+| ✅ Fait | 78 |
 | Codé, non vérifié en réel | 4 |
 | Codé, éteint | 24 |
-| Codé, allumé, non vérifié en réel | 16 |
+| Codé, allumé, non vérifié en réel | 15 |
 | Partiel | 0 |
 | Partiel (côté Discord) | 6 |
 | Non fait | 0 |
@@ -66,7 +66,7 @@
 | C039 | 12.3 | Découverte des joueurs respectant leur choix de visibilité | `PROFILE_VISIBILITY_ENABLED`, `PLAYER_MATCHING_ENABLED` (éteints) | Codé, éteint | Allumer (lot C) + tester ; classements : décision Q20 | ChatGPT (Vercel) + Maxime | Tests verts : `lib/player-matching-rules.test.ts` (PR #527 fusionnée) ; capture après allumage |
 | C040 | 12.4 | Profil : jeux favoris, plateformes, niveaux, disponibilités, préférences, tier list, historique | `GAME_PLATFORMS_ENABLED` (éteint), `GAME_LEVELS_ENABLED` (éteint) | Codé, éteint | Allumer (lot C) + tester | ChatGPT (Vercel) + Maxime | Tests verts : `lib/game-platforms.test.ts` ; capture après allumage |
 | C041 | 13.1 | Soirées : création, jeux, disponibilités, inscriptions, votes, rappels, annonces, coordination | `DISCORD_BOT_SESSION_ANNOUNCE_ENABLED` (présent (valeur cachée)) | ✅ Fait | — | — | Tests verts : `lib/session-announce.integration.test.ts` ; contrôle visuel du 25/11 : la page Soirées > Historique affiche plusieurs soirées terminées (preuve de l’affichage de l’historique seulement) |
-| C042 | 13.2 | Calendrier communautaire sans second bot | `CALENDAR_SUBSCRIPTIONS_ENABLED` (allumé, Vercel 25/11) | Codé, allumé, non vérifié en réel | Tester en Production | ChatGPT (Vercel) + Maxime | Tests verts : `lib/calendar-feed.integration.test.ts` (modification de date/jeu, confidentialité d'un second membre) ; essai réel à consigner |
+| C042 | 13.2 | Calendrier communautaire sans second bot | `CALENDAR_SUBSCRIPTIONS_ENABLED` (allumé, Vercel 25/11) | ✅ Fait | — | — | Essai réel Production le 26/11 avec Melah : `/calendrier` expose « Télécharger les soirées à venir (.ics) » et `GET /api/calendrier/export` renvoie un téléchargement `.ics` reconnu par le navigateur. Tests verts : `lib/calendar-feed.integration.test.ts` (mise à jour date/jeu et confidentialité d’un second membre). Aucun événement modifié. |
 | C043 | 13.3 | Tournois : inscriptions, règles, participants, résultats, annonces, classements | `TOURNAMENT_SCORES_ENABLED` (allumé, Vercel 25/11) | Codé, allumé, non vérifié en réel | Tester en Production | ChatGPT (Vercel) + Maxime | Tests verts : `lib/tournament-announce.integration.test.ts` ; sélecteur de jeu : `lib/tournament-teams.integration.test.ts` ; essai réel à consigner |
 | C044 | 13.4 | Interfaces : « Ce soir », fiches de soirée, recherche de partie, roulette, calendrier, notifications personnal | `WHO_PLAYS_TONIGHT_ENABLED` (éteint), `NOTIFICATION_CENTER_ENABLED` (éteint) | Codé, éteint | Allumer `NOTIFICATION_CENTER_ENABLED` (lot G) + tester les interfaces avec un compte réel | ChatGPT (Vercel) + Maxime | Tests verts : `lib/notification-kinds.test.ts`, `app/notifications/page.test.tsx` ; sélecteurs de jeux sans doublon : `app/ce-soir/page.test.tsx`, `app/joueurs/page.test.tsx` |
 | C045 | 14.1 | Saisons accessibles aux arrivants tardifs | `TOWER_CHALLENGES_ENABLED` (allumé) | ✅ Fait | — | — | Essai réel Production le 25/11 avec Melah (Régulars), nouvelle membre déclarée : le classement affiche S3 et `/tower defi` lui attribue un défi sans blocage. |
