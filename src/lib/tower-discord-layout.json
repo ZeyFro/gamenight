@@ -5,8 +5,9 @@
   "mode": "proposal_no_changes_applied",
   "principles": [
     "Reuse existing channel IDs wherever possible",
-    "Never delete channels, messages, categories or roles",
+    "Never delete channels, messages, categories or roles outside a dissolved team's persisted DiscordTeamSpace (by recorded ID only)",
     "Archive old game/Mudae categories privately, retaining overwrites, without exposing private channel histories",
+    "On team dissolution only, delete the two channels recorded in DiscordTeamSpace, verified by ID; never by name, never a channel not recorded for that team",
     "Verify permissions before moving any category or channel",
     "GameNight required only for teams, event registration, Tower grade progression; public discussion remains accessible",
     "No production database or role permission modification as part of channel layout"

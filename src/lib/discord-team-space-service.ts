@@ -1,8 +1,11 @@
 import { scopedPrisma } from "@/lib/community-scoped-client";
 import { logger } from "@/lib/logger";
+import { recordSensitiveOperation } from "@/lib/sensitive-operation-log";
 import {
   applyTeamSpacePlan,
   planTeamSpace,
+  TEXT_CHANNEL_ALLOW,
+  VOICE_CHANNEL_ALLOW,
   spaceChannelName,
   spaceVoiceChannelName,
   teamSpacesEnabled,
@@ -20,8 +23,10 @@ import {
  * vérifiée (`discord-team-spaces`), application via un adaptateur Discord
  * injectable, association persistée dans `DiscordTeamSpace`.
  *
- * Ce service ne supprime jamais de salon. Le flag `DISCORD_TEAM_SPACES_ENABLED`
- * reste fermé par défaut : sans lui, aucune écriture Discord n'est tentée.
+ * Ce service ne supprime que les deux salons enregistrés dans `DiscordTeamSpace`
+ * pour l'équipe dissoute, vérifiés par identifiant (jamais par nom). Le flag
+ * `DISCORD_TEAM_SPACES_ENABLED` reste fermé par défaut : sans lui, aucune
+ * écriture Discord n'est tentée.
  *
  * Persistance : `DiscordTeamSpace` n'existe en base qu'après application de la
  * migration `prisma/migrations/20261118110000_discord_team_space` (jouée par la
@@ -69,9 +74,10 @@ export interface SpaceLinkStore {
     guildId: string;
     channelId: string;
     voiceChannelId?: string | null;
-    roleId: string;
+    roleId?: string | null;
   }): Promise<void>;
   setArchived(teamId: string, archived: boolean): Promise<void>;
+  markDeleted?(teamId: string, deletedAt: Date): Promise<void>;
 }
 
 /** Table absente (migration pas encore appliquée) — jamais confondu avec un échec réseau. */
@@ -101,7 +107,7 @@ export function createMemorySpaceLinkStore(seed: Array<ManagedSpaceLink & { comm
         const existing = rows.get(link.teamId)!;
         rows.set(link.teamId, {
           ...existing,
-          roleId: existing.roleId ?? link.roleId,
+          roleId: existing.roleId ?? link.roleId ?? null,
           voiceChannelId: existing.voiceChannelId ?? link.voiceChannelId ?? null,
         });
         return;
@@ -111,6 +117,10 @@ export function createMemorySpaceLinkStore(seed: Array<ManagedSpaceLink & { comm
     async setArchived(teamId, archived) {
       const row = rows.get(teamId);
       if (row) rows.set(teamId, { ...row, archived });
+    },
+    async markDeleted(teamId, deletedAt) {
+      const row = rows.get(teamId);
+      if (row) rows.set(teamId, { ...row, archived: true, deletedAt } as typeof row);
     },
   };
 }
@@ -156,7 +166,7 @@ export function createPrismaSpaceLinkStore(communityId: string): SpaceLinkStore 
             guildId: link.guildId,
             channelId: link.channelId,
             voiceChannelId: link.voiceChannelId ?? null,
-            roleId: link.roleId,
+            roleId: link.roleId ?? null,
           },
         })
       );
@@ -164,11 +174,15 @@ export function createPrismaSpaceLinkStore(communityId: string): SpaceLinkStore 
     setArchived: async (teamId, archived) => {
       await guard(() => scopedDb.discordTeamSpace.updateMany({ where: { teamId }, data: { archived } }));
     },
+    markDeleted: async (teamId, deletedAt) => {
+      await guard(() => scopedDb.discordTeamSpace.updateMany({ where: { teamId }, data: { archived: true, deletedAt } }));
+    },
   };
 }
 
 export interface TeamSpaceDiscordApi {
   snapshot(guildId: string): Promise<{ channels: GuildChannelSummary[]; roles: GuildRoleSummaryLite[] }>;
+  /** Legacy, plus utilisé par le provisionnement sans rôle. */
   createRole(guildId: string, name: string): Promise<string>;
   createChannel(
     guildId: string,
@@ -177,30 +191,26 @@ export interface TeamSpaceDiscordApi {
     overwrites: OverwritePlan[],
     roleId: string | null
   ): Promise<string>;
+  /** Permission nominative d'un membre sur un salon (aucun rôle d'équipe). */
+  setMemberPermission?(
+    channelId: string,
+    userId: string,
+    allow: string,
+    action: "allow" | "remove"
+  ): Promise<void>;
+  deleteChannel?(channelId: string): Promise<void>;
   renameChannel(channelId: string, name: string): Promise<void>;
   addMemberRole(guildId: string, userId: string, roleId: string): Promise<void>;
   removeMemberRole(guildId: string, userId: string, roleId: string): Promise<void>;
 }
 
 function clientFrom(api: TeamSpaceDiscordApi, guildId: string): TeamSpaceClient {
-  // Le rôle créé sert d'overwrite au salon : il doit exister avant sa création.
-  let roleId: string | null = null;
   return {
-    async createRole(input) {
-      roleId = await api.createRole(guildId, input.name);
-      return { id: roleId };
-    },
     async createChannel(input) {
-      return { id: await api.createChannel(guildId, input.name, input.type, input.overwrites, roleId) };
+      return { id: await api.createChannel(guildId, input.name, input.type, input.overwrites, null) };
     },
     async editChannel(input) {
       await api.renameChannel(input.id, input.name);
-    },
-    async addMemberRole(input) {
-      await api.addMemberRole(guildId, input.userId, input.roleId);
-    },
-    async removeMemberRole(input) {
-      await api.removeMemberRole(guildId, input.userId, input.roleId);
     },
   };
 }
@@ -305,7 +315,7 @@ export async function provisionTeamSpace(input: {
       if (reconciled.status !== "consistent" && reconciled.status !== "repaired") {
         return { status: reconciled.status === "unlinked" ? "failed" : reconciled.status };
       }
-      return { status: "reused", roleId: link.roleId, channelId: link.channelId, voiceChannelId: link.voiceChannelId };
+      return { status: "reused", roleId: link.roleId ?? undefined, channelId: link.channelId, voiceChannelId: link.voiceChannelId };
     }
     const links = await store.listByCommunity(team.communityId);
     const snapshot = await input.api.snapshot(team.guildId);
@@ -317,20 +327,19 @@ export async function provisionTeamSpace(input: {
     if (applied.status === "disabled") return { status: "disabled" };
     // On persiste dès que le rôle et le salon textuel existent : si le vocal
     // échoue ensuite, le rejeu réutilise ces ressources au lieu de les recréer.
-    if (applied.roleId && applied.channelId) {
+    if (applied.channelId) {
       await store.save({
         teamId: team.id,
         communityId: team.communityId,
         guildId: team.guildId,
         channelId: applied.channelId,
         voiceChannelId: applied.voiceChannelId ?? null,
-        roleId: applied.roleId,
+        roleId: null,
       });
     }
     const created = !link && applied.status === "applied";
     return {
       status: applied.status === "partial" ? "partial" : created ? "created" : "reused",
-      roleId: applied.roleId,
       channelId: applied.channelId,
       voiceChannelId: applied.voiceChannelId,
       steps: applied.steps,
@@ -363,17 +372,15 @@ export async function syncTeamSpaceMember(input: {
     if (!team || !team.guildId) return { status: "not_member" };
     const guildId = team.guildId;
     const link = await store.find(team.id);
-    if (!link?.roleId) return { status: "not_provisioned" };
-    const roleId = link.roleId;
+    if (!link?.channelId) return { status: "not_provisioned" };
     const member = team.members.find((candidate) => candidate.discordId === input.discordId);
     if (input.action === "join" && !member) return { status: "not_member" };
-    if (input.action === "join") {
-      await input.api.addMemberRole(guildId, input.discordId, roleId);
-      return { status: "updated" };
+    if (!input.api.setMemberPermission) return { status: "failed" };
+    for (const [channelId, allow] of [[link.channelId, TEXT_CHANNEL_ALLOW], [link.voiceChannelId, VOICE_CHANNEL_ALLOW]] as const) {
+      if (!channelId) continue;
+      await input.api.setMemberPermission(channelId, input.discordId, allow, input.action === "join" ? "allow" : "remove");
     }
-    // Départ : retrait du rôle uniquement — aucun XP, aucune ressource supprimée.
-    await input.api.removeMemberRole(guildId, input.discordId, roleId);
-    return { status: "removed" };
+    return { status: input.action === "join" ? "updated" : "removed" };
   } catch (error) {
     if (error instanceof SpaceStoreUnavailableError) return { status: "migration_required" };
     logger.warn("discord-team-space", "Synchronisation d’accès impossible.", {
@@ -432,15 +439,82 @@ export async function reactivateTeamSpace(input: {
     if (plan.status !== "planned") return { status: ineligibleStatus(plan) };
     const applied = await applyTeamSpacePlan(plan, clientFrom(input.api, team.guildId), env);
     if (applied.status === "applied") await store.setArchived(team.id, false);
-    return { status: applied.status === "applied" ? "reused" : "partial", roleId: link.roleId, channelId: link.channelId, steps: applied.steps };
+    return { status: applied.status === "applied" ? "reused" : "partial", roleId: link.roleId ?? undefined, channelId: link.channelId, steps: applied.steps };
   } catch (error) {
     if (error instanceof SpaceStoreUnavailableError) return { status: "migration_required" };
     return { status: "failed" };
   }
 }
 
+export type SpaceDeleteResult = {
+  status: "deleted" | "already_deleted" | "dry_run" | "unlinked" | "disabled" | "partial" | "failed";
+  /** Identifiants vérifiés dans `DiscordTeamSpace` ; jamais un nom. */
+  channelIds: string[];
+};
+
+/**
+ * Suppression réelle d'un espace dissous. Seuls les identifiants persistés de
+ * CETTE équipe sont ciblés ; un dry-run vérifie leur présence sans rien écrire.
+ * Un échec partiel laisse le lien en place : le rejeu reprend les identifiants
+ * restants et ignore ceux déjà absents.
+ */
+export async function deleteTeamSpace(input: {
+  teamId: string;
+  communityId: string;
+  api: TeamSpaceDiscordApi;
+  store?: SpaceLinkStore;
+  dryRun?: boolean;
+  env?: NodeJS.ProcessEnv;
+}): Promise<SpaceDeleteResult> {
+  const env = input.env ?? process.env;
+  if (!teamSpacesEnabled(env)) return { status: "disabled", channelIds: [] };
+  const store = input.store ?? createPrismaSpaceLinkStore(input.communityId);
+  try {
+    const team = await loadTeam(input.teamId, input.communityId);
+    if (!team?.guildId) return { status: "failed", channelIds: [] };
+    const link = await store.find(team.id);
+    if (!link?.channelId) return { status: "unlinked", channelIds: [] };
+    const channelIds = [link.channelId, link.voiceChannelId].filter((id): id is string => Boolean(id));
+    const snapshot = await input.api.snapshot(team.guildId);
+    const existing = new Set(snapshot.channels.map((channel) => channel.id));
+    const present = channelIds.filter((id) => existing.has(id));
+    if (input.dryRun) return { status: "dry_run", channelIds: present };
+    if (present.length === 0) {
+      await store.markDeleted?.(team.id, new Date());
+      return { status: "already_deleted", channelIds: [] };
+    }
+    if (!input.api.deleteChannel) return { status: "failed", channelIds: present };
+    for (const channelId of [...present].reverse()) {
+      await input.api.deleteChannel(channelId);
+    }
+    await store.markDeleted?.(team.id, new Date());
+    await recordSensitiveOperation({
+      actorId: null,
+      action: "discord.team_space_delete",
+      communityId: input.communityId,
+      target: input.teamId,
+      outcome: "ok",
+    });
+    return { status: "deleted", channelIds: present };
+  } catch (error) {
+    if (error instanceof SpaceStoreUnavailableError) return { status: "failed", channelIds: [] };
+    logger.warn("discord-team-space", "Suppression d’espace incomplète.", {
+      teamId: input.teamId,
+      errorType: error instanceof Error ? error.name : "unknown",
+    });
+    await recordSensitiveOperation({
+      actorId: null,
+      action: "discord.team_space_delete",
+      communityId: input.communityId,
+      target: input.teamId,
+      outcome: "partial",
+    }).catch(() => undefined);
+    return { status: "partial", channelIds: [] };
+  }
+}
+
 export type SpaceLinkState =
-  | { status: "linked"; channelId: string; voiceChannelId: string | null; roleId: string; archived: boolean }
+  | { status: "linked"; channelId: string; voiceChannelId: string | null; roleId: string | null; archived: boolean }
   | { status: "unlinked" }
   | { status: "migration_required" };
 
@@ -463,12 +537,12 @@ export async function readTeamSpaceLink(input: { teamId: string; communityId: st
   const store = input.store ?? createPrismaSpaceLinkStore(input.communityId);
   try {
     const link = await store.find(input.teamId);
-    if (!link?.channelId || !link.roleId) return { status: "unlinked" };
+    if (!link?.channelId) return { status: "unlinked" };
     return {
       status: "linked",
       channelId: link.channelId,
       voiceChannelId: link.voiceChannelId ?? null,
-      roleId: link.roleId,
+      roleId: link.roleId ?? null,
       archived: link.archived === true,
     };
   } catch (error) {
@@ -502,10 +576,9 @@ export async function reconcileTeamSpace(input: {
     const team = await loadTeam(input.teamId, input.communityId);
     if (!team?.guildId) return { status: "failed", steps: ["team_or_guild_missing"] };
     const link = await store.find(team.id);
-    if (!link?.channelId || !link.roleId) return { status: "unlinked", steps: [] };
+    if (!link?.channelId) return { status: "unlinked", steps: [] };
     const snapshot = await input.api.snapshot(team.guildId);
     const steps: string[] = [];
-    if (!snapshot.roles.some((role) => role.id === link.roleId)) steps.push("role_missing");
     if (!snapshot.channels.some((channel) => channel.id === link.channelId)) steps.push("channel_missing");
     // Lien antérieur à l'option A : le vocal n'est pas encore associé.
     if (!link.voiceChannelId) steps.push("voice_channel_unlinked");
@@ -518,8 +591,11 @@ export async function reconcileTeamSpace(input: {
     }
 
     for (const member of team.members) {
-      if (!member.discordId) continue;
-      await input.api.addMemberRole(team.guildId, member.discordId, link.roleId);
+      if (!member.discordId || !input.api.setMemberPermission) continue;
+      await input.api.setMemberPermission(link.channelId, member.discordId, TEXT_CHANNEL_ALLOW, "allow");
+      if (link.voiceChannelId) {
+        await input.api.setMemberPermission(link.voiceChannelId, member.discordId, VOICE_CHANNEL_ALLOW, "allow");
+      }
     }
     steps.push("members_resynced");
 

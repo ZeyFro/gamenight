@@ -356,7 +356,7 @@ export async function transferCommunityTeamCaptain(
  */
 export async function dissolveCommunityTeam(
   userId: string, communityId: string, teamId: string,
-): Promise<"dissolved" | "active_challenges" | "invalid" | "unavailable"> {
+): Promise<"dissolved" | "active_challenges" | "open_report_or_appeal" | "invalid" | "unavailable"> {
   if (await getCommunityTeamsCommunityId(userId) !== communityId) return "unavailable";
   return prisma.$transaction(async tx => {
     if (!await canUseTeams(tx, userId, communityId)) return "unavailable";
@@ -369,6 +369,20 @@ export async function dissolveCommunityTeam(
       where: { communityId, teamId, status: { in: ["ASSIGNED", "SUBMITTED"] } },
     });
     if (pending) return "active_challenges";
+    // Un signalement encore ouvert sur les salons de l'équipe, ou une contestation
+    // Tower ouverte sur un défi de l'équipe, bloque la dissolution.
+    const space = await scopedDb.discordTeamSpace.findUnique({
+      where: { teamId },
+      select: { channelId: true, voiceChannelId: true },
+    });
+    const channels = [space?.channelId, space?.voiceChannelId].filter((id): id is string => Boolean(id));
+    const openReports = channels.length
+      ? await scopedDb.moderationReport.count({ where: { communityId, channelId: { in: channels }, closedAt: null } })
+      : 0;
+    const openAppeals = await scopedDb.towerChallengeAppeal.count({
+      where: { communityId, status: "OPEN", attempt: { teamId } },
+    });
+    if (openReports || openAppeals) return "open_report_or_appeal";
     await scopedDb.communityTeam.update({
       where: { id: teamId }, data: { isRecruiting: false },
     });

@@ -23,7 +23,7 @@ export const TEAM_SPACE_EVENT = "TEAM_SPACE_SYNC";
 const BUCKET_MS = 10 * 60_000;
 
 const payloadSchema = z.object({
-  intent: z.enum(["provision", "member", "reconcile"]),
+  intent: z.enum(["provision", "member", "reconcile", "delete"]),
   discordId: z.string().regex(/^[0-9]{16,20}$/).optional(),
 });
 

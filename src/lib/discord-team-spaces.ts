@@ -80,7 +80,8 @@ export interface ManagedSpaceLink {
   channelId: string;
   /** Salon vocal privé permanent (absent pour un lien créé avant l'option A). */
   voiceChannelId?: string | null;
-  roleId?: string;
+  /** Legacy : null pour tout espace créé sans rôle d'équipe. */
+  roleId?: string | null;
   archived?: boolean;
 }
 
@@ -116,7 +117,9 @@ export interface TeamSpaceInput {
 }
 
 export interface OverwritePlan {
-  target: "everyone" | "team-role";
+  /** `member` cible un identifiant Discord de membre, jamais un rôle d'équipe. */
+  target: "everyone" | "member" | "team-role";
+  userId?: string;
   allow?: string;
   deny?: string;
 }
@@ -124,7 +127,6 @@ export interface OverwritePlan {
 type ChannelType = typeof CHANNEL_TYPE_TEXT | typeof CHANNEL_TYPE_VOICE;
 
 export type TeamSpaceStep =
-  | { kind: "role"; action: "create" | "reuse"; key: string; name: string; targetId?: string }
   | {
       kind: "channel";
       action: "create" | "reuse" | "archive" | "restore";
@@ -310,6 +312,10 @@ export function planTeamSpace(input: TeamSpaceInput): TeamSpacePlan {
 
   const channelAction = (verifiedId: string | null): "create" | "reuse" | "restore" =>
     verifiedId ? (input.previousArchived ? "restore" : "reuse") : "create";
+  const memberOverwrites = (allow: string): OverwritePlan[] => [
+    { target: "everyone", deny: VIEW_CHANNEL },
+    ...members.map((userId): OverwritePlan => ({ target: "member", userId, allow })),
+  ];
 
   const textStep: TeamSpaceStep = archived
     ? { kind: "channel", action: "archive", channelType: CHANNEL_TYPE_TEXT, key: spaceKey(team.id), name: channelName, targetId: channelId! }
@@ -355,9 +361,6 @@ export function planTeamSpace(input: TeamSpaceInput): TeamSpacePlan {
         };
 
   const steps: TeamSpaceStep[] = [
-    roleId
-      ? { kind: "role", action: "reuse", key: spaceKey(team.id), name: roleName, targetId: roleId }
-      : { kind: "role", action: "create", key: spaceKey(team.id), name: roleName },
     textStep,
     ...(voiceStep ? [voiceStep] : []),
     {
@@ -378,16 +381,10 @@ export function planTeamSpace(input: TeamSpaceInput): TeamSpacePlan {
     channelName,
     voiceChannelName,
     rolePermissions: "0",
-    // Les deux salons sont privés : @everyone n'y voit rien. Le rôle d'équipe
-    // reçoit uniquement les permissions d'usage de chaque type de salon.
-    textOverwrites: [
-      { target: "everyone", deny: VIEW_CHANNEL },
-      { target: "team-role", allow: TEXT_CHANNEL_ALLOW },
-    ],
-    voiceOverwrites: [
-      { target: "everyone", deny: VIEW_CHANNEL },
-      { target: "team-role", allow: VOICE_CHANNEL_ALLOW },
-    ],
+    // Les deux salons sont privés : @everyone n'y voit rien. Chaque membre
+    // reçoit directement les permissions d'usage, sans rôle d'équipe.
+    textOverwrites: memberOverwrites(TEXT_CHANNEL_ALLOW),
+    voiceOverwrites: memberOverwrites(VOICE_CHANNEL_ALLOW),
     steps,
     archived,
     capacityWarning,
@@ -396,7 +393,8 @@ export function planTeamSpace(input: TeamSpaceInput): TeamSpacePlan {
 }
 
 export interface TeamSpaceClient {
-  createRole(input: { name: string; permissions: "0"; mentionable: false; hoist: false }): Promise<{ id: string }>;
+  /** Legacy optionnel, jamais appelé par le plan sans rôle d'équipe. */
+  createRole?(input: { name: string; permissions: "0"; mentionable: false; hoist: false }): Promise<{ id: string }>;
   createChannel(input: {
     name: string;
     type: ChannelType;
@@ -404,15 +402,14 @@ export interface TeamSpaceClient {
     reason: string;
   }): Promise<{ id: string }>;
   editChannel?(input: { id: string; name: string; reason: string }): Promise<unknown>;
-  addMemberRole?(input: { userId: string; roleId: string }): Promise<unknown>;
-  removeMemberRole?(input: { userId: string; roleId: string }): Promise<unknown>;
 }
 
 export type TeamSpaceApplyResult = {
   status: "disabled" | "applied" | "partial" | "ineligible";
   steps: Array<{ key: string; kind: TeamSpaceStep["kind"]; status: "ok" | "skipped" | "failed"; detail?: string }>;
-  /** Identifiants réellement obtenus/créés — à persister par l'appelant. */
+  /** Legacy : toujours absent pour un espace sans rôle d'équipe. */
   roleId?: string;
+  /** Identifiants réellement obtenus/créés — à persister par l'appelant. */
   channelId?: string;
   voiceChannelId?: string;
 };
@@ -430,36 +427,14 @@ export async function applyTeamSpacePlan(
   if (!teamSpacesEnabled(env)) return { status: "disabled", steps: [] };
 
   const steps: TeamSpaceApplyResult["steps"] = [];
-  let roleFailed = false;
   let textFailed = false;
   let voiceFailed = false;
-  let roleId: string | undefined;
   let channelId: string | undefined;
   let voiceChannelId: string | undefined;
 
   for (const step of plan.steps) {
     // Les membres sont traités après la boucle (le rôle doit exister).
     if (step.kind === "members") continue;
-    if (step.kind === "role") {
-      roleId = step.targetId;
-      if (step.action === "reuse") {
-        steps.push({ key: step.key, kind: step.kind, status: "ok", detail: "existing" });
-        continue;
-      }
-      try {
-        const created = await client.createRole({ name: step.name, permissions: "0", mentionable: false, hoist: false });
-        roleId = created.id;
-        steps.push({ key: step.key, kind: step.kind, status: "ok" });
-      } catch (error) {
-        roleFailed = true;
-        steps.push({ key: step.key, kind: step.kind, status: "failed", detail: error instanceof Error ? error.message : "unknown" });
-      }
-      continue;
-    }
-    if (roleFailed) {
-      steps.push({ key: step.key, kind: step.kind, status: "skipped", detail: "role_failed" });
-      continue;
-    }
     // Le vocal n'est jamais créé sans son salon textuel : un espace à moitié
     // créé serait plus difficile à reprendre qu'un simple rejeu.
     if (step.channelType === CHANNEL_TYPE_VOICE && textFailed) {
@@ -504,34 +479,12 @@ export async function applyTeamSpacePlan(
     }
   }
 
-  // Membres : ajout du rôle aux membres actuels, retrait aux départs connus.
-  // Rien n'est appliqué tant que les DEUX salons ne sont pas en place.
   const memberStep = plan.steps.find((step) => step.kind === "members");
-  if (memberStep && memberStep.kind === "members") {
-    const spaceReady = Boolean(roleId) && Boolean(channelId) && (Boolean(voiceChannelId) || plan.archived);
-    if (roleFailed || textFailed || voiceFailed || !spaceReady || !client.addMemberRole) {
-      steps.push({ key: plan.spaceKey, kind: "members", status: "skipped" });
-    } else {
-      let memberFailed = false;
-      for (const userId of memberStep.members) {
-        try {
-          await client.addMemberRole({ userId, roleId: roleId! });
-        } catch {
-          memberFailed = true;
-        }
-      }
-      for (const userId of memberStep.departed) {
-        try {
-          await client.removeMemberRole?.({ userId, roleId: roleId! });
-        } catch {
-          memberFailed = true;
-        }
-      }
-      steps.push({ key: plan.spaceKey, kind: "members", status: memberFailed ? "failed" : "ok" });
-      if (memberFailed) voiceFailed = true;
-    }
+  if (memberStep) {
+    const spaceReady = Boolean(channelId) && (Boolean(voiceChannelId) || plan.archived);
+    steps.push({ key: plan.spaceKey, kind: "members", status: spaceReady && !textFailed && !voiceFailed ? "ok" : "skipped" });
   }
 
   const failed = steps.some((step) => step.status === "failed");
-  return { status: failed ? "partial" : "applied", steps, roleId, channelId, voiceChannelId };
+  return { status: failed ? "partial" : "applied", steps, channelId, voiceChannelId };
 }

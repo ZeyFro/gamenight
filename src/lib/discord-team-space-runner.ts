@@ -2,6 +2,7 @@ import { logger } from "@/lib/logger";
 import type { DiscordRestFailure, DiscordRestResult } from "@/lib/discord-rest";
 import { createDiscordTeamSpaceApi } from "@/lib/discord-team-space-api";
 import {
+  deleteTeamSpace,
   provisionTeamSpace,
   reconcileTeamSpace,
   syncTeamSpaceMember,
@@ -19,7 +20,7 @@ import {
  * persisté ou sur le nom exact du salon, jamais sur une approximation. Aucune
  * suppression : archiver = renommer.
  */
-export type TeamSpaceIntent = "provision" | "member" | "reconcile";
+export type TeamSpaceIntent = "provision" | "member" | "reconcile" | "delete";
 
 export interface TeamSpaceActionInput {
   intent: TeamSpaceIntent;
@@ -40,6 +41,8 @@ function fromStatus(status: string): DiscordRestResult<Record<string, never>> {
     case "reused":
     case "updated":
     case "removed":
+    case "deleted":
+    case "already_deleted":
     case "consistent":
     case "repaired":
     // Rien à faire : espace pas encore créé ou plus de lien (aucune ressource à toucher).
@@ -67,6 +70,7 @@ export async function runTeamSpaceAction(
   try {
     if (input.intent === "provision") return fromStatus((await provisionTeamSpace(base)).status);
     if (input.intent === "reconcile") return fromStatus((await reconcileTeamSpace(base)).status);
+    if (input.intent === "delete") return fromStatus((await deleteTeamSpace(base)).status);
     if (!input.discordId) return definitive("Membre Discord manquant pour la synchronisation d'accès.");
     const join = await syncTeamSpaceMember({ ...base, discordId: input.discordId, action: "join" });
     // Plus membre actif de l'équipe : retrait du seul rôle de CETTE équipe.

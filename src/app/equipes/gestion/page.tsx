@@ -20,6 +20,7 @@ const RESULTS: Record<string, string> = {
   rate: "Trop de demandes, réessaie dans une minute.", identity_saved: "Couleur et emblème enregistrés.",
   transferred: "Capitanat transmis.", dissolved: "Équipe dissoute, historique conservé.",
   active_challenges: "Impossible : un défi de cette équipe est encore en cours.",
+  open_report_or_appeal: "Impossible : un signalement ou une contestation de cette équipe est encore ouvert.",
   recruiter_added: "Recruteur nommé.", recruiter_removed: "Recruteur retiré.", recruiter_limit: `Deux recruteurs au plus par équipe.`,
   recruiter_already: "Ce membre est déjà recruteur.", recruiter_not_member: "Seul un membre actif de l’équipe peut être recruteur.",
   recruiter_self_leader: "Le capitaine décide déjà des candidatures.", recruiter_forbidden: "Seul le capitaine nomme les recruteurs.", recruiter_missing: "Équipe ou recruteur introuvable.",
