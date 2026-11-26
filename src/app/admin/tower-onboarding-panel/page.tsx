@@ -15,7 +15,7 @@ export default async function TowerWelcomePanelAdminPage() {
   const channelId = process.env.TOWER_DISCORD_WELCOME_CHANNEL_ID ?? "";
   const enabled = process.env.TOWER_ONBOARDING_PANEL_ENABLED === "true" &&
     process.env.TOWER_DISCORD_GUILD_ID === towerGuildId() &&
-    /^\\d{17,20}$/.test(channelId);
+    /^\d{17,20}$/.test(channelId);
 
   return (
     <main className="mx-auto w-full max-w-3xl space-y-6 px-4 py-8">
