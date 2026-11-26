@@ -40,7 +40,7 @@ export default function TowerWelcomePanelPublisher({ enabled }: { enabled: boole
         <h2 className="text-lg font-semibold">Installer le panneau d’accueil</h2>
         <p className="mt-2 text-sm text-muted">
           Une seule publication dans #👋・bienvenue. Le panneau existant ne sera ni remplacé ni supprimé.
-          L’historique est vérifié avant l'envoi.
+          L’historique est vérifié avant l’envoi.
         </p>
       </div>
       {!enabled && <p role="status" className="text-sm text-amber-300">Configuration incomplète : active le flag et vérifie le serveur et le salon dans Vercel.</p>}
