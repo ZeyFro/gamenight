@@ -260,7 +260,7 @@ describe.skipIf(!TEST_DATABASE_URL)("rivalités et intérêt (intégration Postg
         userId: creator.id,
         type: "REMINDER",
         title: "Quelqu'un est intéressé",
-        message: "Un joueur est intéressé par ta session « Jouer maintenant ».",
+        message: "Un joueur est intéressé par ta soirée « Jouer maintenant ».",
       });
       expect(await db.instantSessionInterest.count()).toBe(1);
       const listed = await interest.listInstantSessionInterest(session.id, player.id);
