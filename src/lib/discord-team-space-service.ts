@@ -484,8 +484,10 @@ export async function deleteTeamSpace(input: {
     // L'exécution ne fait pas confiance à l'état au moment de l'enqueue :
     // une équipe repeuplée ou un signalement ouvert annule la suppression.
     if (team.members.length > 0) return { status: "not_dissolved", channelIds: [] };
-    const openReports = await scopedPrisma({ communityIds: [input.communityId], includesDefault: false })
-      .moderationReport.count({ where: { communityId: input.communityId, channelId: { in: channelIds }, closedAt: null } });
+    const scopedDb = scopedPrisma({ communityIds: [input.communityId], includesDefault: false });
+    const openReports = await scopedDb.moderationReport.count({
+      where: { communityId: input.communityId, channelId: { in: channelIds }, closedAt: null },
+    });
     if (openReports > 0) return { status: "open_report", channelIds: [] };
     const snapshot = await input.api.snapshot(team.guildId);
     const existing = new Set(snapshot.channels.map((channel) => channel.id));
