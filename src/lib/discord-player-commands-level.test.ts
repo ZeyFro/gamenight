@@ -62,7 +62,7 @@ describe("/joueurs chercher niveau:", () => {
       userId: "user-1", communityId: "community-1",
       filters: { gameId: "game-1", level: "CONFIRME", levelMatch: "min" },
     }));
-    expect(content).toContain("niveau Confirmé");
+    expect(content).toContain("niveau de jeu Confirmé");
   });
 
   it("refuse un niveau sans jeu, sans élargir la recherche", async () => {
@@ -72,7 +72,7 @@ describe("/joueurs chercher niveau:", () => {
   });
 
   it("refuse un niveau inconnu et un drapeau éteint", async () => {
-    expect(await run([{ name: "jeu", value: "Valheim" }, { name: "niveau", value: "DIEU" }])).toContain("Niveau inconnu");
+    expect(await run([{ name: "jeu", value: "Valheim" }, { name: "niveau", value: "DIEU" }])).toContain("Niveau de jeu inconnu");
     vi.stubEnv("GAME_LEVELS_ENABLED", "false");
     expect(await run([{ name: "jeu", value: "Valheim" }, { name: "niveau", value: "CONFIRME" }])).toContain("pas activés");
     expect(mocks.list).not.toHaveBeenCalled();
@@ -95,7 +95,7 @@ describe("/joueurs chercher niveau:", () => {
 
 describe("rendu des annonces", () => {
   it("n'ajoute le tag que si le niveau est visible", () => {
-    expect(renderListings([listing({ authorLevel: "COMPETITIF" })] as never, "Tower", false)).toContain("niveau Compétitif");
+    expect(renderListings([listing({ authorLevel: "COMPETITIF" })] as never, "Tower", false)).toContain("niveau de jeu Compétitif");
     expect(renderListings([listing({ authorLevel: null })] as never, "Tower", false)).not.toContain("niveau");
   });
 });

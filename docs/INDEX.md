@@ -74,3 +74,5 @@
 ## Archives
 
 Les anciens journaux et états de reprise sont dans [l’archive documentaire](archive/README.md). Ils préservent leur contexte historique ; pour l’état de reprise courant, utiliser uniquement [docs/REPRISE_AUTONOME.md](REPRISE_AUTONOME.md).
+
+- [Recette des 61 lignes actives](RECETTE_61_LIGNES.md) — prérequis, scénarios et preuves attendues.
