@@ -1,4 +1,5 @@
 import { enqueueForumRemovalsForUser } from "@/lib/player-classified-forum";
+import { blockedLastMemberTeams, dissolveEmptiedTeams, listLastMemberTeams, requestEmptiedTeamsSpaceDeletion } from "@/lib/account-deletion-teams";
 import { del, list } from "@vercel/blob";
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
@@ -36,6 +37,7 @@ const ERASED_TEXT = "[supprimé]";
 export type AccountDeletionResult =
   | { status: "deleted"; summary: Record<string, number> }
   | { status: "refused"; reason: "last_owner"; communities: string[] }
+  | { status: "refused"; reason: "team_blocked"; teams: string[] }
   | { status: "not_found" }
   | { status: "already_deleted" };
 
@@ -127,6 +129,11 @@ export async function deleteAccount(
   const preCheck = await soleOwnerCommunities(prisma, user.id);
   if (preCheck.length > 0) return { status: "refused", reason: "last_owner", communities: preCheck };
 
+  // D5 : dernier membre d'une équipe = mêmes blocages que la dissolution (la confirmation est celle de la suppression de compte).
+  const lastMemberTeams = await listLastMemberTeams(user.id);
+  const blockedTeams = await blockedLastMemberTeams(null, lastMemberTeams);
+  if (blockedTeams.length > 0) return { status: "refused", reason: "team_blocked", teams: blockedTeams };
+
   // Migration du journal absente : l'erreur Prisma remonte ICI, avant toute suppression de fichier.
   await prisma.accountDeletionLog.findFirst({ select: { id: true } });
 
@@ -160,6 +167,11 @@ export async function deleteAccount(
         const sole = await soleOwnerCommunities(tx, user.id);
         if (sole.length > 0) throw new RefusedLastOwner(sole);
       }
+
+      // D5 : contrôle autoritaire des blocages d'équipe (un signalement a pu s'ouvrir depuis le contrôle préalable), puis dissolution.
+      const blockedNow = await blockedLastMemberTeams(tx, lastMemberTeams);
+      if (blockedNow.length > 0) throw new RefusedTeamBlocked(blockedNow);
+      add("CommunityTeamMember.dissolved", await dissolveEmptiedTeams(tx, lastMemberTeams));
 
       // Livraisons Discord en file ou passées vers la personne (identifiants de MP), jamais envoyées au compte anonymisé.
       add("NotificationDelivery.recipientKey", (await tx.notificationDelivery.deleteMany({ where: { recipientKey: `user:${user.id}` } })).count);
@@ -235,11 +247,16 @@ export async function deleteAccount(
     },
     { timeout: 60_000, maxWait: 10_000 }
   ).catch((error: unknown) => {
-    if (error instanceof RefusedLastOwner) return error;
+    if (error instanceof RefusedLastOwner || error instanceof RefusedTeamBlocked) return error;
     throw error;
   });
 
+  if (summary instanceof RefusedTeamBlocked) return { status: "refused", reason: "team_blocked", teams: summary.teams };
   if (summary instanceof RefusedLastOwner) return { status: "refused", reason: "last_owner", communities: summary.communities };
+  // Suppression des salons des équipes vidées : par la file, après coup ; un échec de mise en file ne défait pas la suppression (l'exécution revérifie tout).
+  await requestEmptiedTeamsSpaceDeletion(user.id, lastMemberTeams).catch((error: unknown) => {
+    logger.warn("account-deletion", "Suppression des salons d'équipe non enfilée.", { errorType: error instanceof Error ? error.name : "unknown" });
+  });
   logger.info("account-deletion", "Account anonymized.", { userId: user.id, tables: Object.keys(summary).length });
   return { status: "deleted", summary };
 }
@@ -247,5 +264,11 @@ export async function deleteAccount(
 class RefusedLastOwner extends Error {
   constructor(readonly communities: string[]) {
     super("last_owner");
+  }
+}
+
+class RefusedTeamBlocked extends Error {
+  constructor(readonly teams: string[]) {
+    super("team_blocked");
   }
 }

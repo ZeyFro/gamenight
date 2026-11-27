@@ -55,11 +55,15 @@ function fromStatus(status: string): DiscordRestResult<Record<string, never>> {
     // L'équipe a été repeuplée ou un signalement s'est ouvert : rien à supprimer.
     case "not_dissolved":
     case "open_report":
+    // Condition de dissolution changée depuis la demande (défi relancé, contestation ouverte) : abandon terminal, déjà tracé.
+    case "blocked":
       return ok;
     case "partial":
     case "failed":
       return retryable(`Espace d'équipe : ${status}.`);
     // Capacité Discord insuffisante : aucune reprise automatique, le staff décide.
+    // Un identifiant enregistré ne désigne plus notre salon (type ou salon système) : jamais supprimé, jamais rejoué, le staff décide.
+    case "mismatch":
     case "capacity":
     case "quota":
       return definitive("Capacité Discord des espaces d'équipe atteinte.");

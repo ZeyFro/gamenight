@@ -260,6 +260,39 @@ describe.skipIf(!TEST_DATABASE_URL)("équipes communautaires : PostgreSQL isolé
       expect(await db.communityTeamMember.count({ where: { teamId: team.id } })).toBe(1);
     });
 
+    it("D5 : une contestation Tower ouverte bloque aussi le départ du dernier membre (mêmes blocages que la dissolution)", async () => {
+      const team = await setup();
+      const definition = await db.towerChallengeDefinition.create({ data: { communityId: ids.community, title: "Défi", instructions: "Réaliser le défi.", rewardFloors: 1 } });
+      const attempt = await db.towerChallengeAttempt.create({ data: { communityId: ids.community, userId: ids.leader, teamId: team.id,
+        definitionId: definition.id, requestKey: "req-last-appeal", title: "Défi", instructions: "Réaliser le défi.", rewardFloors: 1,
+        assignedAt: new Date("2030-01-01T00:00:00Z"), expiresAt: new Date("2030-01-03T00:00:00Z"), status: "REJECTED", rejectedAt: new Date("2030-01-03T01:00:00Z") } });
+      const appeal = await db.towerChallengeAppeal.create({ data: { communityId: ids.community, attemptId: attempt.id, authorUserId: ids.leader, reason: "Contestation du verdict.", dueAt: new Date("2030-01-08") } });
+      expect(await teams.leaveCommunityTeam(ids.leader, ids.community, team.id, { confirmDissolution: true })).toBe("open_report_or_appeal");
+      expect(await db.communityTeamMember.count({ where: { teamId: team.id } })).toBe(1);
+      await db.towerChallengeAppeal.update({ where: { id: appeal.id }, data: { status: "UPHELD", decidedAt: new Date() } });
+      expect(await teams.leaveCommunityTeam(ids.leader, ids.community, team.id, { confirmDissolution: true })).toBe("dissolved_last_member");
+    });
+
+    it("D5 : le dernier membre ACTIF qui n'est PAS capitaine (capitaine parti) applique les mêmes blocages et la même confirmation, puis vide toute l'équipe", async () => {
+      const team = await setup();
+      await join(ids.racer, team.id, new Date("2030-01-02"));
+      // Le capitaine n'est plus membre actif du serveur : sa ligne d'équipe reste, mais il ne compte plus.
+      await db.membership.update({ where: { communityId_userId: { communityId: ids.community, userId: ids.leader } }, data: { status: "LEFT" } });
+      await db.discordTeamSpace.create({ data: { teamId: team.id, communityId: ids.community, guildId: "guild-nc", channelId: "chan-nc", voiceChannelId: "voice-nc" } });
+      const report = await db.moderationReport.create({ data: { communityId: ids.community, guildId: "guild-nc", channelId: "chan-nc", messageId: "msg-nc",
+        authorDiscordId: "author", reporterDiscordId: "reporter", messageUrl: "https://discord.com/channels/guild-nc/chan-nc/msg-nc", excerpt: "message signalé" } });
+      // Même blocage qu'à la dissolution manuelle, même quand la personne n'est pas capitaine.
+      expect(await teams.leaveCommunityTeam(ids.racer, ids.community, team.id, { confirmDissolution: true })).toBe("open_report_or_appeal");
+      await db.moderationReport.update({ where: { id: report.id }, data: { closedAt: new Date() } });
+      // Même confirmation : sans elle, rien ne bouge (avant D5 le départ passait en silence et laissait une équipe vide avec ses salons).
+      expect(await teams.leaveCommunityTeam(ids.racer, ids.community, team.id)).toBe("confirm_dissolution");
+      expect(await db.communityTeamMember.count({ where: { teamId: team.id } })).toBe(2);
+      expect(await teams.leaveCommunityTeam(ids.racer, ids.community, team.id, { confirmDissolution: true })).toBe("dissolved_last_member");
+      // Toutes les lignes disparaissent (y compris celle du capitaine parti) : l'équipe est réellement vide pour l'exécution de la suppression.
+      expect(await db.communityTeamMember.count({ where: { teamId: team.id } })).toBe(0);
+      expect((await db.communityTeam.findUniqueOrThrow({ where: { id: team.id } })).isRecruiting).toBe(false);
+    });
+
     it("est atomique : un échec en fin de transaction annule la passation", async () => {
       const team = await setup();
       await join(ids.racer, team.id, new Date("2030-01-02"));

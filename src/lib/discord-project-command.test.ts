@@ -143,9 +143,16 @@ describe("/projet : écriture via les services de main", () => {
     mocks.leave.mockResolvedValue("left");
     expect(await finish(handleSignedProjectCommand(input("quitter", [str("projet", "team-1")])))).toContain("7 jours");
     expect(mocks.memberSync).toHaveBeenCalledTimes(1);
-    mocks.leave.mockResolvedValue("leader");
-    mocks.edit.mockClear();
-    expect(await finish(handleSignedProjectCommand(input("quitter", [str("projet", "team-1")])))).toContain("/equipes/gestion");
+    // D5 : le dernier départ n'est JAMAIS confirmé depuis Discord (aucune dissolution, aucune suppression de salon) ; le message est clair.
+    for (const [result, expected] of [
+      ["confirm_dissolution", "Confirme depuis GameNight"], ["leader", "Confirme depuis GameNight"],
+      ["active_challenges", "défis en cours"], ["open_report_or_appeal", "signalement ou une contestation"],
+    ] as const) {
+      mocks.leave.mockResolvedValue(result);
+      mocks.edit.mockClear();
+      expect(await finish(handleSignedProjectCommand(input("quitter", [str("projet", "team-1")])))).toContain(expected);
+    }
+    expect(mocks.leave).toHaveBeenLastCalledWith(expect.anything(), expect.anything(), "team-1");
     expect(mocks.memberSync).toHaveBeenCalledTimes(1);
   });
 

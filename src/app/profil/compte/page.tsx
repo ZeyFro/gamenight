@@ -12,6 +12,7 @@ export const metadata = pageMetadata("Mon compte et mes données");
 const ERRORS: Record<string, string> = {
   confirmation: "La confirmation ne correspond pas : tape ton pseudo exact ou le mot SUPPRIMER.",
   proprietaire: "Tu es le dernier propriétaire d’une communauté. Désigne un autre propriétaire avant de supprimer ton compte : rien n’a été effacé.",
+  equipe: "Tu es le dernier membre d’une équipe qui a un défi en cours, un signalement ou une contestation ouverts : elle ne peut pas être dissoute pour le moment. Rien n’a été effacé.",
   stockage: "Tes fichiers n’ont pas pu être supprimés pour le moment. Rien n’a été effacé : réessaie plus tard.",
   rate_limited: RATE_LIMIT_MESSAGE,
 };

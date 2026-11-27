@@ -226,6 +226,61 @@ describe.skipIf(!TEST_DATABASE_URL)("PostgreSQL isolé — espaces d'équipe Dis
     expect((await db.discordTeamSpace.findUniqueOrThrow({ where: { teamId: ids.team } })).archived).toBe(true);
   });
 
+  it("executor D5 : suppression revérifiée à l'exécution (équipe repeuplée, contestation ouverte), accès retirés AVANT les salons, identifiants enregistrés seulement", async () => {
+    vi.stubEnv("DISCORD_TEAM_SPACES_ENABLED", "true");
+    await db.discordTeamSpace.create({ data: { teamId: ids.team, communityId: ids.community, guildId: GUILD, channelId: "chan-del", voiceChannelId: "voice-del" } });
+    const present = [
+      { id: "chan-del", name: "les-dragons", type: 0 }, { id: "voice-del", name: "vocal-les-dragons", type: 2 },
+      // Même nom, identifiants non enregistrés : ne doit JAMAIS être touché.
+      { id: "intrus", name: "les-dragons", type: 0 },
+    ];
+    const log: string[] = [];
+    const api = {
+      snapshot: async () => ({ channels: [...present], roles: [] }),
+      setMemberPermission: async (channelId: string, userId: string, _allow: string, action: string) => { log.push(`${action}:${channelId}:${userId}`); },
+      deleteChannel: async (channelId: string) => { log.push(`delete:${channelId}`); present.splice(present.findIndex((c) => c.id === channelId), 1); },
+      createRole: async () => "r", createChannel: async () => "c", renameChannel: async () => undefined, addMemberRole: async () => undefined, removeMemberRole: async () => undefined,
+    };
+    const run = () => runner.runTeamSpaceAction({ teamId: ids.team, communityId: ids.community, intent: "delete", actorUserId: ids.creator,
+      formerMemberDiscordIds: [CREATOR_DISCORD, MEMBER_DISCORD] }, new Date(Date.now() + 20_000), api as never);
+    const deletedAt = async () => (await db.discordTeamSpace.findUniqueOrThrow({ where: { teamId: ids.team } })).deletedAt;
+
+    // 1) L'équipe a été repeuplée depuis la demande : abandon AVANT tout appel Discord, trace au journal, lien intact.
+    expect(await run()).toEqual({ ok: true, data: {} });
+    expect(log).toEqual([]);
+    expect(await deletedAt()).toBeNull();
+    expect(await db.sensitiveOperationLog.count({ where: { action: "discord.team_space_delete", outcome: "not_dissolved" } })).toBe(1);
+
+    // 2) Équipe vidée, mais une contestation Tower s'est ouverte entre la demande et l'exécution : abandon, trace, lien intact.
+    await db.communityTeamMember.deleteMany({ where: { teamId: ids.team } });
+    const definition = await db.towerChallengeDefinition.create({ data: { communityId: ids.community, title: "Défi", instructions: "Réaliser le défi.", rewardFloors: 1 } });
+    const attempt = await db.towerChallengeAttempt.create({ data: { communityId: ids.community, userId: ids.creator, teamId: ids.team, definitionId: definition.id, requestKey: "k-del",
+      title: "Défi", instructions: "Réaliser le défi.", rewardFloors: 1, assignedAt: new Date("2030-01-01T00:00:00Z"), expiresAt: new Date("2030-01-03T00:00:00Z"),
+      status: "REJECTED", rejectedAt: new Date("2030-01-03T01:00:00Z") } });
+    const appeal = await db.towerChallengeAppeal.create({ data: { communityId: ids.community, attemptId: attempt.id, authorUserId: ids.creator, reason: "Contestation du verdict.", dueAt: new Date("2030-01-08") } });
+    expect(await run()).toEqual({ ok: true, data: {} });
+    expect(log).toEqual([]);
+    expect(await deletedAt()).toBeNull();
+    expect(await db.sensitiveOperationLog.count({ where: { action: "discord.team_space_delete", outcome: "blocked" } })).toBe(1);
+
+    // 3) Contestation close : les accès nominatifs sont retirés AVANT toute suppression, puis les deux salons enregistrés (et eux seuls) disparaissent.
+    await db.towerChallengeAppeal.update({ where: { id: appeal.id }, data: { status: "UPHELD", decidedAt: new Date() } });
+    expect(await run()).toEqual({ ok: true, data: {} });
+    const firstDelete = log.findIndex((line) => line.startsWith("delete:"));
+    expect(firstDelete).toBeGreaterThan(0);
+    expect(log.slice(0, firstDelete).every((line) => line.startsWith("remove:"))).toBe(true);
+    expect(log.slice(0, firstDelete)).toHaveLength(4);
+    expect(log.filter((line) => line.startsWith("delete:")).sort()).toEqual(["delete:chan-del", "delete:voice-del"]);
+    expect(present.map((channel) => channel.id)).toEqual(["intrus"]);
+    expect(await deletedAt()).toBeInstanceOf(Date);
+    expect(await db.sensitiveOperationLog.count({ where: { action: "discord.team_space_delete", outcome: "ok" } })).toBe(1);
+
+    // 4) Rejeu : état cible atteint, aucune nouvelle écriture Discord.
+    const before = log.length;
+    expect(await run()).toEqual({ ok: true, data: {} });
+    expect(log).toHaveLength(before);
+  });
+
   it("executor : flag fermé ou migration absente ne produit aucune écriture Discord", async () => {
     const touched: string[] = [];
     const api = new Proxy({}, { get: (_target, name) => async () => { touched.push(String(name)); return ""; } }) as never;

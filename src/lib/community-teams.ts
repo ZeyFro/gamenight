@@ -218,6 +218,24 @@ export async function joinCommunityTeam(userId: string, communityId: string, tea
   }
 }
 
+/** Blocages COMMUNS de toute dissolution (manuelle ou au départ du dernier membre, D5) : défi non terminé, signalement ouvert sur
+ * un des salons enregistrés, contestation Tower ouverte sur un défi de l'équipe. Même lecture partout, jamais deux règles. */
+export async function dissolutionBlocker(
+  scopedDb: Prisma.TransactionClient, communityId: string, teamId: string,
+): Promise<"active_challenges" | "open_report_or_appeal" | null> {
+  const pending = await scopedDb.towerChallengeAttempt.count({
+    where: { communityId, teamId, status: { in: ["ASSIGNED", "SUBMITTED"] } },
+  });
+  if (pending) return "active_challenges";
+  const space = await scopedDb.discordTeamSpace.findUnique({ where: { teamId }, select: { channelId: true, voiceChannelId: true } });
+  const channels = [space?.channelId, space?.voiceChannelId].filter((id): id is string => Boolean(id));
+  const openReports = channels.length
+    ? await scopedDb.moderationReport.count({ where: { communityId, channelId: { in: channels }, closedAt: null } })
+    : 0;
+  const openAppeals = await scopedDb.towerChallengeAppeal.count({ where: { communityId, status: "OPEN", attempt: { teamId } } });
+  return openReports || openAppeals ? "open_report_or_appeal" : null;
+}
+
 /** Départ volontaire. Le capitaine passe la main au plus ancien membre ACTIF (joinedAt, userId) dans la même
  * transaction sérialisable, puis quitte avec le délai habituel ; « leader » seulement s'il est seul.
  */
@@ -235,42 +253,28 @@ export async function leaveCommunityTeam(
       where: { teamId, communityId, userId, ...activeTeamMemberWhere(communityId) },
     });
     if (!activeMember) return "missing";
-    if ((team.captainId ?? team.createdById) === userId) {
-      const successor = await scopedDb.communityTeamMember.findFirst({
-        where: { teamId, communityId, userId: { not: userId }, ...activeTeamMemberWhere(communityId) },
-        orderBy: [{ joinedAt: "asc" }, { userId: "asc" }], select: { userId: true },
+    // Prochain membre ACTIF (autre que la personne qui part) : successeur du capitaine, ou preuve que ce départ est le DERNIER.
+    // D5 : le dernier départ (capitaine OU non, par exemple capitaine devenu inactif) applique les gardes de la dissolution manuelle.
+    const successor = await scopedDb.communityTeamMember.findFirst({
+      where: { teamId, communityId, userId: { not: userId }, ...activeTeamMemberWhere(communityId) },
+      orderBy: [{ joinedAt: "asc" }, { userId: "asc" }], select: { userId: true },
+    });
+    if (!successor) {
+      const blocked = await dissolutionBlocker(scopedDb, communityId, teamId);
+      if (blocked) return blocked;
+      if (!options.confirmDissolution) return "confirm_dissolution";
+      await scopedDb.communityTeam.updateMany({ where: { id: teamId, communityId }, data: { isRecruiting: false } });
+      // Toutes les lignes de membre (y compris celles de comptes devenus inactifs) : l'équipe est réellement vide,
+      // sinon l'exécution de la suppression des salons la jugerait « repeuplée » et ne ferait rien.
+      const removed = await scopedDb.communityTeamMember.deleteMany({ where: { teamId, communityId } });
+      if (!removed.count) throw new Error("team_leave_member_missing");
+      await clearTeamRecruiterRoles(tx, communityId, teamId);
+      await tx.membership.update({
+        where: { communityId_userId: { communityId, userId } }, data: { lastTeamLeftAt: new Date() },
       });
-      if (!successor) {
-        // Dernier membre : mêmes gardes que la dissolution manuelle, puis
-        // confirmation explicite avant la dissolution logique.
-        const pending = await scopedDb.towerChallengeAttempt.count({
-          where: { communityId, teamId, status: { in: ["ASSIGNED", "SUBMITTED"] } },
-        });
-        if (pending) return "active_challenges";
-        const space = await scopedDb.discordTeamSpace.findUnique({
-          where: { teamId }, select: { channelId: true, voiceChannelId: true },
-        });
-        const channels = [space?.channelId, space?.voiceChannelId].filter((id): id is string => Boolean(id));
-        const openReports = channels.length
-          ? await scopedDb.moderationReport.count({ where: { communityId, channelId: { in: channels }, closedAt: null } })
-          : 0;
-        const openAppeals = await scopedDb.towerChallengeAppeal.count({
-          where: { communityId, status: "OPEN", attempt: { teamId } },
-        });
-        if (openReports || openAppeals) return "open_report_or_appeal";
-        if (!options.confirmDissolution) return "confirm_dissolution";
-        await scopedDb.communityTeam.updateMany({
-          where: { id: teamId, communityId },
-          data: { isRecruiting: false },
-        });
-        const deleted = await scopedDb.communityTeamMember.deleteMany({ where: { teamId, communityId, userId } });
-        if (!deleted.count) throw new Error("team_leave_member_missing");
-        await clearTeamRecruiterRoles(tx, communityId, teamId, userId);
-        await tx.membership.update({
-          where: { communityId_userId: { communityId, userId } }, data: { lastTeamLeftAt: new Date() },
-        });
-        return "dissolved_last_member";
-      }
+      return "dissolved_last_member";
+    }
+    if ((team.captainId ?? team.createdById) === userId) {
       const changed = await scopedDb.communityTeam.updateMany({
         where: { id: teamId, communityId, captainId: team.captainId },
         data: { captainId: successor.userId, captainLastActivityAt: new Date() },
@@ -402,24 +406,8 @@ export async function dissolveCommunityTeam(
       select: { captainId: true, createdById: true, isRecruiting: true,
         members: { select: { userId: true } } } });
     if (!team || (team.captainId ?? team.createdById) !== userId || team.members.length === 0) return "invalid";
-    const pending = await scopedDb.towerChallengeAttempt.count({
-      where: { communityId, teamId, status: { in: ["ASSIGNED", "SUBMITTED"] } },
-    });
-    if (pending) return "active_challenges";
-    // Un signalement encore ouvert sur les salons de l'équipe, ou une contestation
-    // Tower ouverte sur un défi de l'équipe, bloque la dissolution.
-    const space = await scopedDb.discordTeamSpace.findUnique({
-      where: { teamId },
-      select: { channelId: true, voiceChannelId: true },
-    });
-    const channels = [space?.channelId, space?.voiceChannelId].filter((id): id is string => Boolean(id));
-    const openReports = channels.length
-      ? await scopedDb.moderationReport.count({ where: { communityId, channelId: { in: channels }, closedAt: null } })
-      : 0;
-    const openAppeals = await scopedDb.towerChallengeAppeal.count({
-      where: { communityId, status: "OPEN", attempt: { teamId } },
-    });
-    if (openReports || openAppeals) return "open_report_or_appeal";
+    const blocked = await dissolutionBlocker(scopedDb, communityId, teamId);
+    if (blocked) return blocked;
     await scopedDb.communityTeam.update({
       where: { id: teamId }, data: { isRecruiting: false },
     });

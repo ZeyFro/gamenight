@@ -450,10 +450,22 @@ export async function reactivateTeamSpace(input: {
 }
 
 export type SpaceDeleteResult = {
-  status: "deleted" | "already_deleted" | "dry_run" | "unlinked" | "disabled" | "partial" | "failed" | "not_dissolved" | "open_report";
+  status: "deleted" | "already_deleted" | "dry_run" | "unlinked" | "disabled" | "partial" | "failed" | "not_dissolved" | "open_report" | "blocked" | "mismatch";
   /** Identifiants vérifiés dans `DiscordTeamSpace` ; jamais un nom. */
   channelIds: string[];
 };
+
+/** Abandon propre d'une suppression dont une condition a changé : aucune écriture Discord, trace au journal C055 et dans les logs. */
+async function abandon(
+  input: { teamId: string; communityId: string; actorId?: string },
+  status: "open_report" | "blocked" | "mismatch" | "not_dissolved",
+): Promise<SpaceDeleteResult> {
+  logger.warn("discord-team-space", "Suppression d’espace abandonnée avant tout appel Discord.", { teamId: input.teamId, reason: status });
+  await recordSensitiveOperation({
+    actorId: input.actorId ?? null, action: "discord.team_space_delete", communityId: input.communityId, target: input.teamId, outcome: status,
+  }).catch(() => undefined);
+  return { status, channelIds: [] };
+}
 
 /**
  * Suppression réelle d'un espace dissous. Seuls les identifiants persistés de
@@ -483,15 +495,28 @@ export async function deleteTeamSpace(input: {
     const channelIds = [link.channelId, link.voiceChannelId].filter((id): id is string => Boolean(id));
     // L'exécution ne fait pas confiance à l'état au moment de l'enqueue :
     // une équipe repeuplée ou un signalement ouvert annule la suppression.
-    if (team.members.length > 0) return { status: "not_dissolved", channelIds: [] };
+    if (team.members.length > 0) return abandon(input, "not_dissolved");
     const scopedDb = scopedPrisma({ communityIds: [input.communityId], includesDefault: false });
+    // Mêmes blocages que la dissolution, REVÉRIFIÉS ici (D5) : un défi relancé, un signalement ou une contestation ouverts depuis la demande
+    // annulent la suppression AVANT tout appel Discord. Terminal (jamais rejoué) et tracé au journal.
     const openReports = await scopedDb.moderationReport.count({
       where: { communityId: input.communityId, channelId: { in: channelIds }, closedAt: null },
     });
-    if (openReports > 0) return { status: "open_report", channelIds: [] };
+    if (openReports > 0) return abandon(input, "open_report");
+    const [activeChallenges, openAppeals] = await Promise.all([
+      scopedDb.towerChallengeAttempt.count({ where: { communityId: input.communityId, teamId: team.id, status: { in: ["ASSIGNED", "SUBMITTED"] } } }),
+      scopedDb.towerChallengeAppeal.count({ where: { communityId: input.communityId, status: "OPEN", attempt: { teamId: team.id } } }),
+    ]);
+    if (activeChallenges > 0 || openAppeals > 0) return abandon(input, "blocked");
+    // Identifiants ENREGISTRÉS uniquement, jamais un salon système : un identifiant égal à un salon configuré (…_CHANNEL_ID) est refusé.
+    const systemChannels = new Set(Object.entries(env).filter(([key, value]) => /CHANNEL_ID$/.test(key) && value).map(([, value]) => String(value).trim()));
+    if (channelIds.some((id) => systemChannels.has(id))) return abandon(input, "mismatch");
     const snapshot = await input.api.snapshot(team.guildId);
-    const existing = new Set(snapshot.channels.map((channel) => channel.id));
-    const present = channelIds.filter((id) => existing.has(id));
+    const byId = new Map(snapshot.channels.map((channel) => [channel.id, channel]));
+    // Le salon textuel enregistré doit être un salon textuel (0), le vocal un vocal (2) : sinon l'identifiant ne désigne plus notre salon.
+    if ((byId.has(link.channelId) && byId.get(link.channelId)!.type !== 0)
+      || (link.voiceChannelId && byId.has(link.voiceChannelId) && byId.get(link.voiceChannelId)!.type !== 2)) return abandon(input, "mismatch");
+    const present = channelIds.filter((id) => byId.has(id));
     if (input.dryRun) return { status: "dry_run", channelIds: present };
     if (present.length === 0) {
       await store.markDeleted?.(team.id, new Date());
