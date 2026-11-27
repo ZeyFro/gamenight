@@ -9,7 +9,6 @@ import type { DeliveryResolver } from "@/lib/notification-executor";
 import { SESSION_SPACE_EVENT, type SessionSpaceIntent } from "@/lib/session-space-plan";
 import {
   SESSION_ASSUMED_DURATION_MS,
-  SESSION_SPACE_CLEANUP_GIVE_UP_MS,
   SESSION_SPACE_LEAD_MS,
   sessionVisibilityEnabled,
 } from "@/lib/session-visibility";
@@ -106,8 +105,9 @@ export const sessionSpaceSyncResolver: DeliveryResolver = {
     if (!sessionVisibilityEnabled()) return { eligible: false, reason: "not_configured" };
     if (!process.env.DISCORD_BOT_TOKEN?.trim()) return { eligible: false, reason: "configuration_unavailable" };
     const scopedDb = scopedPrisma(null);
-    const session = await scopedDb.session.findUnique({ where: { id: event.sourceId }, select: { communityId: true, status: true } });
+    const session = await scopedDb.session.findUnique({ where: { id: event.sourceId }, select: { communityId: true, status: true, visibility: true } });
     if (!session) return { eligible: false, reason: "expired" };
+    if (intent === "provision" && session.visibility === "PUBLIC") return { eligible: false, reason: "expired" };
     const destination = await resolveSessionAnnounceConfig(session.communityId);
     if (!destination) return { eligible: false, reason: "expired" };
     if (delivery.operation !== "SEND" || delivery.channel !== "DISCORD_CHANNEL" || delivery.transport !== "BOT" ||
@@ -135,8 +135,10 @@ export interface SessionSpaceScanResult {
 
 /**
  * Balayage appelé par le cron des rappels : met en file la création (T-30 min) des espaces
- * manquants et le nettoyage des espaces de soirées terminées (jusqu'à 24 h après la fin).
- * Des écritures en base uniquement ; au plus 25 soirées par passage et par catégorie.
+ * manquants, le nettoyage des espaces de soirées terminées (sans abandon après 24 h :
+ * une erreur reste reprise et visible dans les opérations en échec de /admin) et le
+ * retrait d'un espace privé dont la soirée est devenue publique. Des écritures en base
+ * uniquement ; au plus 25 soirées par passage et par catégorie.
  */
 export async function scheduleSessionSpaces(now: Date = wallClockNow(), nowMs: number = Date.now()): Promise<SessionSpaceScanResult> {
   if (!sessionSpaceQueueEnabled()) return { enabled: false, provisionQueued: 0, cleanupQueued: 0 };
@@ -144,6 +146,9 @@ export async function scheduleSessionSpaces(now: Date = wallClockNow(), nowMs: n
   const dueSoon = await scopedDb.session.findMany({
     where: {
       status: "SCHEDULED",
+      // Les soirées PUBLIC utilisent les espaces communs et ne reçoivent
+      // jamais de fil/vocal temporaires privés.
+      visibility: { in: ["APPLICATION", "PRIVATE"] },
       // Une soirée sans aucun invité actif n'a pas besoin d'espace : pas d'événement inutile.
       invites: { some: { status: "ACTIVE" } },
       date: { gt: new Date(now.getTime() - SESSION_ASSUMED_DURATION_MS), lte: new Date(now.getTime() + SESSION_SPACE_LEAD_MS) },
@@ -162,12 +167,15 @@ export async function scheduleSessionSpaces(now: Date = wallClockNow(), nowMs: n
     where: {
       cleanedAt: null,
       session: {
+        // PUBLIC : l'espace privé créé avant le changement de visibilité doit
+        // être retiré sans attendre la fin. Sinon, nettoyage après la fin,
+        // sans limite d'âge : un échec est repris au passage suivant et reste
+        // visible dans les opérations en échec de /admin.
         OR: [
+          { visibility: "PUBLIC" },
           { status: { in: ["DONE", "CANCELLED"] } },
           { date: { lte: new Date(now.getTime() - SESSION_ASSUMED_DURATION_MS) } },
         ],
-        // Au-delà de 24 h après la fin, on n'insiste plus : le staff nettoie à la main.
-        date: { gt: new Date(now.getTime() - SESSION_ASSUMED_DURATION_MS - SESSION_SPACE_CLEANUP_GIVE_UP_MS) },
       },
     },
     orderBy: { createdAt: "asc" },

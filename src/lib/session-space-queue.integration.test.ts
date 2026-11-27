@@ -61,13 +61,14 @@ describe.skipIf(!TEST_DATABASE_URL)("file d'espace temporaire de soirée : Postg
     vi.unstubAllGlobals();
   });
 
-  async function makeSession(status: "SCHEDULED" | "DONE" = "SCHEDULED", date = START) {
+  async function makeSession(status: "SCHEDULED" | "DONE" = "SCHEDULED", date = START, visibility: "PUBLIC" | "APPLICATION" | "PRIVATE" = "APPLICATION") {
     const session = await db.session.create({
       data: {
         communityId: ids.community,
         createdById: ids.creator,
         date,
         status,
+        visibility,
         announceViaBot: true,
       },
     });
@@ -133,6 +134,30 @@ describe.skipIf(!TEST_DATABASE_URL)("file d'espace temporaire de soirée : Postg
     })).toEqual({ eligible: false, reason: "expired" });
   });
 
+  it("ne met en file les espaces temporaires que pour les soirées APPLICATION et PRIVATE", async () => {
+    const publicSession = await makeSession("SCHEDULED", START, "PUBLIC");
+    const applicationSession = await makeSession("SCHEDULED", START, "APPLICATION");
+    const privateSession = await makeSession("SCHEDULED", START, "PRIVATE");
+    const now = new Date(START.getTime() - 20 * 60_000);
+
+    const scan = await queue.scheduleSessionSpaces(now, now.getTime());
+    expect(scan).toMatchObject({ enabled: true, provisionQueued: 2, cleanupQueued: 0 });
+    const slots = (await db.notificationDelivery.findMany({ select: { targetSlot: true } })).map(row => row.targetSlot);
+    expect(slots.some(slot => slot.includes(`:${publicSession.id}:session-space-provision`))).toBe(false);
+    expect(slots.some(slot => slot.includes(`:${applicationSession.id}:session-space-provision`))).toBe(true);
+    expect(slots.some(slot => slot.includes(`:${privateSession.id}:session-space-provision`))).toBe(true);
+  });
+
+  it("le résolveur refuse un provisionnement en attente si la soirée est devenue publique", async () => {
+    const session = await makeSession("SCHEDULED", START, "APPLICATION");
+    const now = new Date(START.getTime() - 20 * 60_000);
+    await queue.scheduleSessionSpaces(now, now.getTime());
+    await db.session.update({ where: { id: session.id }, data: { visibility: "PUBLIC" } });
+
+    const { result } = await resolveQueued(session.id, "provision");
+    expect(result).toEqual({ eligible: false, reason: "expired" });
+  });
+
   it("met en file le nettoyage après la fin et le résolveur l'autorise, jamais avant", async () => {
     const session = await makeSession("SCHEDULED", new Date(START.getTime() - 7 * 3_600_000));
     const beforeEnd = new Date(START.getTime() - 3_600_000);
@@ -152,6 +177,50 @@ describe.skipIf(!TEST_DATABASE_URL)("file d'espace temporaire de soirée : Postg
     const afterEnd = new Date(START.getTime() + 3_600_000);
     const after = await queue.scheduleSessionSpaces(afterEnd, afterEnd.getTime());
     expect(after.cleanupQueued).toBe(1);
+    const { result } = await resolveQueued(session.id, "cleanup");
+    expect(result).toEqual({
+      eligible: true,
+      action: { kind: "sync_session_space", intent: "cleanup", sessionId: session.id, communityId: ids.community },
+    });
+  });
+
+  it("reprend un nettoyage échoué plus de 24 h après la fin, sans abandon", async () => {
+    const session = await makeSession("DONE", new Date(START.getTime() - 80 * 3_600_000));
+    await db.sessionDiscordSpace.create({
+      data: {
+        sessionId: session.id,
+        communityId: ids.community,
+        guildId: GUILD,
+        parentChannelId: CHANNEL,
+        threadId: "300000000000000001",
+        voiceChannelId: "400000000000000001",
+      },
+    });
+
+    const scan = await queue.scheduleSessionSpaces(new Date(START), START.getTime());
+    expect(scan.cleanupQueued).toBe(1);
+    expect(await db.notificationDelivery.count({
+      where: { targetSlot: `${GUILD}:ADMIN:${session.id}:session-space-cleanup` },
+    })).toBe(1);
+  });
+
+  it("met en file le nettoyage d'une soirée APPLICATION devenue PUBLIQUE avant sa fin", async () => {
+    const session = await makeSession("SCHEDULED", START, "APPLICATION");
+    await db.sessionDiscordSpace.create({
+      data: {
+        sessionId: session.id,
+        communityId: ids.community,
+        guildId: GUILD,
+        parentChannelId: CHANNEL,
+        threadId: "300000000000000001",
+        voiceChannelId: "400000000000000001",
+      },
+    });
+    await db.session.update({ where: { id: session.id }, data: { visibility: "PUBLIC" } });
+
+    const beforeStart = new Date(START.getTime() - 20 * 60_000);
+    const scan = await queue.scheduleSessionSpaces(beforeStart, beforeStart.getTime());
+    expect(scan.cleanupQueued).toBe(1);
     const { result } = await resolveQueued(session.id, "cleanup");
     expect(result).toEqual({
       eligible: true,

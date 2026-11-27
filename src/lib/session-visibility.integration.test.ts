@@ -28,12 +28,14 @@ describe.skipIf(!TEST_DATABASE_URL)("visibilité des soirées (intégration Post
   let db: import("@prisma/client").PrismaClient;
   let access: typeof import("./session-access");
   let apps: typeof import("./session-applications");
+  let seats: typeof import("./session-seats");
   let wall: typeof import("./wallclock");
 
   beforeAll(async () => {
     db = (await import("@/lib/prisma")).prisma as unknown as import("@prisma/client").PrismaClient;
     access = await import("./session-access");
     apps = await import("./session-applications");
+    seats = await import("./session-seats");
     wall = await import("./wallclock");
   });
   afterAll(async () => {
@@ -216,6 +218,19 @@ describe.skipIf(!TEST_DATABASE_URL)("visibilité des soirées (intégration Post
       expect(await apps.decideSessionApplication(creator.id, row.id, "ACCEPT")).toEqual({ ok: true });
       expect(await access.getSessionAccessRole(stranger.id, application.id)).toBe("guest");
       expect((await db.sessionApplication.findUniqueOrThrow({ where: { id: row.id } })).status).toBe("ACCEPTED");
+    });
+
+    it("une candidature acceptée quand la capacité est atteinte rejoint la liste d'attente", async () => {
+      const { creator, stranger } = await makeScene();
+      const session = await makeSession(creator.id, "APPLICATION", { status: "SCHEDULED", attendanceCapacity: 1 });
+      const confirmed = await makeUser();
+      await access.inviteToSession(session.id, creator.id, confirmed.id);
+      expect(await seats.changeSessionSeat(confirmed.id, session.id, { kind: "join" })).toMatchObject({ ok: true, status: "CONFIRMED" });
+
+      expect(await apps.applyToSession(stranger.id, session.id, "Je peux venir !")).toEqual({ ok: true });
+      const application = await db.sessionApplication.findUniqueOrThrow({ where: { sessionId_applicantId: { sessionId: session.id, applicantId: stranger.id } } });
+      expect(await apps.decideSessionApplication(creator.id, application.id, "ACCEPT")).toEqual({ ok: true });
+      expect(await db.sessionSeat.findUniqueOrThrow({ where: { sessionId_userId: { sessionId: session.id, userId: stranger.id } } })).toMatchObject({ status: "WAITLIST" });
     });
 
     it("un refus n'ouvre aucun accès et ne se rouvre pas", async () => {

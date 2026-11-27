@@ -21,8 +21,6 @@ export type SessionVisibilityValue = (typeof SESSION_VISIBILITIES)[number];
 export const SESSION_SPACE_LEAD_MS = 30 * 60_000;
 /** La soirée n'a pas d'heure de fin : sans clôture explicite, fin présumée 6 h après le début. */
 export const SESSION_ASSUMED_DURATION_MS = 6 * 60 * 60_000;
-/** Au-delà, le nettoyage automatique cesse d'être retenté (le staff décide). */
-export const SESSION_SPACE_CLEANUP_GIVE_UP_MS = 24 * 60 * 60_000;
 /** Plafond d'overwrites par salon Discord = 100 ; marge pour @everyone et le bot. */
 export const SESSION_SPACE_MAX_MEMBERS = 90;
 
