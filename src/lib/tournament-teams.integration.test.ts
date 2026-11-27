@@ -125,7 +125,7 @@ describe.skipIf(!TEST_DATABASE_URL)("tournois par équipes inscrites : PostgreSQ
     expect(await db.tournamentMatchReport.count({ where: { matchId: match.id } })).toBe(2);
   });
 
-  it("désaccord : l'organisateur est prévenu et tranche, les autres non", async () => {
+  it("désaccord : l'organisateur est prévenu et tranche après 24 h, les autres jamais", async () => {
     vi.stubEnv("NOTIFICATION_EXECUTOR_ENABLED", "true");
     vi.stubEnv("DISCORD_BOT_TOKEN", "faux-jeton");
     await create(2);
@@ -139,20 +139,35 @@ describe.skipIf(!TEST_DATABASE_URL)("tournois par équipes inscrites : PostgreSQ
     const kinds = rows.map(row => [row.recipientKey, (row.event.payload as { kind: string }).kind]).sort();
     expect(kinds).toEqual([[`user:${ids.org}`, "dispute"], [`user:${ids.a1}`, "launched"], [`user:${ids.b1}`, "launched"], [`user:${ids.b1}`, "report_pending"]].sort());
 
-    expect(await tt.resolveMatchByReferee(ids.a1, ids.community, { matchId: match.id, winnerTeamId: match.team1Id! })).toBe("forbidden");
-    expect(await tt.resolveMatchByReferee(ids.org, ids.community, { matchId: match.id, winnerTeamId: "inconnue" })).toBe("invalid_winner");
-    expect(await tt.resolveMatchByReferee(ids.org, ids.community, { matchId: match.id, winnerTeamId: match.team2Id! })).toBe("resolved");
+    const later = new Date(Date.now() + 25 * H);
+    expect(await tt.resolveMatchByReferee(ids.a1, ids.community, { matchId: match.id, winnerTeamId: match.team1Id! }, later)).toBe("forbidden");
+    expect(await tt.resolveMatchByReferee(ids.org, ids.community, { matchId: match.id, winnerTeamId: "inconnue" }, later)).toBe("invalid_winner");
+    // Décision du 26/11 : moins de 24 h après la dernière déclaration, l'arbitre ne peut pas encore trancher.
+    expect(await tt.resolveMatchByReferee(ids.org, ids.community, { matchId: match.id, winnerTeamId: match.team2Id! })).toBe("too_early");
+    expect(await tt.resolveMatchByReferee(ids.org, ids.community, { matchId: match.id, winnerTeamId: match.team2Id! }, new Date(Date.now() + 23 * H))).toBe("too_early");
+    expect((await db.tournamentMatch.findUniqueOrThrow({ where: { id: match.id } })).completedAt).toBeNull();
+    expect(await tt.resolveMatchByReferee(ids.org, ids.community, { matchId: match.id, winnerTeamId: match.team2Id! }, later)).toBe("resolved");
     expect(await db.tournament.findUniqueOrThrow({ where: { id: ids.tournament } })).toMatchObject({ status: "DONE", championTeamId: match.team2Id });
-    expect(await tt.resolveMatchByReferee(ids.org, ids.community, { matchId: match.id, winnerTeamId: match.team2Id! })).toBe("already_decided");
+    expect(await tt.resolveMatchByReferee(ids.org, ids.community, { matchId: match.id, winnerTeamId: match.team2Id! }, later)).toBe("already_decided");
   });
 
-  it("un ADMIN de la communauté peut trancher", async () => {
+  it("un ADMIN de la communauté peut trancher un capitaine absent, 24 h après la déclaration ; sans déclaration, 48 h après l'ouverture", async () => {
     await create(2);
     await enter("A", "a1");
     await enter("B", "b1");
     const match = await finalMatch();
+    // Ouverture du match = lancement (décision du 26/11 : départ du délai de repli).
+    // C'est un instant réel, pas l'heure murale de Paris (qui ouvrirait 1-2 h trop tard).
+    expect(match.scheduledAt).toBeInstanceOf(Date);
+    expect(Math.abs(match.scheduledAt!.getTime() - Date.now())).toBeLessThan(5 * 60_000);
     await db.membership.update({ where: { communityId_userId: { communityId: ids.community, userId: ids.outsider } }, data: { role: "ADMIN" } });
-    expect(await tt.resolveMatchByReferee(ids.outsider, ids.community, { matchId: match.id, winnerTeamId: match.team1Id! })).toBe("resolved");
+    const later = new Date(Date.now() + 25 * H);
+    // Sans aucune déclaration : refusé à 25 h et à 47 h, puis possible 48 h après l'ouverture.
+    expect(await tt.resolveMatchByReferee(ids.outsider, ids.community, { matchId: match.id, winnerTeamId: match.team1Id! }, later)).toBe("too_early");
+    expect(await tt.resolveMatchByReferee(ids.outsider, ids.community, { matchId: match.id, winnerTeamId: match.team1Id! }, new Date(match.scheduledAt!.getTime() + 47 * H))).toBe("too_early");
+    expect(await tt.submitMatchReport(ids.a1, ids.community, { matchId: match.id, winnerTeamId: match.team1Id! })).toBe("waiting");
+    expect(await tt.resolveMatchByReferee(ids.outsider, ids.community, { matchId: match.id, winnerTeamId: match.team1Id! })).toBe("too_early");
+    expect(await tt.resolveMatchByReferee(ids.outsider, ids.community, { matchId: match.id, winnerTeamId: match.team1Id! }, later)).toBe("resolved");
   });
 
   it("compatible TOURNAMENT_SCORES_ENABLED : scores concordants enregistrés, incohérents refusés", async () => {
@@ -166,8 +181,9 @@ describe.skipIf(!TEST_DATABASE_URL)("tournois par équipes inscrites : PostgreSQ
     // Gagnant concordant mais scores incohérents avec le gagnant : désaccord, rien n'est enregistré.
     expect(await tt.submitMatchReport(ids.b1, ids.community, { matchId: match.id, winnerTeamId: winner, score1: "13", score2: "9" })).toBe("disputed");
     expect((await db.tournamentMatch.findUniqueOrThrow({ where: { id: match.id } })).completedAt).toBeNull();
-    expect(await tt.resolveMatchByReferee(ids.org, ids.community, { matchId: match.id, winnerTeamId: winner, score1: 2, score2: 5 })).toBe("inconsistent");
-    expect(await tt.resolveMatchByReferee(ids.org, ids.community, { matchId: match.id, winnerTeamId: winner, score1: 13, score2: 9 })).toBe("resolved");
+    const later = new Date(Date.now() + 25 * H);
+    expect(await tt.resolveMatchByReferee(ids.org, ids.community, { matchId: match.id, winnerTeamId: winner, score1: 2, score2: 5 }, later)).toBe("inconsistent");
+    expect(await tt.resolveMatchByReferee(ids.org, ids.community, { matchId: match.id, winnerTeamId: winner, score1: 13, score2: 9 }, later)).toBe("resolved");
     expect(await db.tournamentMatch.findUniqueOrThrow({ where: { id: match.id } })).toMatchObject({ score1: 13, score2: 9 });
   });
 
@@ -255,6 +271,91 @@ describe.skipIf(!TEST_DATABASE_URL)("tournois par équipes inscrites : PostgreSQ
     expect(await tt.runTeamTournamentMaintenance(new Date(start + 30 * H))).toMatchObject({ reminded: 0 });
     const reminders = await db.notificationDelivery.findMany({ where: { event: { eventType: "TOURNAMENT_TEAM_NOTIFY", occurrence: { startsWith: "reminder:" } } }, select: { recipientKey: true } });
     expect(reminders).toEqual([{ recipientKey: `user:${ids.b1}` }]);
+  });
+
+  it("poule unique à 5 équipes (décision du 26/11) : 10 matchs en 5 journées, classement, champion au dernier match, podium XP", async () => {
+    for (const name of ["e1", "e2"]) {
+      ids[name] = (await db.user.create({ data: { discordId: `tt-${name}`, discordName: name } })).id;
+      await db.membership.create({ data: { userId: ids[name], communityId: ids.community, status: "ACTIVE", joinedAt: new Date(Date.now() - 30 * 24 * H) } });
+    }
+    await teams.createCommunityTeam({ userId: ids.e1, communityId: ids.community, gameId: ids.game, name: "Équipe E", description: "Une équipe de tournoi sérieuse.", platform: "PC", maxMembers: 4 });
+    ids.teamE = (await db.communityTeam.findFirstOrThrow({ where: { name: "Équipe E" } })).id;
+    await teams.joinCommunityTeam(ids.e2, ids.community, ids.teamE);
+
+    await create(8);
+    for (const [letter, captain] of [["A", "a1"], ["B", "b1"], ["C", "c1"], ["D", "d1"], ["E", "e1"]]) expect(await enter(letter, captain)).toBe("registered");
+    expect(await tt.launchTeamTournament(ids.org, ids.community, ids.tournament)).toBe("launched");
+    expect(await db.tournamentTeamSettings.findUniqueOrThrow({ where: { tournamentId: ids.tournament } })).toMatchObject({ roundRobin: true });
+
+    const matches = await db.tournamentMatch.findMany({ where: { tournamentId: ids.tournament }, orderBy: [{ round: "asc" }, { position: "asc" }] });
+    expect(matches).toHaveLength(10);
+    expect(matches.map((m) => m.round)).toEqual([1, 1, 2, 2, 3, 3, 4, 4, 5, 5]);
+    expect(new Set(matches.map((m) => [m.team1Id, m.team2Id].sort().join("|"))).size).toBe(10);
+    const bracketTeams = await db.tournamentTeam.findMany({ where: { tournamentId: ids.tournament }, orderBy: { position: "asc" } });
+    expect(bracketTeams).toHaveLength(5);
+    for (const team of bracketTeams) expect(matches.filter((m) => m.team1Id === team.id || m.team2Id === team.id)).toHaveLength(4);
+
+    // Capitaine de chaque équipe du tournoi, et règle de jeu : l'équipe la mieux placée au tirage gagne toujours.
+    const entries = await db.tournamentTeamEntry.findMany({ where: { tournamentId: ids.tournament }, select: { tournamentTeamId: true, teamId: true } });
+    const captainByLetter: Record<string, string> = { [ids.teamA]: ids.a1, [ids.teamB]: ids.b1, [ids.teamC]: ids.c1, [ids.teamD]: ids.d1, [ids.teamE]: ids.e1 };
+    const captainOf = (tournamentTeamId: string) => captainByLetter[entries.find((e) => e.tournamentTeamId === tournamentTeamId)!.teamId];
+    const position = new Map(bracketTeams.map((team) => [team.id, team.position]));
+    const winnerOf = (m: (typeof matches)[number]) => (position.get(m.team1Id!)! < position.get(m.team2Id!)! ? m.team1Id! : m.team2Id!);
+
+    for (const m of matches.slice(0, 8)) {
+      expect(await tt.submitMatchReport(captainOf(m.team1Id!), ids.community, { matchId: m.id, winnerTeamId: winnerOf(m) })).toBe("waiting");
+      expect(await tt.submitMatchReport(captainOf(m.team2Id!), ids.community, { matchId: m.id, winnerTeamId: winnerOf(m) })).toBe("confirmed");
+    }
+    expect(await db.tournament.findUniqueOrThrow({ where: { id: ids.tournament } })).toMatchObject({ status: "IN_PROGRESS", championTeamId: null });
+    // Personne n'est éliminé par une défaite en poule.
+    expect(await db.tournamentParticipant.count({ where: { tournamentId: ids.tournament, eliminatedAt: { not: null } } })).toBe(0);
+
+    // Les deux derniers matchs confirmés EN MÊME TEMPS : le tournoi se clôt quand même (verrou de la ligne du tournoi).
+    const last = matches.slice(8);
+    for (const m of last) expect(await tt.submitMatchReport(captainOf(m.team1Id!), ids.community, { matchId: m.id, winnerTeamId: winnerOf(m) })).toBe("waiting");
+    expect(await Promise.all(last.map((m) => tt.submitMatchReport(captainOf(m.team2Id!), ids.community, { matchId: m.id, winnerTeamId: winnerOf(m) })))).toEqual(["confirmed", "confirmed"]);
+    expect(await db.tournament.findUniqueOrThrow({ where: { id: ids.tournament } })).toMatchObject({ status: "DONE", championTeamId: bracketTeams[0].id });
+
+    const view = await read.getTeamTournamentView(ids.org, ids.community, ids.tournament);
+    expect(view?.roundRobin?.standings.map((row) => [row.rank, row.teamId, row.wins])).toEqual(bracketTeams.map((team, index) => [index + 1, team.id, 4 - index]));
+    expect([...(view?.roundRobin?.restingByRound.keys() ?? [])].sort()).toEqual([1, 2, 3, 4, 5]);
+    expect(new Set(view?.roundRobin?.restingByRound.values()).size).toBe(5);
+
+    // Podium : 1er 200, 2e 100, 3e et 4e la même XP que les demi-finalistes d'un arbre, 5e rien.
+    const membersOf = async (rank: number) => (await db.tournamentTeamMember.findMany({ where: { teamId: bracketTeams[rank - 1].id }, select: { userId: true } })).map((m) => m.userId);
+    const places = new Map<string, string>();
+    for (const call of awardXp.mock.calls) places.set(call[0] as string, String(call[3]).split(":")[1]);
+    for (const userId of await membersOf(1)) expect(places.get(userId)).toBe("1st");
+    for (const userId of await membersOf(2)) expect(places.get(userId)).toBe("2nd");
+    for (const userId of [...await membersOf(3), ...await membersOf(4)]) expect(places.get(userId)).toBe("semi");
+    for (const userId of await membersOf(5)) expect(places.has(userId)).toBe(false);
+  });
+
+  it("4 équipes : l’arbre éliminatoire existant est conservé", async () => {
+    await create(8);
+    for (const [letter, captain] of [["A", "a1"], ["B", "b1"], ["C", "c1"], ["D", "d1"]]) await enter(letter, captain);
+    expect(await tt.launchTeamTournament(ids.org, ids.community, ids.tournament)).toBe("launched");
+    expect(await db.tournamentTeamSettings.findUniqueOrThrow({ where: { tournamentId: ids.tournament } })).toMatchObject({ roundRobin: false });
+    expect(await db.tournamentMatch.count({ where: { tournamentId: ids.tournament } })).toBe(7); // arbre de 8 : 4 + 2 + 1
+  });
+
+  it("repli d'arbitrage : un match d'arbre s'ouvre quand ses deux équipes sont connues, et 48 h sans déclaration suffisent", async () => {
+    await create(4);
+    for (const [letter, captain] of [["A", "a1"], ["B", "b1"], ["C", "c1"], ["D", "d1"]]) await enter(letter, captain);
+    const round1 = await db.tournamentMatch.findMany({ where: { tournamentId: ids.tournament, round: 1 }, orderBy: { position: "asc" } });
+    expect(round1).toHaveLength(2);
+    expect(round1.every((m) => m.scheduledAt instanceof Date)).toBe(true);
+    const finale = () => db.tournamentMatch.findFirstOrThrow({ where: { tournamentId: ids.tournament, round: 2 } });
+    expect((await finale()).scheduledAt).toBeNull(); // équipes pas encore connues : pas d'ouverture
+    // Les deux demi-finales sont tranchées par l'arbitre sans déclaration, 48 h après leur ouverture.
+    for (const m of round1) {
+      const after48 = new Date(m.scheduledAt!.getTime() + 48 * H);
+      expect(await tt.resolveMatchByReferee(ids.org, ids.community, { matchId: m.id, winnerTeamId: m.team1Id! }, new Date(after48.getTime() - 1))).toBe("too_early");
+      expect(await tt.resolveMatchByReferee(ids.org, ids.community, { matchId: m.id, winnerTeamId: m.team1Id! }, after48)).toBe("resolved");
+    }
+    const final = await finale();
+    expect(final.team1Id && final.team2Id).toBeTruthy();
+    expect(final.scheduledAt).toBeInstanceOf(Date); // ouverte quand la seconde équipe est connue
   });
 
   it("les tournois d'équipes sont redirigés hors des chemins individuels (garde)", async () => {

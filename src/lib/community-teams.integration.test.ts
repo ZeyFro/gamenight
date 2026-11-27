@@ -93,7 +93,7 @@ describe.skipIf(!TEST_DATABASE_URL)("équipes communautaires : PostgreSQL isolé
     expect(await db.communityTeamMember.count({ where: { communityId: ids.community, userId: ids.racer } })).toBe(1);
   });
 
-  it("transfers leadership after thirty days only to the oldest active teammate", async () => {
+  it("transfers leadership after fourteen days only to an active teammate", async () => {
     const input = { communityId: ids.community, gameId: ids.game, description: "Exploration longue et coopérative.", platform: "PC", maxMembers: 8 };
     expect(await teams.createCommunityTeam({ ...input, userId: ids.leader, name: "Vieille équipe" })).toBe("created");
     const [team] = await db.communityTeam.findMany({ where: { communityId: ids.community } });
@@ -101,7 +101,7 @@ describe.skipIf(!TEST_DATABASE_URL)("équipes communautaires : PostgreSQL isolé
     expect(await teams.joinCommunityTeam(ids.racer, ids.community, team.id)).toBe("joined");
     await db.communityTeam.update({
       where: { id: team.id },
-      data: { captainLastActivityAt: new Date(Date.now() - 31 * 24 * 60 * 60 * 1000) },
+      data: { captainLastActivityAt: new Date(Date.now() - 15 * 24 * 60 * 60 * 1000) },
     });
 
     const { transferInactiveCommunityTeamCaptains } = await import("./community-team-handover");
@@ -110,7 +110,45 @@ describe.skipIf(!TEST_DATABASE_URL)("équipes communautaires : PostgreSQL isolé
     expect(await transferInactiveCommunityTeamCaptains(new Date(), false)).toMatchObject({ eligible: 1, transferred: 1 });
     expect((await db.communityTeam.findUniqueOrThrow({ where: { id: team.id } })).captainId).toBe(ids.member);
     expect(await transferInactiveCommunityTeamCaptains(new Date(), false)).toMatchObject({ transferred: 0 });
+    // Sans recruteur : le membre actif le plus ancien, journalisé une seule fois (la simulation n'écrit rien).
+    expect((await db.sensitiveOperationLog.findMany({ where: { action: "team.captain_handover", target: team.id }, select: { outcome: true } })).map((row) => row.outcome))
+      .toEqual([`oldest_member:${ids.member}`]);
     expect((await db.communityTeam.findUniqueOrThrow({ where: { id: team.id } })).createdById).toBe(ids.leader);
+  });
+
+  it("après quatorze jours, le recruteur actif passe avant le membre le plus ancien", async () => {
+    const input = { communityId: ids.community, gameId: ids.game, description: "Exploration longue et coopérative.", platform: "PC", maxMembers: 8 };
+    expect(await teams.createCommunityTeam({ ...input, userId: ids.leader, name: "Équipe recruteur" })).toBe("created");
+    const [team] = await db.communityTeam.findMany({ where: { communityId: ids.community } });
+    expect(await teams.joinCommunityTeam(ids.member, ids.community, team.id)).toBe("joined");
+    expect(await teams.joinCommunityTeam(ids.racer, ids.community, team.id)).toBe("joined");
+    await db.communityTeamRecruiter.create({ data: { communityId: ids.community, teamId: team.id, userId: ids.racer } });
+    await db.communityTeam.update({
+      where: { id: team.id },
+      data: { captainLastActivityAt: new Date(Date.now() - 15 * 24 * 60 * 60 * 1000) },
+    });
+
+    const { transferInactiveCommunityTeamCaptains } = await import("./community-team-handover");
+    expect(await transferInactiveCommunityTeamCaptains(new Date(), false)).toMatchObject({ transferred: 1 });
+    expect((await db.communityTeam.findUniqueOrThrow({ where: { id: team.id } })).captainId).toBe(ids.racer);
+    // Journal des décisions : une ligne système, dans la même transaction que la passation.
+    expect(await db.sensitiveOperationLog.findMany({ where: { action: "team.captain_handover", target: team.id }, select: { actorId: true, communityRef: true, outcome: true } }))
+      .toEqual([{ actorId: null, communityRef: ids.community, outcome: `recruiter:${ids.racer}` }]);
+  });
+
+  it("ne transfère pas avant quatorze jours", async () => {
+    const input = { communityId: ids.community, gameId: ids.game, description: "Exploration longue et coopérative.", platform: "PC", maxMembers: 8 };
+    expect(await teams.createCommunityTeam({ ...input, userId: ids.leader, name: "Équipe récente" })).toBe("created");
+    const [team] = await db.communityTeam.findMany({ where: { communityId: ids.community } });
+    expect(await teams.joinCommunityTeam(ids.member, ids.community, team.id)).toBe("joined");
+    await db.communityTeam.update({
+      where: { id: team.id },
+      data: { captainLastActivityAt: new Date(Date.now() - 13 * 24 * 60 * 60 * 1000) },
+    });
+
+    const { transferInactiveCommunityTeamCaptains } = await import("./community-team-handover");
+    expect(await transferInactiveCommunityTeamCaptains(new Date(), false)).toMatchObject({ transferred: 0 });
+    expect((await db.communityTeam.findUniqueOrThrow({ where: { id: team.id } })).captainId).toBe(ids.leader);
   });
 
   it("identité visuelle (§11.2) : le capitaine choisit couleur et emblème, un autre membre est refusé", async () => {

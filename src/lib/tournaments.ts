@@ -16,6 +16,7 @@ import { logger } from "@/lib/logger";
 import { closeThreadOnEndSafely } from "@/lib/thread-close-on-end";
 import { isWithinHistoryWindow } from "@/lib/history-visibility";
 import { scoreConsistencyError } from "@/lib/tournament-scores";
+import { roundRobinComplete, roundRobinStandings } from "@/lib/tournament-round-robin";
 import {
   enqueueTournamentAnnounceDelete,
   enqueueTournamentAnnounceUpdate,
@@ -202,7 +203,51 @@ export async function advanceWinner(
     where: { tournamentId_round_position: { tournamentId, round: nextRound, position: nextPosition } },
     data: { [nextField]: winnerId },
   });
+  if (teamMode) {
+    // Tournoi d'équipes : le match suivant s'ouvre quand ses deux équipes sont connues (départ du délai de repli
+    // de l'arbitrage, décision du 26/11/2026). Posé une seule fois ; sans effet pour les tournois individuels.
+    await tx.tournamentMatch.updateMany({
+      where: { tournamentId, round: nextRound, position: nextPosition, team1Id: { not: null }, team2Id: { not: null }, scheduledAt: null },
+      // VRAI instant : `arbitrationOpen` compare cette ouverture à `Date.now()`.
+      data: { scheduledAt: new Date() },
+    });
+  }
   return { tournamentFinalized: false };
+}
+
+/**
+ * Poule unique d'un tournoi d'équipes (décision du 26/11/2026) : aucun avancement. Quand toutes les rencontres sont tranchées, le
+ * premier du classement devient champion et le tournoi passe à DONE (même claim conditionné que `advanceWinner`).
+ * Verrouille d'abord la ligne du tournoi : deux derniers matchs tranchés en même temps se sérialisent ici, et le second voit le
+ * premier déjà validé (sinon aucun des deux ne verrait la poule complète et le tournoi resterait ouvert).
+ */
+async function finishRoundRobinIfComplete(tx: Prisma.TransactionClient, tournamentId: string, announceViaBot: boolean): Promise<{ tournamentFinalized: boolean }> {
+  await tx.$queryRaw`SELECT id FROM "Tournament" WHERE id = ${tournamentId} FOR UPDATE`;
+  const matches = await tx.tournamentMatch.findMany({
+    where: { tournamentId },
+    select: { team1Id: true, team2Id: true, winnerTeamId: true, score1: true, score2: true, completedAt: true },
+  });
+  if (!roundRobinComplete(matches)) return { tournamentFinalized: false };
+  const teams = await tx.tournamentTeam.findMany({ where: { tournamentId }, select: { id: true, name: true, position: true } });
+  const [champion] = roundRobinStandings(teams, matches);
+  if (!champion) return { tournamentFinalized: false };
+  const claim = await tx.tournament.updateMany({
+    where: { id: tournamentId, status: "IN_PROGRESS" },
+    data: { status: "DONE", championTeamId: champion.teamId },
+  });
+  if (claim.count !== 1) return { tournamentFinalized: false };
+  if (announceViaBot) {
+    await enqueueTournamentAnnounceUpdate(tournamentId, tx);
+    await enqueueTournamentResultThreadSummary(tournamentId, tx);
+  }
+  return { tournamentFinalized: true };
+}
+
+/** Le tournoi d'équipes se joue-t-il en poule unique ? (lu une fois par appel, jamais pour un tournoi individuel). */
+async function isRoundRobinTournament(tournamentId: string, teamMode: boolean): Promise<boolean> {
+  if (!teamMode) return false;
+  const settings = await prisma.tournamentTeamSettings.findUnique({ where: { tournamentId }, select: { roundRobin: true } });
+  return settings?.roundRobin === true;
 }
 
 interface LockedTournamentRow {
@@ -481,6 +526,7 @@ export async function declareWinner(
     ? winnerId === match.team1Id ? match.team2Id : match.team1Id
     : computeMatchLoser(winnerId, match.player1Id, match.player2Id);
   const totalRounds = totalRoundsFor(tournamentBracketSize(match.tournament.maxPlayers, match.tournament.format));
+  const roundRobin = await isRoundRobinTournament(match.tournamentId, teamMode);
 
   let claimed = false;
   let tournamentFinalized = false;
@@ -493,6 +539,14 @@ export async function declareWinner(
     if (claim.count !== 1) return; // course perdue — le match a déjà été tranché
 
     claimed = true;
+
+    if (roundRobin) {
+      // Poule unique : personne n'est éliminé par une défaite, le classement final décide.
+      const finished = await finishRoundRobinIfComplete(tx, match.tournamentId, match.tournament.announceViaBot);
+      if (match.tournament.announceViaBot) await enqueueTournamentMatchResult(match.tournamentId, matchId, tx);
+      tournamentFinalized = finished.tournamentFinalized;
+      return;
+    }
 
     if (loserId && !teamMode) {
       await tx.tournamentParticipant.updateMany({
@@ -562,12 +616,16 @@ async function announceTournamentFinalization(tournamentId: string, championId: 
     if (!tournament) return;
 
     const teamMode = tournament.format === "TEAMS";
+    const roundRobin = await isRoundRobinTournament(tournamentId, teamMode);
+    const standings = roundRobin
+      ? roundRobinStandings(await prisma.tournamentTeam.findMany({ where: { tournamentId }, select: { id: true, name: true, position: true } }), tournament.matches)
+      : [];
     const totalRounds = totalRoundsFor(tournamentBracketSize(tournament.maxPlayers, tournament.format));
-    const finalMatch = tournament.matches.find((m) => m.round === totalRounds);
-    const runnerUpId = teamMode
+    const finalMatch = roundRobin ? undefined : tournament.matches.find((m) => m.round === totalRounds);
+    const runnerUpId = roundRobin ? standings[1]?.teamId ?? null : teamMode
       ? finalMatch?.winnerTeamId ? finalMatch.team1Id === finalMatch.winnerTeamId ? finalMatch.team2Id : finalMatch.team1Id : null
       : finalMatch?.winnerId ? finalMatch.player1Id === finalMatch.winnerId ? finalMatch.player2Id : finalMatch.player1Id : null;
-    const semifinalLoserIds = tournament.matches
+    const semifinalLoserIds = roundRobin ? standings.slice(2, 4).map((row) => row.teamId) : tournament.matches
       .filter((m) => m.round === totalRounds - 1 && (teamMode ? m.winnerTeamId : m.winnerId))
       .map((m) => teamMode
         ? m.team1Id === m.winnerTeamId ? m.team2Id : m.team1Id

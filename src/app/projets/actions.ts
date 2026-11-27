@@ -12,6 +12,7 @@ import {
   createProject,
   decideProjectEntry,
   getProjectsCommunityId,
+  renewProject,
   withdrawFromProject,
 } from "@/lib/projects";
 
@@ -72,6 +73,18 @@ export async function decideProjectEntryAction(formData: FormData): Promise<void
   const decision = String(formData.get("decision")) === "ACCEPT" ? "ACCEPT" : "DECLINE";
   const result = await decideProjectEntry(user.id, communityId, entryId.data, decision);
   back(path, result.ok ? (decision === "ACCEPT" ? "accepted" : "declined") : result.reason);
+}
+
+export async function renewProjectAction(formData: FormData): Promise<void> {
+  const projectId = idSchema.safeParse(formData.get("projectId"));
+  if (!projectId.success) redirect("/projets");
+  const path = `/projets/${projectId.data}`;
+  const { user, communityId } = await authorized("renewProject", path);
+  const date = String(formData.get("endDate") ?? "");
+  const time = String(formData.get("endTime") ?? "") || "23:59";
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !/^\d{2}:\d{2}$/.test(time)) back(path, "invalid");
+  const result = await renewProject(user.id, communityId, projectId.data, parseDateAndTime(date, time));
+  back(path, result.ok ? "renewed" : result.reason);
 }
 
 export async function closeProjectAction(formData: FormData): Promise<void> {

@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { captainIdOf, captainSelect } from "@/lib/tournament-team-captain";
 import { privateTeamTournamentWhere } from "@/lib/tournament-team-guards";
 import { getTournamentTeamsCommunityId } from "@/lib/tournament-teams";
+import { arbitrationOpen, arbitrationOpensAt, roundRobinStandings } from "@/lib/tournament-round-robin";
 import { uniqueGameOptions } from "@/lib/game-search";
 
 /** Tournois d'équipes visibles par `userId` (publics, ou privés qu'il organise ou où l'une de ses équipes est invitée/inscrite). */
@@ -73,16 +74,17 @@ export async function getTeamTournamentView(userId: string, communityId: string,
     select: {
       id: true, name: true, status: true, createdById: true, game: { select: { name: true } },
       createdBy: { select: { discordName: true } },
-      teamSettings: { select: { isPrivate: true, maxTeams: true, registrationClosesAt: true } },
+      teamSettings: { select: { isPrivate: true, maxTeams: true, registrationClosesAt: true, roundRobin: true } },
+      teams: { select: { id: true, name: true, position: true }, orderBy: { position: "asc" } },
       teamEntries: {
         select: { teamId: true, status: true, tournamentTeamId: true, team: { select: { name: true, ...captainSelect(communityId) } } },
         orderBy: { createdAt: "asc" },
       },
       matches: {
         select: {
-          id: true, round: true, position: true, team1Id: true, team2Id: true, winnerTeamId: true, completedAt: true, score1: true, score2: true,
+          id: true, round: true, position: true, team1Id: true, team2Id: true, winnerTeamId: true, completedAt: true, score1: true, score2: true, scheduledAt: true,
           team1: { select: { name: true } }, team2: { select: { name: true } },
-          reports: { select: { teamId: true, winnerTeamId: true, score1: true, score2: true } },
+          reports: { select: { teamId: true, winnerTeamId: true, score1: true, score2: true, createdAt: true } },
         },
         orderBy: [{ round: "asc" }, { position: "asc" }],
       },
@@ -90,13 +92,22 @@ export async function getTeamTournamentView(userId: string, communityId: string,
   });
   if (!tournament?.teamSettings) return null;
   const membership = await prisma.membership.findUnique({ where: { communityId_userId: { communityId, userId } }, select: { role: true } });
+  const now = new Date();
   const isOrganizer = tournament.createdById === userId;
   const captained = tournament.teamEntries.filter((entry) => captainIdOf(entry.team) === userId);
   return {
     id: tournament.id, name: tournament.name, status: tournament.status, gameName: tournament.game.name, organizerName: tournament.createdBy.discordName,
     settings: tournament.teamSettings,
     entries: tournament.teamEntries.map((entry) => ({ teamId: entry.teamId, teamName: entry.team.name, status: entry.status })),
-    matches: tournament.matches,
+    matches: tournament.matches.map((match) => {
+      const dates = match.reports.map((report) => report.createdAt);
+      return { ...match, arbitrationOpensAt: arbitrationOpensAt(dates, match.scheduledAt), arbitrationOpen: arbitrationOpen(dates, now, match.scheduledAt) };
+    }),
+    // Poule unique (décision du 26/11/2026) : calendrier par journée, équipe au repos et classement calculés à la lecture.
+    roundRobin: tournament.teamSettings.roundRobin ? {
+      standings: roundRobinStandings(tournament.teams, tournament.matches),
+      restingByRound: restingTeams(tournament.teams, tournament.matches),
+    } : null,
     viewer: {
       isOrganizer,
       isReferee: isOrganizer || membership?.role === "ADMIN" || membership?.role === "OWNER",
@@ -104,4 +115,20 @@ export async function getTeamTournamentView(userId: string, communityId: string,
       captainBracketTeamIds: captained.flatMap((entry) => (entry.tournamentTeamId ? [entry.tournamentTeamId] : [])),
     },
   };
+}
+
+/** Équipe au repos de chaque journée de la poule (celle qui n'apparaît dans aucun match de la journée). */
+function restingTeams(teams: readonly { id: string; name: string }[], matches: readonly { round: number; team1Id: string | null; team2Id: string | null }[]): Map<number, string> {
+  const rounds = new Map<number, Set<string>>();
+  for (const match of matches) {
+    const playing = rounds.get(match.round) ?? new Set<string>();
+    for (const id of [match.team1Id, match.team2Id]) if (id) playing.add(id);
+    rounds.set(match.round, playing);
+  }
+  const resting = new Map<number, string>();
+  for (const [round, playing] of rounds) {
+    const team = teams.find((candidate) => !playing.has(candidate.id));
+    if (team) resting.set(round, team.name);
+  }
+  return resting;
 }

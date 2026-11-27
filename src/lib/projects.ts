@@ -186,6 +186,32 @@ export async function decideProjectEntry(actorId: string, communityId: string, e
   return { ok: true };
 }
 
+/**
+ * Renouvellement par l'organisateur : la nouvelle fin doit être postérieure à l'actuelle et
+ * rester dans la limite de 90 jours à partir d'aujourd'hui. Un projet clôturé n'est jamais rouvert.
+ */
+export async function renewProject(
+  actorId: string,
+  communityId: string,
+  projectId: string,
+  endsAt: Date,
+  wallNow: Date = wallClockNow(),
+): Promise<ProjectResult<{ endsAt: Date }>> {
+  if (!projectOrganizerEnabled()) return { ok: false, reason: "disabled" };
+  const { scopedDb, project } = await loadForActor(actorId, communityId, projectId);
+  if (!project) return { ok: false, reason: "missing" };
+  if (project.organizerId !== actorId) return { ok: false, reason: "forbidden" };
+  if (project.status !== "OPEN") return { ok: false, reason: "closed" };
+  if (endsAt.getTime() <= project.endsAt.getTime()) return { ok: false, reason: "not_later" };
+  const validity = validateEndsAt(endsAt, wallNow);
+  if (validity !== "ok") return { ok: false, reason: validity };
+  const updated = await scopedDb.project.updateMany({
+    where: { id: projectId, communityId, status: "OPEN", endsAt: project.endsAt },
+    data: { endsAt },
+  });
+  return updated.count === 1 ? { ok: true, endsAt } : { ok: false, reason: "conflict" };
+}
+
 /** Clôture anticipée par l'organisateur ; l'archivage des fils suit 7 jours plus tard. */
 export async function closeProject(actorId: string, communityId: string, projectId: string): Promise<ProjectResult> {
   if (!projectOrganizerEnabled()) return { ok: false, reason: "disabled" };

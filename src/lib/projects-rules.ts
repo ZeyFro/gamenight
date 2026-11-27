@@ -7,7 +7,7 @@ import { z } from "zod";
  */
 export const PROJECT_ARCHIVE_DELAY_MS = 7 * 24 * 3_600_000;
 export const PROJECT_MIN_DURATION_MS = 3_600_000;
-export const PROJECT_MAX_DURATION_MS = 365 * 24 * 3_600_000;
+export const PROJECT_MAX_DURATION_MS = 90 * 24 * 3_600_000;
 export const PROJECT_MAX_ENTRIES_LIMIT = 200;
 
 export function projectOrganizerEnabled(env: Record<string, string | undefined> = process.env): boolean {
@@ -25,7 +25,7 @@ export const projectEntryMessageSchema = z.string().trim().max(300);
 
 export type ProjectEntryStatusValue = "PENDING" | "ACCEPTED" | "DECLINED" | "WITHDRAWN";
 
-/** La date de fin doit tomber entre 1 h et 365 jours dans le futur (horloge murale). */
+/** La date de fin doit tomber entre 1 h et 90 jours dans le futur (horloge murale) ; un projet peut être renouvelé. */
 export function validateEndsAt(endsAt: Date, now: Date): "ok" | "too_soon" | "too_far" | "invalid" {
   if (Number.isNaN(endsAt.getTime())) return "invalid";
   const delta = endsAt.getTime() - now.getTime();

@@ -159,6 +159,21 @@ describe.skipIf(!TEST_DATABASE_URL)("projets à organisateur (intégration Postg
     expect(await projects.applyToProject(player.id, communityId, projectId, "")).toEqual({ ok: false, reason: "closed" });
   });
 
+  it("renouvelle la fin dans la limite de 90 jours, organisateur seul, jamais après clôture", async () => {
+    const organizer = await makeUser();
+    const player = await makeUser();
+    const projectId = await makeProject(organizer.id);
+    expect(await projects.renewProject(player.id, communityId, projectId, inDays(30))).toEqual({ ok: false, reason: "forbidden" });
+    expect(await projects.renewProject(organizer.id, communityId, projectId, inDays(5))).toEqual({ ok: false, reason: "not_later" });
+    expect(await projects.renewProject(organizer.id, communityId, projectId, inDays(91))).toEqual({ ok: false, reason: "too_far" });
+    const target = inDays(30);
+    const renewed = await projects.renewProject(organizer.id, communityId, projectId, target);
+    expect(renewed.ok).toBe(true);
+    expect((await db.project.findUniqueOrThrow({ where: { id: projectId } })).endsAt.getTime()).toBe(target.getTime());
+    expect(await projects.closeProject(organizer.id, communityId, projectId)).toEqual({ ok: true });
+    expect(await projects.renewProject(organizer.id, communityId, projectId, inDays(60))).toEqual({ ok: false, reason: "closed" });
+  });
+
   it("cycle de vie : clôture à la date de fin puis archivage 7 jours après (sans fil : direct)", async () => {
     const organizer = await makeUser();
     const ended = await db.project.create({

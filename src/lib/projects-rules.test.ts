@@ -31,11 +31,11 @@ describe("interrupteur et saisie", () => {
 });
 
 describe("validateEndsAt", () => {
-  it("exige une fin entre 1 h et 365 jours", () => {
+  it("exige une fin entre 1 h et 90 jours", () => {
     expect(validateEndsAt(new Date(NOW.getTime() + 30 * 60_000), NOW)).toBe("too_soon");
     expect(validateEndsAt(new Date(NOW.getTime() - H), NOW)).toBe("too_soon");
     expect(validateEndsAt(new Date(NOW.getTime() + H), NOW)).toBe("ok");
-    expect(validateEndsAt(new Date(NOW.getTime() + 366 * 24 * H), NOW)).toBe("too_far");
+    expect(validateEndsAt(new Date(NOW.getTime() + 91 * 24 * H), NOW)).toBe("too_far");
     expect(validateEndsAt(new Date("nope"), NOW)).toBe("invalid");
   });
 });
