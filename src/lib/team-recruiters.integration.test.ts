@@ -138,6 +138,44 @@ describe.skipIf(!TEST_DATABASE_URL)("recruteurs, cycle de vie des candidatures e
     expect(rows.map(row => row.recipientKey).sort()).toEqual([`user:${ids.leader}`, `user:${ids.r1}`].sort());
   });
 
+  it("C077 — parcours complet : 2 recruteurs, relance 48 h, expiration 7 j, plafond 8 et invité de tournoi", async () => {
+    expect(await recruiters.addTeamRecruiter(ids.leader, ids.community, { teamId: ids.team, userId: ids.r1 })).toBe("added");
+    expect(await recruiters.addTeamRecruiter(ids.leader, ids.community, { teamId: ids.team, userId: ids.r2 })).toBe("added");
+    expect(await recruiters.addTeamRecruiter(ids.leader, ids.community, { teamId: ids.team, userId: ids.r3 })).toBe("limit");
+
+    expect(await apps.applyToTeam(ids.ana, ids.community, { teamId: ids.team, message: "Recrutement" })).toBe("applied");
+    const [pending] = await apps.listPendingApplicationsForLeader(ids.r1, ids.community);
+    expect(await apps.decideTeamApplication(ids.r1, ids.community, pending.id, true)).toBe("accepted");
+
+    const tournament = await db.tournament.create({ data: { name: "Coupe C077", createdById: ids.leader, gameId: ids.game, maxPlayers: 8, communityId: ids.community } });
+    expect(await teams.createCommunityTeam({ userId: ids.guest, communityId: ids.community, gameId: ids.game, name: "Autre équipe", description: "Une autre aventure ensemble.", platform: "PC", maxMembers: 4 })).toBe("created");
+    expect(await recruiters.inviteTeamGuest(ids.leader, ids.community, { teamId: ids.team, tournamentId: tournament.id, userId: ids.guest })).toBe("invited");
+    const [invitation] = await recruiters.listMyGuestInvitations(ids.guest, ids.community);
+    expect(await recruiters.respondToTeamGuestInvitation(ids.guest, ids.community, invitation.id, true)).toBe("accepted");
+
+    for (const name of ["fill1", "fill2"]) {
+      const user = await db.user.create({ data: { discordId: name, discordName: name } });
+      await db.membership.create({ data: { userId: user.id, communityId: ids.community, status: "ACTIVE", joinedAt: new Date() } });
+      expect(await teams.joinCommunityTeam(user.id, ids.community, ids.team)).toBe("joined");
+    }
+    expect(await apps.applyToTeam(ids.bob, ids.community, { teamId: ids.team, message: "Dernière place" })).toBe("applied");
+    const bobApplication = await db.teamApplication.findFirstOrThrow({ where: { applicantId: ids.bob, status: "PENDING" } });
+    const fill = await db.user.create({ data: { discordId: "fill3", discordName: "fill3" } });
+    await db.membership.create({ data: { userId: fill.id, communityId: ids.community, status: "ACTIVE", joinedAt: new Date() } });
+    expect(await teams.joinCommunityTeam(fill.id, ids.community, ids.team)).toBe("joined");
+    expect(await db.communityTeamMember.count({ where: { teamId: ids.team } })).toBe(8);
+    expect(await apps.decideTeamApplication(ids.leader, ids.community, bobApplication.id, true)).toBe("full");
+
+    vi.stubEnv("NOTIFICATION_EXECUTOR_ENABLED", "true");
+    vi.stubEnv("DISCORD_BOT_TOKEN", "faux-jeton");
+    const start = bobApplication.createdAt.getTime();
+    expect(await lifecycle.runTeamApplicationLifecycle(new Date(start + 49 * H))).toMatchObject({ reminded: 1, expired: 0 });
+    const notices = await db.notificationDelivery.findMany({ where: { event: { eventType: "TEAM_APPLICATION_NOTIFY" } }, select: { recipientKey: true } });
+    expect(notices.map((notice) => notice.recipientKey).sort()).toEqual([`user:${ids.leader}`, `user:${ids.r1}`, `user:${ids.r2}`].sort());
+    expect(await lifecycle.runTeamApplicationLifecycle(new Date(start + 7 * 24 * H + H))).toMatchObject({ expired: 1 });
+    expect((await db.teamApplication.findUniqueOrThrow({ where: { id: bobApplication.id } })).status).toBe("EXPIRED");
+  });
+
   describe("invités de tournoi", () => {
     beforeEach(async () => {
       ids.tournament = (await db.tournament.create({ data: { name: "Coupe", createdById: ids.leader, gameId: ids.game, maxPlayers: 8, communityId: ids.community } })).id;
