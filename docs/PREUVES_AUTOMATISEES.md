@@ -227,6 +227,200 @@ TEST_DATABASE_URL='postgresql://postgres@127.0.0.1:55439/gamenight_test' \
 
 ---
 
+## C030 — Créer, découvrir, rejoindre et recruter dans une équipe
+
+**Exigence** (ligne C030) : un membre crée une équipe, les autres la découvrent, postulent ou la rejoignent, et un recruteur peut accepter une candidature sans contourner la capacité ni l'isolation des communautés.
+
+**Verdict : couvert de bout en bout**, en complément du parcours capitaine/candidat déjà fusionné par #623 :
+
+- `src/lib/team-applications.integration.test.ts`, test `C030 — un recruteur accepte la candidature, un autre joueur rejoint et un étranger est refusé` (cinq utilisateurs distincts : capitaine, recruteur, candidate, joueur direct, membre d'une autre communauté) :
+  - le capitaine nomme un recruteur, qui voit la candidature et l'accepte ;
+  - un autre membre actif rejoint directement l'équipe ;
+  - un membre d'une autre communauté ne peut pas rejoindre cette équipe ;
+  - la fiche relue par le joueur qui a rejoint liste les quatre membres actifs et le bon compte.
+
+**Ce que la preuve établit** : les deux chemins d'entrée (candidature acceptée par un recruteur, rejoindre directement) et le refus d'un membre hors communauté sont exécutés sur PostgreSQL avec des comptes distincts.
+
+**Limites** : aucun clic sur l'interface web, aucun message Discord réel ; la capacité est portée à 5 dans le scénario pour loger les cinq rôles, sans modifier le code produit.
+
+**Commande** :
+
+```bash
+TEST_DATABASE_URL='postgresql://postgres@127.0.0.1:55439/gamenight_test' \
+  npx vitest run src/lib/team-applications.integration.test.ts --maxWorkers=1
+```
+
+---
+
+## C031 — Fiche d'équipe complète
+
+**Exigence** (ligne C031) : la fiche d'une équipe expose son nom, sa description, son capitaine, ses membres, son jeu, ses critères de recrutement, son identité visuelle et ses rendez-vous, y compris pour un autre membre que le capitaine.
+
+**Verdict : couvert de bout en bout**, en complément de #623 :
+
+- `src/lib/team-applications.integration.test.ts`, test `C031 — la fiche complète expose identité, critères, membres actifs et rendez-vous à un autre membre` :
+  - identité (couleur et emblème) et critères enregistrés par le capitaine, puis relus par une membre ;
+  - membres actifs uniquement : un joueur qui a quitté l'équipe disparaît de la fiche ;
+  - jeu, capitaine et description présents ;
+  - une soirée à venir liée à l'équipe et visible par la membre invitée apparaît comme rendez-vous.
+
+**Ce que la preuve établit** : la fiche lue par un autre membre contient toutes les rubriques attendues et n'expose pas un ancien membre ; la lecture passe par le vrai service et les vraies relations PostgreSQL.
+
+**Limites** : la carte n'est pas ouverte dans un navigateur ; le rendu visuel exact (mise en page, responsive) n'est pas vérifié ici.
+
+**Commande** :
+
+```bash
+TEST_DATABASE_URL='postgresql://postgres@127.0.0.1:55439/gamenight_test' \
+  npx vitest run src/lib/team-applications.integration.test.ts --maxWorkers=1
+```
+
+---
+
+## C077 — Recruteurs, relances, expiration, plafond et invités de tournoi
+
+**Exigence** (ligne C077) : au plus deux recruteurs par équipe, décision des candidatures par le capitaine ou un recruteur, relance à 48 h, expiration à 7 jours, plafond de huit membres et invités de tournoi sans quitter leur équipe.
+
+**Verdict : couvert de bout en bout** par `src/lib/team-recruiters.integration.test.ts`, test `C077 — parcours complet : 2 recruteurs, relance 48 h, expiration 7 j, plafond 8 et invité de tournoi` :
+
+- deux recruteurs nommés, le troisième refusé ;
+- une candidate acceptée par un recruteur ;
+- un joueur d'une autre équipe invité au tournoi, qui accepte sans changer d'équipe ;
+- l'équipe remplie à huit membres, puis une candidature restée en attente que l'acceptation refuse pour capacité (`full`) ;
+- relance unique à 48 h envoyée au capitaine et aux deux recruteurs, puis expiration à 7 jours.
+
+**Ce que la preuve établit** : le cycle complet des rôles de recrutement, des délais et du plafond est enchaîné dans un même scénario multi-utilisateurs, avec les notifications en file.
+
+**Limites** : le cron réel n'est pas déclenché (le cycle est appelé directement avec des dates avancées), les MP Discord ne partent pas réellement et le tournoi n'est pas joué.
+
+**Commande** :
+
+```bash
+TEST_DATABASE_URL='postgresql://postgres@127.0.0.1:55439/gamenight_test' \
+  npx vitest run src/lib/team-recruiters.integration.test.ts --maxWorkers=1
+```
+
+---
+
+## C083 — Projets à organisateur : date de fin, candidatures, clôture et archivage
+
+**Exigence** (ligne C083) : un organisateur crée un projet avec une date de fin, reçoit des candidatures, accepte ou refuse chaque candidat, puis clôture le projet ; l'archivage intervient sept jours après la clôture et les autres communautés n'y ont pas accès.
+
+**Verdict : couvert de bout en bout** par `src/lib/projects.integration.test.ts`, test `C083 — projet daté : deux candidats, décision de l'organisateur, isolation, clôture puis archivage` :
+
+- date de fin future et deux candidatures distinctes ;
+- une acceptation et un refus par l'organisateur ;
+- le participant accepté voit le projet, le refusé garde une trace `DECLINED`, un membre d'une autre communauté ne voit ni ne rejoint le projet ;
+- clôture par l'organisateur, puis plus aucune candidature ;
+- archivage par le cycle de vie après le délai de sept jours, avec `archivedAt` renseigné.
+
+**Ce que la preuve établit** : le parcours complet organisateur/candidats et le cycle de vie sont exécutés sur PostgreSQL, avec l'isolation de communauté et l'archivage.
+
+**Limites** : le cycle est avancé par des dates injectées, pas par un cron réel ; aucun fil Discord de projet n'est créé ni archivé dans ce scénario.
+
+**Commande** :
+
+```bash
+TEST_DATABASE_URL='postgresql://postgres@127.0.0.1:55439/gamenight_test' \
+  npx vitest run src/lib/projects.integration.test.ts --maxWorkers=1
+```
+
+---
+
+## C084 — Défis entre équipes et « Intéressé » sur une session immédiate
+
+**Exigence** (ligne C084) : deux capitaines s'envoient un défi, l'adversaire l'accepte, le résultat n'est compté qu'après confirmation par les deux côtés, l'historique est lisible ; « Intéressé » permet à plusieurs joueurs de se signaler et disparaît quand l'un rejoint.
+
+**Verdict : couvert de bout en bout** par `src/lib/team-rivalries.integration.test.ts`, test `C084 — défi confirmé par les deux capitaines, puis trois intéressés dont un rejoint` :
+
+- proposition d'un capitaine, acceptation par le capitaine adverse ;
+- résultat déclaré par A puis confirmé par B, statut `COMPLETED`, bilan identique des deux côtés (une victoire / une défaite) et historique consultable par l'adversaire ;
+- trois joueurs marquent leur intérêt sur une session immédiate, la liste en montre trois ;
+- l'un rejoint la session, son intérêt est effacé et les deux autres restent intéressés.
+
+**Ce que la preuve établit** : la double confirmation et le compteur de bilan, puis le parcours multi-utilisateurs de l'intérêt, sont exécutés avec de vraies écritures.
+
+**Limites** : « rejoindre » est appelé au niveau service, sans bouton Discord ni navigateur ; le défi n'est pas joué réellement.
+
+**Commande** :
+
+```bash
+TEST_DATABASE_URL='postgresql://postgres@127.0.0.1:55439/gamenight_test' \
+  npx vitest run src/lib/team-rivalries.integration.test.ts --maxWorkers=1
+```
+
+---
+
+## C057 — Confidentialité des preuves, tickets et journaux de modération
+
+**Exigence** (ligne C057) : une preuve déposée n'est visible que par son auteur et le staff ; un ticket de signalement part uniquement vers la file staff ; les journaux de modération ne sont pas exposés aux membres ordinaires.
+
+**Verdict : couvert de bout en bout pour le périmètre automatisable** par `src/lib/moderation-confidentiality.integration.test.ts` (auteur, témoin, staff ADMIN, membre d'une autre communauté) :
+
+- l'auteur retrouve sa tentative, un autre membre ne voit aucune tentative et la file staff lui est refusée ;
+- le staff reçoit la file avec le texte de la preuve, un membre d'une autre communauté n'obtient jamais la file staff ;
+- un signalement est enregistré, puis son ticket est enfilé vers le seul emplacement `ADMIN` et résolu vers le salon staff, sans contenu du message dans la charge utile.
+
+**Ce que la preuve établit** : les deux lectures sensibles (preuve, ticket) sont filtrées par le service réel et par la portée de communauté ; la destination staff est vérifiée sur la livraison et sur la résolution.
+
+**Limites** : les salons Discord sont simulés, aucun message réel n'est lu ni publié ; la politique de publication volontaire des preuves reste couverte par les tests unitaires d'annonces, pas par un consentement réel.
+
+**Commande** :
+
+```bash
+TEST_DATABASE_URL='postgresql://postgres@127.0.0.1:55439/gamenight_test' \
+  npx vitest run src/lib/moderation-confidentiality.integration.test.ts --maxWorkers=1
+```
+
+---
+
+## C088 — Signalement par plusieurs membres, ticket privé, aucune sanction
+
+**Exigence** (ligne C088) : plusieurs membres peuvent signaler un même message ; chaque signalement produit un ticket privé pour le staff, sans publication publique ni sanction automatique.
+
+**Verdict : couvert de bout en bout** par `src/lib/discord-report-command.integration.test.ts`, test `C088 — deux membres signalent le même message : deux tickets staff privés, aucune sanction` :
+
+- deux reporters distincts signalent le même message et obtiennent deux enregistrements ;
+- deux tickets sont enfilés, chacun vers un emplacement `ADMIN` et résolus vers le salon staff ;
+- la charge utile ne contient pas le texte du message ;
+- aucun signalement n'est clôturé ni sanctionné automatiquement.
+
+**Ce que la preuve établit** : la multiplicité des témoins ne crée ni doublon par membre ni fuite publique, et la destination staff est vérifiée bout en bout.
+
+**Limites** : aucun clic sur la commande Discord, aucun message Discord réel ; la sanction humaine reste hors du périmètre automatisé.
+
+**Commande** :
+
+```bash
+TEST_DATABASE_URL='postgresql://postgres@127.0.0.1:55439/gamenight_test' \
+  npx vitest run src/lib/discord-report-command.integration.test.ts --maxWorkers=1
+```
+
+---
+
+## D14 — Journalisation d'un signalement sans action de modération
+
+**Exigence** (ligne D14) : un signalement est journalisé avec son contexte (salon, message, auteur, signaleur, extrait) et ne déclenche aucune action de sanction ; la table ne porte pas de colonne d'action.
+
+**Verdict : couvert de bout en bout** par `src/lib/discord-report-command.integration.test.ts`, test `D14 — le signalement est journalisé avec son contexte, sans action de sanction` :
+
+- la ligne conserve le salon, le message, l'auteur, le signaleur, l'extrait et le nombre de pièces jointes ;
+- le ticket est enfilé vers la file `ADMIN` avec seulement l'identifiant du signalement ;
+- aucune colonne `action`, `sanction`, `ban`, `mute` ou `kick` n'existe dans `ModerationReport`.
+
+**Ce que la preuve établit** : le journal est complet pour le staff et le schéma interdit structurellement une sanction automatique dans cette table.
+
+**Limites** : la décision humaine et son éventuelle sanction ne sont pas simulées ; le test vérifie l'absence de mécanisme, pas l'absence d'usage d'un autre outil externe.
+
+**Commande** :
+
+```bash
+TEST_DATABASE_URL='postgresql://postgres@127.0.0.1:55439/gamenight_test' \
+  npx vitest run src/lib/discord-report-command.integration.test.ts --maxWorkers=1
+```
+
+---
+
 ## Écarts et limites signalés (aucun correctif produit dans cette PR)
 
 1. **C078 — 3 jours contre 7 jours** : contradiction entre `CAHIER_DES_CHARGES.md` §27.1 B (« 7 jours ») et `CAHIER_FINAL.md` / le code (« 3 jours »). Gravité **faible** (documentation), à trancher par Maxime.

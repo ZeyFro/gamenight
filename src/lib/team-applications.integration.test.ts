@@ -155,6 +155,80 @@ describe.skipIf(!TEST_DATABASE_URL)("candidatures d'équipe : PostgreSQL isolé"
     expect(await db.communityTeamMember.findFirstOrThrow({ where: { teamId: ids.team, userId: ids.ana } })).toBeTruthy();
   });
 
+  it("C030 — un recruteur accepte la candidature, un autre joueur rejoint et un étranger est refusé", async () => {
+    vi.stubEnv("TEAM_RECRUITERS_ENABLED", "true");
+    const recruiter = await db.user.create({ data: { discordId: "recruiter", discordName: "recruiter" } });
+    await db.membership.create({ data: { communityId: ids.community, userId: recruiter.id, status: "ACTIVE", joinedAt: new Date() } });
+    await db.communityTeam.update({ where: { id: ids.team }, data: { maxMembers: 5 } });
+    expect(await teams.joinCommunityTeam(recruiter.id, ids.community, ids.team)).toBe("joined");
+    const teamRecruiters = await import("./team-recruiters");
+    expect(await teamRecruiters.addTeamRecruiter(ids.leader, ids.community, { teamId: ids.team, userId: recruiter.id })).toBe("added");
+
+    expect(await teams.listCommunityTeams(ids.ana, ids.community)).toHaveLength(1);
+    expect(await apps.applyToTeam(ids.ana, ids.community, { teamId: ids.team, message: "Je découvre l'équipe." })).toBe("applied");
+    const [pending] = await apps.listPendingApplicationsForLeader(recruiter.id, ids.community);
+    expect(pending).toMatchObject({ applicant: { discordName: "ana" } });
+    expect(await apps.decideTeamApplication(recruiter.id, ids.community, pending.id, true)).toBe("accepted");
+
+    expect(await teams.joinCommunityTeam(ids.bob, ids.community, ids.team)).toBe("joined");
+    expect(await teams.joinCommunityTeam(ids.outsider, ids.community, ids.team)).not.toBe("joined");
+    const card = (await teams.listCommunityTeams(ids.bob, ids.community)).find((team) => team.id === ids.team)!;
+    expect(card.members.map((member) => member.user.discordName).sort()).toEqual(["ana", "bob", "leader", "recruiter"]);
+    expect(card._count.members).toBe(4);
+  });
+
+  it("C031 — la fiche complète expose identité, critères, membres actifs et rendez-vous à un autre membre", async () => {
+    vi.stubEnv("TEAM_RECRUITMENT_CRITERIA_ENABLED", "true");
+    expect(await teams.setCommunityTeamIdentity(ids.leader, ids.community, ids.team, { color: "#0f766e", emblem: "🛡️" })).toBe("saved");
+    expect(await criteria.saveTeamRecruitmentCriteria(ids.leader, ids.community, {
+      teamId: ids.team,
+      goals: ["DETENTE", "PROGRESSION"],
+      minLevel: "INTERMEDIAIRE",
+      mic: "PREFERRED",
+      slots: ["WEEKEND_EVENING"],
+      platforms: ["PC"],
+      note: "Un rendez-vous par semaine.",
+    })).toBe("saved");
+    expect(await teams.joinCommunityTeam(ids.ana, ids.community, ids.team)).toBe("joined");
+    expect(await teams.joinCommunityTeam(ids.bob, ids.community, ids.team)).toBe("joined");
+    expect(await teams.leaveCommunityTeam(ids.bob, ids.community, ids.team)).toBe("left");
+
+    const session = await db.session.create({
+      data: {
+        communityId: ids.community,
+        communityTeamId: ids.team,
+        createdById: ids.leader,
+        date: new Date(Date.now() + 48 * 3_600_000),
+        status: "SCHEDULED",
+      },
+    });
+    await db.sessionInvite.create({ data: { sessionId: session.id, userId: ids.ana, invitedById: ids.leader } });
+
+    const card = (await teams.listCommunityTeams(ids.ana, ids.community)).find((team) => team.id === ids.team)!;
+    expect(card).toMatchObject({
+      name: "Expédition",
+      description: "Construire et explorer ensemble.",
+      color: "#0f766e",
+      emblem: "🛡️",
+      captainId: ids.leader,
+      captain: { discordName: "leader" },
+      game: { name: "Valheim" },
+    });
+    expect(card.members.map((member) => member.user.discordName)).toEqual(["leader", "ana"]);
+    expect(card.sessions).toHaveLength(1);
+    expect(card.sessions[0]).toMatchObject({ id: session.id, status: "SCHEDULED" });
+
+    const view = (await criteria.listTeamRecruitmentCriteria(ids.ana, ids.community, [ids.team])).get(ids.team)!;
+    expect(view).toMatchObject({
+      goals: ["DETENTE", "PROGRESSION"],
+      minLevel: "INTERMEDIAIRE",
+      mic: "PREFERRED",
+      slots: ["WEEKEND_EVENING"],
+      platforms: ["PC"],
+      note: "Un rendez-vous par semaine.",
+    });
+  });
+
   it("une candidature d'un membre qui a quitté la communauté n'est plus proposée au responsable", async () => {
     await apps.applyToTeam(ids.ana, ids.community, { teamId: ids.team, message: "Salut" });
     await db.membership.update({ where: { communityId_userId: { communityId: ids.community, userId: ids.ana } }, data: { status: "LEFT" } });
