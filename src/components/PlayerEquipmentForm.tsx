@@ -12,7 +12,7 @@ const FEEDBACK: Record<string, string> = {
 
 export function PlayerEquipmentForm({ user, feedback }: { user: PlayerEquipmentData; feedback?: string }) {
   return (
-    <Card className="flex flex-col gap-4">
+    <Card id="player-equipment" className="flex flex-col gap-4">
       <h2 className="font-semibold">Mon matériel de jeu</h2>
       <p className="text-sm text-muted">Partage les commandes et plateformes que tu peux utiliser, ainsi que la disponibilité de ton micro. Ces informations sont visibles par les membres autorisés à consulter ta fiche et ne filtrent pas automatiquement les jeux.</p>
       {feedback && FEEDBACK[feedback] && <p role={feedback === "ok" ? "status" : "alert"} className="text-sm">{FEEDBACK[feedback]}</p>}
