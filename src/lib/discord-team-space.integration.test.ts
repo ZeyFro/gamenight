@@ -228,6 +228,8 @@ describe.skipIf(!TEST_DATABASE_URL)("PostgreSQL isolé — espaces d'équipe Dis
 
   it("executor D5 : suppression revérifiée à l'exécution (équipe repeuplée, contestation ouverte), accès retirés AVANT les salons, identifiants enregistrés seulement", async () => {
     vi.stubEnv("DISCORD_TEAM_SPACES_ENABLED", "true");
+    // Le journal n'est pas vidé par le TRUNCATE de beforeEach : on repart d'un journal propre pour compter exactement les traces de CE test.
+    await db.sensitiveOperationLog.deleteMany({ where: { action: "discord.team_space_delete" } });
     await db.discordTeamSpace.create({ data: { teamId: ids.team, communityId: ids.community, guildId: GUILD, channelId: "chan-del", voiceChannelId: "voice-del" } });
     const present = [
       { id: "chan-del", name: "les-dragons", type: 0 }, { id: "voice-del", name: "vocal-les-dragons", type: 2 },
