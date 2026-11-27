@@ -24,6 +24,7 @@ const ERRORS: Record<string, string> = {
   invalid: "Choisis un jeu, écris un message de 1 à 240 caractères et vérifie les champs de matchmaking.",
   forbidden: "Tu ne peux supprimer que tes annonces, sauf si tu es admin.",
   rate_limited: "Trop de demandes, réessaie dans une minute.",
+  forum_unavailable: "L'annonce n'a pas pu être retirée du forum pour le moment. Réessaie dans un instant.",
 };
 
 export default async function PlayerClassifiedsPage({

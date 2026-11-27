@@ -95,6 +95,8 @@ const EXISTING_EXCEPTIONS: Record<string, string[]> = {
   // système sans session utilisateur). À migrer dès qu'un contexte existe.
   "src/lib/discord-community-profile.ts": ["communityTeamMember", "userBadge"],
   "src/lib/discord-player-listing-rsvp.ts": ["playerClassified"],
+  // Relais forum D3 : lit l'annonce pour son communityId, puis écrit la clé forum idempotente sur cette même ligne.
+  "src/lib/player-classified-forum.ts": ["playerClassified"],
   "src/lib/discord-session-commands.ts": ["proposal", "session", "sessionInvite"],
   "src/lib/discord-tournament-autocomplete.ts": ["tournament"],
   "src/lib/discord-tournament-commands.ts": ["tournament"],

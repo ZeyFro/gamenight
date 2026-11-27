@@ -1,6 +1,10 @@
 import { getScopedPrisma } from "@/lib/community-scoped-client";
 import { checkRateLimit } from "@/lib/rate-limit";
 import { wallClockNow } from "@/lib/wallclock";
+import { logger } from "@/lib/logger";
+import { persistServerError } from "@/lib/error-log";
+import { enqueueForumThreadRemovals, enqueuePlayerClassifiedForum, isForumAuthorHidden, markForumRelayRetry, playerClassifiedForumEnabled } from "@/lib/player-classified-forum";
+import { isTonightMessage } from "@/lib/tonight-rules";
 import type { PlayerClassifiedFilters } from "@/lib/player-classified-filters";
 import type { GameLevel } from "@/lib/game-levels-rules";
 import {
@@ -45,7 +49,7 @@ export type CreateListingOutcome =
   | { status: "starts_in_past" }
   | { status: "rate_limited" };
 
-export type DeleteListingOutcome = "deleted" | "missing" | "not_owner" | "rate_limited";
+export type DeleteListingOutcome = "deleted" | "missing" | "not_owner" | "rate_limited" | "forum_unavailable";
 
 /** Création : schéma partagé, 24 h, anti-doublon, limite de débit. */
 export async function createPlayerListing(input: {
@@ -104,7 +108,47 @@ export async function createPlayerListing(input: {
     } as Parameters<typeof scopedDb.playerClassified.create>[0]["data"],
     select: { id: true, expiresAt: true },
   });
+  await relayNewPlayerListing({ listingId: listing.id, communityId: input.communityId, userId: input.userId, message: validatedMessage });
   return { status: "created", id: listing.id, expiresAt: listing.expiresAt };
+}
+
+/**
+ * Relais forum d'une annonce qui vient d'être créée (chemin Discord ET page web) : un profil masqué n'est JAMAIS relayé, sinon un événement
+ * « post » est mis en file. AUCUN ping n'est consommé ici : l'exécuteur ne le consomme qu'après avoir établi que le rôle du jeu est
+ * mentionnable (voir `runPlayerClassifiedForumAction`), sur le VRAI instant (jamais l'heure murale de `wallClockNow()`).
+ *
+ * L'annonce existe déjà : une panne du relais ne doit jamais faire échouer la création (le joueur réessaierait et créerait un doublon). Elle
+ * est donc journalisée explicitement (journal serveur + journal d'erreurs) et la création réussit.
+ */
+export async function relayNewPlayerListing(input: { listingId: string; communityId: string; userId: string; message: string }): Promise<void> {
+  if (!playerClassifiedForumEnabled()) return;
+  // « 🟢 Dispo ce soir » n'est jamais relayé sur le forum (D3 : seules les annonces créées par le joueur le sont).
+  if (isTonightMessage(input.message)) return;
+  try {
+    if (await isForumAuthorHidden(input.userId)) return;
+    const queued = await enqueuePlayerClassifiedForum({ listingId: input.listingId, communityId: input.communityId, intent: "post" });
+    if (queued === "retry") {
+      // Échec transitoire de la mise en file : marque explicite, le balayage du cron rattrape UNIQUEMENT ces annonces.
+      const error = new Error("Relais forum non mis en file à la création (réessayable) : rattrapage par le balayage du cron.");
+      logger.error("player-listings", error, { step: "forum-relay-retry" });
+      persistServerError("player-listings", error, { route: "player-listings/forum-relay" });
+      await markRelayRetry(input);
+    }
+  } catch (error) {
+    logger.error("player-listings", error, { step: "forum-relay" });
+    persistServerError("player-listings", error, { route: "player-listings/forum-relay" });
+    await markRelayRetry(input);
+  }
+}
+
+/** Pose la marque « relais à retenter » ; si même cela échoue, l'échec est journalisé (jamais avalé en silence). */
+async function markRelayRetry(input: { listingId: string; communityId: string }): Promise<void> {
+  try {
+    await markForumRelayRetry(input.listingId, input.communityId);
+  } catch (markError) {
+    logger.error("player-listings", markError, { step: "forum-relay-mark" });
+    persistServerError("player-listings", markError, { route: "player-listings/forum-relay" });
+  }
 }
 
 /** Retrait : auteur uniquement, ou modération si `isAdmin`. */
@@ -119,10 +163,16 @@ export async function deletePlayerListing(input: {
   const scopedDb = await getScopedPrisma(input.userId);
   const listing = await scopedDb.playerClassified.findFirst({
     where: { id: input.listingId, communityId: input.communityId },
-    select: { id: true, createdById: true },
+    select: { id: true, createdById: true, forumThreadId: true },
   });
   if (!listing) return "missing";
   if (listing.createdById !== input.userId && !input.isAdmin) return "not_owner";
+  // Le fil est SUPPRIMÉ (pseudo et mention de l'auteur ne restent pas lisibles) même si la ligne disparaît : l'identifiant du fil est porté par
+  // l'événement. Cela ne dépend jamais de l'interrupteur de relais. Échec RÉESSAYABLE de la mise en file : retrait refusé (jamais un fil
+  // public laissé ouvert sans annonce). Échec PERMANENT (aucun serveur Discord relié) : journalisé, le retrait continue.
+  if (await enqueueForumThreadRemovals([{ id: listing.id, communityId: input.communityId, forumThreadId: listing.forumThreadId }], "remove") > 0) {
+    return "forum_unavailable";
+  }
   const removed = await scopedDb.playerClassified.deleteMany({
     where: { id: listing.id, communityId: input.communityId },
   });

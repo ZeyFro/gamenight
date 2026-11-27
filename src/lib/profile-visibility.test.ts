@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const mocks = vi.hoisted(() => ({ findUnique: vi.fn(), upsert: vi.fn() }));
+const mocks = vi.hoisted(() => ({ findUnique: vi.fn(), upsert: vi.fn(), removals: vi.fn(async () => 0) }));
+vi.mock("@/lib/player-classified-forum", () => ({ enqueueForumRemovalsForUser: mocks.removals }));
 vi.mock("@/lib/prisma", () => ({ prisma: { userProfileVisibility: { findUnique: mocks.findUnique, upsert: mocks.upsert } } }));
 
 import { getProfileVisibility, isProfileVisibilityEnabled, profileVisibilityWhere, setProfileVisibility } from "./profile-visibility";
@@ -44,5 +45,13 @@ describe("lecture et écriture du choix", () => {
     expect(mocks.upsert).toHaveBeenCalledWith({
       where: { userId: "u1" }, create: { userId: "u1", visibility: "HIDDEN" }, update: { visibility: "HIDDEN" },
     });
+  });
+
+  it("masquer son profil met immédiatement en file la suppression de ses fils forum ; l'afficher ne touche à aucun fil", async () => {
+    vi.stubEnv("PROFILE_VISIBILITY_ENABLED", "true");
+    await setProfileVisibility("u1", "COMMUNITY");
+    expect(mocks.removals).not.toHaveBeenCalled();
+    await setProfileVisibility("u1", "HIDDEN");
+    expect(mocks.removals).toHaveBeenCalledWith("u1");
   });
 });

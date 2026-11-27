@@ -3275,6 +3275,18 @@ model PlayerClassified {
   partyType   PartyType?
   platform    String?  @db.VarChar(40)
   microphoneRequirement MicrophoneRequirement?
+  /** Fil forum unique créé par le relais (idempotence : un seul post par annonce). */
+  forumThreadId String?
+  forumRelayedAt DateTime?
+  forumClosedAt DateTime?
+  /** Marque posée avant la création du post (au plus un post par annonce, même après un plantage). */
+  forumPostingAt DateTime?
+  /** Fil SUPPRIMÉ (profil masqué, annonce ou compte retiré), distinct de l'archivage à l'expiration. */
+  forumRemovedAt DateTime?
+  /** Curseur du balayage du cron (rotation des lignes bloquées) ; sur une annonce SANS fil : marque « mise en file du relais à retenter ». */
+  forumSweptAt DateTime?
+  /** Ping de rôle de jeu consommé pour cette annonce (plafond journalier). */
+  pingedAt DateTime?
 
   community Community @relation(fields: [communityId], references: [id], onDelete: Cascade)
   game      Game      @relation(fields: [gameId], references: [id], onDelete: Cascade)
@@ -3282,6 +3294,21 @@ model PlayerClassified {
 
   @@index([communityId, expiresAt])
   @@index([createdById, communityId])
+  @@index([forumThreadId])
+}
+
+/** Consommation atomique du ping de rôle de jeu : 3 par joueur et par jour. */
+model PlayerClassifiedPing {
+  id          String   @id @default(cuid())
+  communityId String
+  userId      String
+  day         DateTime @db.Date
+  count       Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([communityId, userId, day])
+  @@index([communityId, day])
 }
 
 enum PartyType {

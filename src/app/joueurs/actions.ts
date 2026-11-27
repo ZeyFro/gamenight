@@ -10,6 +10,7 @@ import { idSchema } from "@/lib/validations";
 import { getPlayerClassifiedCommunityId, playerClassifiedExpiresAt, playerClassifiedSchema } from "@/lib/player-classifieds";
 import { wallClockNow } from "@/lib/wallclock";
 import { requireAdmin } from "@/lib/admin";
+import { deletePlayerListing, relayNewPlayerListing } from "@/lib/player-listings";
 
 export async function createPlayerClassifiedAction(formData: FormData): Promise<void> {
   const user = await getCurrentUser();
@@ -48,9 +49,12 @@ export async function createPlayerClassifiedAction(formData: FormData): Promise<
     startsAt: input.data.startsAt,
     durationMinutes: input.data.durationMinutes,
   };
-  await scopedDb.playerClassified.create({
+  const created = await scopedDb.playerClassified.create({
     data,
+    select: { id: true },
   });
+  // Relais forum (D3) : mêmes garde-fous que la commande Discord (profil masqué jamais relayé, ping opt-in plafonné, aucune écriture directe).
+  await relayNewPlayerListing({ listingId: created.id, communityId, userId: user.id, message: input.data.message });
   revalidatePath("/joueurs");
   redirect("/joueurs");
 }
@@ -60,18 +64,18 @@ export async function deletePlayerClassifiedAction(formData: FormData): Promise<
   if (!user) redirect("/");
   const communityId = await getPlayerClassifiedCommunityId(user.id);
   if (!communityId) redirect("/joueurs?error=unavailable");
-  if (!checkRateLimit(user.id, "deletePlayerClassified")) redirect("/joueurs?error=rate_limited");
   const parsed = idSchema.safeParse(formData.get("id"));
   if (!parsed.success) redirect("/joueurs?error=invalid");
 
-  const scopedDb = await getScopedPrisma(user.id);
-  const listing = await scopedDb.playerClassified.findFirst({
-    where: { id: parsed.data, communityId },
-    select: { id: true, createdById: true },
+  // Même service que la commande Discord : le fil forum de l'annonce est fermé (événement portant le fil) AVANT la suppression de la ligne.
+  const outcome = await deletePlayerListing({
+    userId: user.id,
+    communityId,
+    listingId: parsed.data,
+    isAdmin: Boolean(await requireAdmin()),
   });
-  if (!listing || (listing.createdById !== user.id && !(await requireAdmin()))) {
-    redirect("/joueurs?error=forbidden");
-  }
-  await scopedDb.playerClassified.deleteMany({ where: { id: listing.id, communityId } });
+  if (outcome === "rate_limited") redirect("/joueurs?error=rate_limited");
+  if (outcome === "forum_unavailable") redirect("/joueurs?error=forum_unavailable");
+  if (outcome === "not_owner" || outcome === "missing") redirect("/joueurs?error=forbidden");
   revalidatePath("/joueurs");
 }

@@ -62,7 +62,8 @@ export async function clearTonightAction(): Promise<void> {
 
   const scopedDb = await getScopedPrisma(user.id);
   await scopedDb.playerClassified.deleteMany({
-    where: { communityId, createdById: user.id, message: { startsWith: TONIGHT_MESSAGE_PREFIX } },
+    // Jamais une annonce dont le fil forum existe : sa suppression doit passer par la fermeture du fil (D3).
+    where: { communityId, createdById: user.id, message: { startsWith: TONIGHT_MESSAGE_PREFIX }, forumThreadId: null },
   });
   revalidatePath("/ce-soir");
   revalidatePath("/joueurs");

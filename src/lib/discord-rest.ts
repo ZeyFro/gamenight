@@ -484,6 +484,7 @@ function parseChannel(json: unknown): DmChannel | null {
 const channelInfoResponseSchema = z.object({
   id: z.string(),
   type: z.number(),
+  parent_id: z.string().nullish(),
   // Absent pour un canal de MP (pas de guilde) — jamais le cas pour les
   // salons de guilde ciblés par `verifyChannelDestination`, mais le champ
   // reste optionnel côté schéma pour ne pas dépendre d'une garantie de
@@ -499,12 +500,14 @@ export interface ChannelInfo {
    * chantier. */
   type: number;
   guildId: string | null;
+  /** Salon parent (forum, salon texte) d'un fil ; `null` pour un salon sans parent. */
+  parentId: string | null;
 }
 
 function parseChannelInfo(json: unknown): ChannelInfo | null {
   const result = channelInfoResponseSchema.safeParse(json);
   if (!result.success) return null;
-  return { channelId: result.data.id, type: result.data.type, guildId: result.data.guild_id ?? null };
+  return { channelId: result.data.id, type: result.data.type, guildId: result.data.guild_id ?? null, parentId: result.data.parent_id ?? null };
 }
 
 // Discord limite le nom d'un fil à 100 caractères — tronqué défensivement
@@ -1073,6 +1076,33 @@ export async function startPublicThread(input: {
     method: "POST",
     path: `/channels/${input.channelId}/threads`,
     body: { name: normalizeThreadName(input.name), type: 11, auto_archive_duration: input.autoArchiveDuration ?? 10080 },
+    deadline: input.deadline,
+    now: input.now,
+    parse: parseThread,
+  });
+}
+
+/**
+ * Post de forum (`POST /channels/{forum}/threads`) : le message initial est
+ * obligatoire pour un salon forum. Réservé au relais des annonces joueurs.
+ */
+export async function createForumPost(input: {
+  forumChannelId: string;
+  name: string;
+  content: string;
+  allowedMentions: MessageContentInput["allowedMentions"];
+  autoArchiveDuration?: 60 | 1440 | 4320 | 10080;
+  deadline: Date;
+  now?: Date;
+}): Promise<DiscordRestResult<ThreadInfo>> {
+  return discordRequest({
+    method: "POST",
+    path: `/channels/${input.forumChannelId}/threads`,
+    body: {
+      name: normalizeThreadName(input.name),
+      auto_archive_duration: input.autoArchiveDuration ?? 1440,
+      message: { content: input.content, allowed_mentions: input.allowedMentions },
+    },
     deadline: input.deadline,
     now: input.now,
     parse: parseThread,

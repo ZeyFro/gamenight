@@ -18,11 +18,24 @@ type Row = {
   expiresAt: Date;
   game: { name: string };
   createdBy: { id: string; discordName: string };
+  forumThreadId?: string | null;
 };
 
 const mocks = vi.hoisted(() => ({
   rateLimit: vi.fn(),
   rows: [] as unknown[],
+  forumEnabled: vi.fn(),
+  forumEnqueue: vi.fn(),
+  forumRemovals: vi.fn(async () => 0),
+  forumHidden: vi.fn(async () => false),
+  optIns: vi.fn(async () => 0),
+}));
+vi.mock("@/lib/game-ping-optin", () => ({ countGamePingOptIns: mocks.optIns }));
+vi.mock("@/lib/player-classified-forum", () => ({
+  playerClassifiedForumEnabled: mocks.forumEnabled,
+  enqueuePlayerClassifiedForum: mocks.forumEnqueue,
+  enqueueForumThreadRemovals: mocks.forumRemovals,
+  isForumAuthorHidden: mocks.forumHidden,
 }));
 
 vi.mock("@/lib/rate-limit", () => ({ checkRateLimit: mocks.rateLimit }));
@@ -56,7 +69,7 @@ vi.mock("@/lib/community-scoped-client", () => ({
           if (gt && row.expiresAt <= gt) return false;
           return true;
         });
-        return match ? { id: match.id, createdById: match.createdById } : null;
+        return match ? { id: match.id, createdById: match.createdById, forumThreadId: match.forumThreadId ?? null } : null;
       },
       findMany: async ({ where }: { where: { communityId: string; expiresAt?: { gt?: Date } } }) => {
         const rows = mocks.rows as Row[];
@@ -73,6 +86,7 @@ vi.mock("@/lib/community-scoped-client", () => ({
             createdBy: { ...row.createdBy, discordAvatar: null, color: null },
           }));
       },
+      updateMany: async () => ({ count: 1 }),
       deleteMany: async ({ where }: { where: { id: string } }) => {
         const rows = mocks.rows as Row[];
         const index = rows.findIndex((row) => row.id === where.id);
@@ -107,6 +121,11 @@ afterEach(() => {
 });
 
 describe("synchronisation des annonces de joueurs", () => {
+  beforeEach(() => {
+    mocks.forumEnabled.mockReturnValue(false);
+    mocks.forumEnqueue.mockReset();
+  });
+
   it("une annonce créée depuis Discord est visible dans GameNight", async () => {
     const created = await createPlayerListing({ ...discordInput, now });
     expect(created.status).toBe("created");
@@ -127,6 +146,27 @@ describe("synchronisation des annonces de joueurs", () => {
     await expect(deletePlayerListing({ userId: "user-1", communityId: "community-1", listingId: id })).resolves.toBe("deleted");
     expect(await listCommunityListings({ userId: "user-1", communityId: "community-1", now })).toEqual([]);
     expect(await listOwnListings({ userId: "user-1", communityId: "community-1", now })).toEqual([]);
+  });
+
+  it("supprime le fil forum (événement portant le fil) avant de retirer l’annonce", async () => {
+    mocks.forumEnabled.mockReturnValue(true);
+    mocks.forumEnqueue.mockResolvedValue("queued");
+    const created = await createPlayerListing({ ...discordInput, now });
+    const id = created.status === "created" ? created.id : "";
+    (mocks.rows[0] as Row).forumThreadId = "thread-annonce-1";
+    mocks.forumEnqueue.mockClear();
+
+    await expect(deletePlayerListing({ userId: "user-1", communityId: "community-1", listingId: id })).resolves.toBe("deleted");
+    expect(mocks.forumRemovals).toHaveBeenCalledWith([{ id, communityId: "community-1", forumThreadId: "thread-annonce-1" }], "remove");
+  });
+
+  it("refuse le retrait (réessayable) quand la fermeture du fil ne peut pas être mise en file : jamais un fil ouvert sans annonce", async () => {
+    const created = await createPlayerListing({ ...discordInput, now });
+    const id = created.status === "created" ? created.id : "";
+    (mocks.rows[0] as Row).forumThreadId = "thread-annonce-1";
+    mocks.forumRemovals.mockResolvedValueOnce(1);
+    await expect(deletePlayerListing({ userId: "user-1", communityId: "community-1", listingId: id })).resolves.toBe("forum_unavailable");
+    expect(mocks.rows).toHaveLength(1);
   });
 
   it("un joueur ne peut pas retirer l’annonce d’un autre", async () => {

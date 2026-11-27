@@ -11,6 +11,7 @@ import { TEAM_SPACE_EVENT, teamSpaceSyncResolver } from "@/lib/discord-team-spac
 import { BOOSTER_SYNC_EVENT, boosterSyncResolver } from "@/lib/booster-support";
 import { MODERATION_REPORT_EVENT, reportTicketResolver } from "@/lib/discord-report-command";
 import { PROJECT_SYNC_EVENT, projectSyncResolver } from "@/lib/project-space-queue";
+import { PLAYER_CLASSIFIED_FORUM_EVENT, playerClassifiedForumResolver } from "@/lib/player-classified-forum";
 import { ROLE_AUTOCREATE_EVENT, roleCreationResolver } from "@/lib/discord-role-autocreate";
 import { TOURNAMENT_TEAM_NOTIFY, teamTournamentNoticeResolver } from "@/lib/tournament-team-notify";
 import { sessionSpaceSyncResolver } from "@/lib/session-space-queue";
@@ -44,6 +45,7 @@ export const DISPATCH_RESOLVER: DeliveryResolver = {
     if (input.event.category === "ADMIN" && input.event.eventType === BOOSTER_SYNC_EVENT) return boosterSyncResolver.resolve(input);
     if (input.event.category === "ADMIN" && input.event.eventType === MODERATION_REPORT_EVENT) return reportTicketResolver.resolve(input);
     if (input.event.category === "ADMIN" && input.event.eventType === PROJECT_SYNC_EVENT) return projectSyncResolver.resolve(input);
+    if (input.event.category === "ADMIN" && input.event.eventType === PLAYER_CLASSIFIED_FORUM_EVENT) return playerClassifiedForumResolver.resolve(input);
     if (input.event.category === "ADMIN" && input.event.eventType === ROLE_AUTOCREATE_EVENT) return roleCreationResolver.resolve(input);
     if (input.event.category === "ADMIN" && input.event.eventType === TOURNAMENT_TEAM_NOTIFY) return teamTournamentNoticeResolver.resolve(input);
     if (input.event.category === "ADMIN" && input.event.eventType === SESSION_SPACE_EVENT) return sessionSpaceSyncResolver.resolve(input);

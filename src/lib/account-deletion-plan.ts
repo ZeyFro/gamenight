@@ -186,6 +186,7 @@ export interface NonFkRule {
  */
 export const NON_FK_PLAN: Record<string, NonFkRule> = {
   "CreationIntent.actorId": { action: "DELETE", reason: "reçu d'idempotence de la personne" },
+  "PlayerClassifiedPing.userId": { action: "DELETE", reason: "compteur de pings forum de la personne" },
   "CommunityMemberCosmetic.userId": { action: "DELETE", reason: "cosmétiques achetés en XP par la personne" },
   "SessionAvailabilityPollResponse.userId": { action: "DELETE", reason: "réponses de la personne aux sondages" },
   "TournamentPrediction.voterId": { action: "DELETE", reason: "pronostics de tournoi de la personne" },
