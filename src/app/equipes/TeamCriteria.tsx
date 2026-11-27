@@ -39,7 +39,7 @@ export function TeamCriteriaForm({ teamId, action, criteria }: {
       </div>
     </fieldset>
     <div className="grid gap-3 sm:grid-cols-2">
-      <label className="grid gap-1 text-sm">Niveau minimum de jeu
+      <label className="grid gap-1 text-sm">Niveau de jeu minimum
         <select name="minLevel" defaultValue={criteria?.minLevel ?? ""} className={FIELD}>
           <option value="">Aucun</option>
           {TEAM_MIN_LEVELS.map((level) => <option key={level} value={level}>{TEAM_LEVEL_LABELS[level]}</option>)}

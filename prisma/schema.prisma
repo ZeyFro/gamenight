@@ -3279,6 +3279,12 @@ model PlayerClassified {
   forumThreadId String?
   forumRelayedAt DateTime?
   forumClosedAt DateTime?
+  /** Marque posée avant la création du post (au plus un post par annonce, même après un plantage). */
+  forumPostingAt DateTime?
+  /** Fil SUPPRIMÉ (profil masqué, annonce ou compte retiré), distinct de l'archivage à l'expiration. */
+  forumRemovedAt DateTime?
+  /** Curseur du balayage du cron (rotation des lignes bloquées). */
+  forumSweptAt DateTime?
   /** Ping de rôle de jeu consommé pour cette annonce (plafond journalier). */
   pingedAt DateTime?
 

@@ -1,5 +1,7 @@
 import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
+import { logger } from "@/lib/logger";
+import { enqueueForumRemovalsForUser } from "@/lib/player-classified-forum";
 
 export type ProfileVisibilityValue = "COMMUNITY" | "HIDDEN";
 
@@ -34,5 +36,9 @@ export async function setProfileVisibility(userId: string, visibility: ProfileVi
     create: { userId, visibility },
     update: { visibility },
   });
+  // D3 : masquer son profil retire IMMÉDIATEMENT (file) les fils forum déjà créés pour ses annonces ; le balayage du cron rattrape un échec.
+  if (visibility === "HIDDEN" && (await enqueueForumRemovalsForUser(userId)) > 0) {
+    logger.warn("profile-visibility", "Suppression des fils forum non enfilée : le balayage du cron la rattrapera.", {});
+  }
   return "saved";
 }

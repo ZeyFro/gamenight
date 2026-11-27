@@ -24,6 +24,7 @@ const ERRORS: Record<string, string> = {
   invalid: "Choisis un jeu, écris un message de 1 à 240 caractères et vérifie les champs de matchmaking.",
   forbidden: "Tu ne peux supprimer que tes annonces, sauf si tu es admin.",
   rate_limited: "Trop de demandes, réessaie dans une minute.",
+  forum_unavailable: "L'annonce n'a pas pu être retirée du forum pour le moment. Réessaie dans un instant.",
 };
 
 export default async function PlayerClassifiedsPage({
@@ -79,7 +80,7 @@ export default async function PlayerClassifiedsPage({
       <div className="flex items-center justify-between gap-3">
         <div>
           <h1 className="text-xl font-semibold text-foreground sm:text-2xl">🔎 Chercher un joueur</h1>
-          <p className="mt-1 text-sm text-muted">Annonces visibles par les membres actifs de ta communauté. Elles expirent après 24 h.</p>
+          <p className="mt-1 text-sm text-muted">Annonces visibles par les membres actifs de ta communauté. Elles expirent après 24 h. Les profils masqués n’apparaissent jamais.</p>
         </div>
         <div className="flex flex-col items-end gap-1">
           {isTonightEnabled() && <Link href="/ce-soir" className="text-sm font-medium text-accent">Qui joue ce soir ? →</Link>}
@@ -140,7 +141,7 @@ export default async function PlayerClassifiedsPage({
               (matchmaking) envoyait deux valeurs dans l'URL et invalidait tous les filtres. */}
           {isGameLevelsEnabled() && <fieldset className="flex flex-col gap-2 rounded-lg border border-border p-3">
             <legend className="px-1 text-sm font-medium">Niveau de jeu (exige un jeu choisi ci-dessus)</legend>
-            <label htmlFor="filter-level" className="text-xs text-muted">Niveau déclaré du joueur pour ce jeu</label>
+            <label htmlFor="filter-level" className="text-xs text-muted">Niveau de jeu déclaré pour ce jeu</label>
             <select id="filter-level" name="level" className="rounded-lg border border-border bg-background px-3 py-3 text-base text-foreground" defaultValue={filters.level ?? ""}>
               <option value="">Tous les niveaux</option>
               {GAME_LEVELS.map(level => <option key={level} value={level}>{GAME_LEVEL_LABELS[level]}</option>)}
@@ -150,7 +151,7 @@ export default async function PlayerClassifiedsPage({
               <option value="">Ce niveau ou plus</option>
               <option value="exact">Ce niveau exactement</option>
             </select>
-            <p className="text-xs text-muted">Niveaux auto-déclarés ; un joueur sans niveau déclaré est écarté quand ce filtre est actif. Les profils masqués ne sont jamais trouvés par ce filtre.</p>
+            <p className="text-xs text-muted">Niveaux de jeu auto-déclarés ; un joueur sans niveau de jeu déclaré est écarté quand ce filtre est actif. Les profils masqués n’apparaissent jamais, avec ou sans ce filtre.</p>
           </fieldset>}
           <label htmlFor="filter-platform">Plateforme déclarée du joueur</label>
           <select id="filter-platform" name="platform" className="rounded-lg border border-border bg-background px-3 py-3 text-base text-foreground" defaultValue={filters.platform ?? ""}>
@@ -209,7 +210,7 @@ export default async function PlayerClassifiedsPage({
                   <div className="flex items-start justify-between gap-3">
                     <div>
                       <p className="font-medium text-foreground">{listing.game.name}</p>
-                      <p className="text-xs text-muted">Par {listing.createdBy.discordName}{listing.authorLevel ? <span className="ml-2 rounded-full bg-accent/10 px-2 py-0.5 text-accent">Niveau {GAME_LEVEL_LABELS[listing.authorLevel]}</span> : listing.posterLevel && ` · ${GAME_LEVEL_LABELS[listing.posterLevel.level]}`}</p>
+                      <p className="text-xs text-muted">Par {listing.createdBy.discordName}{listing.authorLevel ? <span className="ml-2 rounded-full bg-accent/10 px-2 py-0.5 text-accent">Niveau de jeu {GAME_LEVEL_LABELS[listing.authorLevel]}</span> : listing.posterLevel && ` · ${GAME_LEVEL_LABELS[listing.posterLevel.level]}`}</p>
                     </div>
                     {(listing.createdBy.id === user.id || admin) && (
                       <form action={deletePlayerClassifiedAction}>

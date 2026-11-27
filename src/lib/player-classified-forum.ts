@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { prisma } from "@/lib/prisma";
 import { scopedPrisma } from "@/lib/community-scoped-client";
 import { logger } from "@/lib/logger";
 import { createNotificationEvent, enqueueDelivery } from "@/lib/notification-delivery";
@@ -7,19 +8,35 @@ import type { DeliveryResolver } from "@/lib/notification-executor";
 /**
  * Relais forum des annonces de joueurs (D3) : AUCUNE écriture Discord directe
  * depuis le web ou Discord. Une annonce produit un `NotificationEvent`
- * (ADMIN / `PLAYER_CLASSIFIED_FORUM`) + une livraison BOT ; l'executor crée le
- * post forum, puis un balayage planifié met en file sa fermeture à l'expiration.
+ * (ADMIN / `PLAYER_CLASSIFIED_FORUM`, genre SYSTEM_ACTION : relais d'un contenu déjà créé par le joueur, pas une annonce publique de
+ * « moment marquant ») + une livraison BOT ; l'executor crée le post forum, puis un balayage planifié met en file sa fermeture.
  *
- * Idempotence : un seul événement par annonce et par intention (`occurrence`),
- * et le runner ne crée jamais un second fil si `forumThreadId` est déjà écrit.
+ * Trois intentions :
+ * - `post`   : création du post unique (un événement par annonce) ;
+ * - `close`  : ARCHIVAGE du fil, à l'expiration de l'annonce seulement (le contenu reste lisible, c'est voulu) ;
+ * - `remove` : SUPPRESSION du fil (annonce retirée par son auteur ou un admin, compte supprimé, profil masqué) : le pseudo et la mention de
+ *   l'auteur ne restent jamais lisibles.
+ *
+ * Idempotence : un seul événement par annonce et par intention ; les événements `close` et `remove` portent TOUJOURS `threadId` et leur
+ * occurrence (`close:<fil>`, `remove:<fil>`) : la ligne de l'annonce peut avoir disparu, et un fil orphelin a sa propre occurrence.
+ *
+ * Règles de sécurité (D3, corrections de revue du 27/11/2026) :
+ * - un profil masqué (`UserProfileVisibility = HIDDEN`) n'est JAMAIS relayé, que `PROFILE_VISIBILITY_ENABLED` soit allumé ou non (règle la
+ *   plus prudente : une personne qui a masqué son profil le reste) ; masquer son profil met immédiatement en file la suppression de ses
+ *   fils, le balayage du cron rattrape le reste ;
+ * - fermer ou supprimer un fil ne dépend jamais de l'interrupteur de relais (il gouverne la création, pas le retrait).
  */
 export const PLAYER_CLASSIFIED_FORUM_EVENT = "PLAYER_CLASSIFIED_FORUM";
 export const PLAYER_CLASSIFIED_FORUM_NAME = "🔎・recherche-de-joueurs";
 
-const intentSchema = z.enum(["post", "close"]);
+const intentSchema = z.enum(["post", "close", "remove"]);
 export type PlayerClassifiedForumIntent = z.infer<typeof intentSchema>;
 
-export type ForumEnqueueResult = "queued" | "disabled" | "unavailable";
+/**
+ * `unavailable` = échec PERMANENT (communauté sans serveur Discord relié, demande invalide) : inutile de réessayer, le retrait de l'annonce
+ * ou du compte n'est jamais bloqué par lui. `retry` = échec transitoire de la mise en file : l'appelant refuse et invite à réessayer.
+ */
+export type ForumEnqueueResult = "queued" | "disabled" | "unavailable" | "retry";
 
 export function playerClassifiedForumEnabled(env: NodeJS.ProcessEnv = process.env): boolean {
   return env.PLAYER_CLASSIFIED_FORUM_RELAY_ENABLED === "true"
@@ -27,17 +44,26 @@ export function playerClassifiedForumEnabled(env: NodeJS.ProcessEnv = process.en
     && Boolean(env.DISCORD_BOT_TOKEN?.trim());
 }
 
-const slotFor = (guildId: string, listingId: string, intent: PlayerClassifiedForumIntent) =>
-  `${guildId}:ADMIN:${listingId}:player-classified-${intent}`;
+const occurrenceFor = (intent: PlayerClassifiedForumIntent, threadId?: string) => (intent === "post" ? "post" : `${intent}:${threadId}`);
+const slotFor = (guildId: string, listingId: string, intent: PlayerClassifiedForumIntent, threadId?: string) =>
+  `${guildId}:ADMIN:${listingId}:player-classified-${intent}${intent === "post" ? "" : `:${threadId}`}`;
+
+/** Profil masqué par son auteur : l'annonce ne doit jamais apparaître dans le forum public. */
+export async function isForumAuthorHidden(userId: string): Promise<boolean> {
+  const row = await prisma.userProfileVisibility.findUnique({ where: { userId }, select: { visibility: true } });
+  return row?.visibility === "HIDDEN";
+}
 
 export async function enqueuePlayerClassifiedForum(input: {
   listingId: string;
   communityId: string;
   intent: PlayerClassifiedForumIntent;
-  /** Fermeture après retrait : la ligne peut déjà être supprimée à l'exécution. */
+  /** Obligatoire pour `close` et `remove` : la ligne peut déjà être supprimée à l'exécution. */
   threadId?: string;
 }): Promise<ForumEnqueueResult> {
-  if (!playerClassifiedForumEnabled()) return "disabled";
+  // L'interrupteur gouverne la CRÉATION des posts ; fermer ou supprimer un fil existant reste toujours possible.
+  if (input.intent === "post" && !playerClassifiedForumEnabled()) return "disabled";
+  if (input.intent !== "post" && !/^\d{1,32}$/.test(input.threadId ?? "")) return "unavailable";
   try {
     const community = await scopedPrisma(null).community.findUnique({
       where: { id: input.communityId },
@@ -49,7 +75,7 @@ export async function enqueuePlayerClassifiedForum(input: {
       category: "ADMIN",
       eventType: PLAYER_CLASSIFIED_FORUM_EVENT,
       sourceId: input.listingId,
-      occurrence: input.intent,
+      occurrence: occurrenceFor(input.intent, input.threadId),
       payload: { intent: input.intent, ...(input.threadId ? { threadId: input.threadId } : {}) },
     });
     await enqueueDelivery({
@@ -58,15 +84,15 @@ export async function enqueuePlayerClassifiedForum(input: {
       transport: "BOT",
       operation: "SEND",
       recipientKey: `player-classified:${input.listingId}`,
-      targetSlot: slotFor(community.discordGuildId, input.listingId, input.intent),
+      targetSlot: slotFor(community.discordGuildId, input.listingId, input.intent, input.threadId),
     });
     return "queued";
   } catch (error) {
-    // Jamais bloquant pour la création/retrait de l'annonce.
+    // Jamais bloquant pour la création de l'annonce ; pour un retrait, l'appelant lit « retry » et refuse (réessayable).
     logger.warn("player-classified-forum", "Relais forum non enfilé.", {
       errorType: error instanceof Error ? error.name : "unknown",
     });
-    return "unavailable";
+    return "retry";
   }
 }
 
@@ -75,24 +101,26 @@ export const playerClassifiedForumResolver: DeliveryResolver = {
     if (event.category !== "ADMIN" || event.eventType !== PLAYER_CLASSIFIED_FORUM_EVENT || !event.communityId) {
       return { eligible: false, reason: "unresolvable" };
     }
-    const payload = z.object({ intent: intentSchema, threadId: z.string().min(1).max(32).optional() }).safeParse(event.payload);
+    const payload = z.object({ intent: intentSchema, threadId: z.string().regex(/^\d{1,32}$/).optional() }).safeParse(event.payload);
     if (!payload.success) return { eligible: false, reason: "unresolvable" };
+    const { intent, threadId } = payload.data;
+    if (intent !== "post" && !threadId) return { eligible: false, reason: "unresolvable" };
     if (!process.env.DISCORD_BOT_TOKEN?.trim()) return { eligible: false, reason: "configuration_unavailable" };
     const listing = await scopedPrisma(null).playerClassified.findUnique({
       where: { id: event.sourceId },
-      select: { communityId: true, forumThreadId: true, forumClosedAt: true,
+      select: { communityId: true, forumThreadId: true, forumClosedAt: true, forumRemovedAt: true,
         createdBy: { select: { profileVisibility: { select: { visibility: true } } } } },
     });
-    const closeThreadId = payload.data.threadId;
     if (!listing) {
-      if (payload.data.intent !== "close" || !closeThreadId) return { eligible: false, reason: "expired" };
+      // Annonce retirée : seules la fermeture et la suppression d'un fil connu (porté par l'événement) restent possibles.
+      if (intent === "post") return { eligible: false, reason: "expired" };
     } else {
       if (listing.communityId !== event.communityId) return { eligible: false, reason: "expired" };
-      if (payload.data.intent === "post" && listing.forumThreadId) return { eligible: false, reason: "expired" };
-      if (payload.data.intent === "post" && listing.createdBy.profileVisibility?.visibility === "HIDDEN") {
-        return { eligible: false, reason: "expired" };
+      if (intent === "post") {
+        if (listing.forumThreadId || listing.forumRemovedAt) return { eligible: false, reason: "expired" };
+        if (listing.createdBy.profileVisibility?.visibility === "HIDDEN") return { eligible: false, reason: "expired" };
       }
-      if (payload.data.intent === "close" && (!listing.forumThreadId || listing.forumClosedAt)) {
+      if (intent === "close" && (listing.forumThreadId === threadId ? Boolean(listing.forumClosedAt || listing.forumRemovedAt) : false)) {
         return { eligible: false, reason: "expired" };
       }
     }
@@ -103,39 +131,111 @@ export const playerClassifiedForumResolver: DeliveryResolver = {
     if (!community?.discordGuildId) return { eligible: false, reason: "not_configured" };
     if (delivery.operation !== "SEND" || delivery.channel !== "DISCORD_CHANNEL" || delivery.transport !== "BOT"
       || delivery.recipientKey !== `player-classified:${event.sourceId}`
-      || delivery.targetSlot !== slotFor(community.discordGuildId, event.sourceId, payload.data.intent)) {
+      || delivery.targetSlot !== slotFor(community.discordGuildId, event.sourceId, intent, threadId)) {
       return { eligible: false, reason: "unresolvable" };
     }
     return {
       eligible: true,
       action: {
         kind: "relay_player_classified_forum",
-        intent: payload.data.intent,
+        intent,
         listingId: event.sourceId,
         communityId: event.communityId,
-        ...(closeThreadId ? { threadId: closeThreadId } : {}),
+        ...(threadId ? { threadId } : {}),
       },
     };
   },
 };
 
+/**
+ * Met en file la SUPPRESSION (ou, à l'expiration, l'archivage) des fils de ces annonces. Renvoie le nombre d'échecs RÉESSAYABLES : 0 = rien
+ * ne s'oppose au retrait. Un échec PERMANENT (communauté sans serveur Discord relié) est journalisé (aucune donnée personnelle) et ne
+ * bloque jamais le retrait : il n'y a alors aucun moyen de joindre le fil.
+ */
+export async function enqueueForumThreadRemovals(
+  rows: Array<{ id: string; communityId: string; forumThreadId: string | null }>,
+  intent: "close" | "remove" = "remove",
+): Promise<number> {
+  let retryable = 0;
+  let permanent = 0;
+  for (const row of rows) {
+    if (!row.forumThreadId) continue;
+    const result = await enqueuePlayerClassifiedForum({ listingId: row.id, communityId: row.communityId, intent, threadId: row.forumThreadId });
+    if (result === "retry") retryable++;
+    else if (result === "unavailable") permanent++;
+  }
+  if (permanent > 0) {
+    logger.warn("player-classified-forum", "Fil forum non joignable (échec permanent) : le retrait continue sans fermeture.", { intent, permanent });
+  }
+  return retryable;
+}
+
+/** Suppression de compte ou profil masqué : met en file la suppression de tous les fils encore présents de la personne. */
+export async function enqueueForumRemovalsForUser(userId: string): Promise<number> {
+  const rows = await scopedPrisma(null).playerClassified.findMany({
+    where: { createdById: userId, forumThreadId: { not: null }, forumRemovedAt: null },
+    select: { id: true, communityId: true, forumThreadId: true },
+  });
+  return enqueueForumThreadRemovals(rows, "remove");
+}
+
 export interface PlayerClassifiedForumLifecycle {
   enabled: boolean;
   closeQueued: number;
+  /** Annonces récentes dont le relais n'avait pas pu être mis en file à la création (rattrapage). */
+  postsQueued: number;
 }
 
-/** Balayage (cron des rappels) : ferme les posts des annonces expirées. */
+/** Une annonce plus ancienne que cela n'est plus rattrapée (le balayage ne fait pas ressortir une vieille annonce dans le forum). */
+const CATCH_UP_WINDOW_MS = 6 * 60 * 60_000;
+
+/**
+ * Balayage (cron des rappels) : supprime les fils dont l'auteur a masqué son profil, ferme (archive et verrouille) ceux des annonces
+ * expirées, et rattrape les relais dont la mise en file a échoué à la création. Il tourne même
+ * relais éteint (il ne fait que retirer des fils qui existent déjà). Curseur `forumSweptAt` : les lignes les moins récemment traitées
+ * passent d'abord, une ligne bloquée en permanence ne monopolise donc jamais les 25 lignes d'un passage.
+ */
 export async function runPlayerClassifiedForumLifecycle(now: Date = new Date()): Promise<PlayerClassifiedForumLifecycle> {
-  if (!playerClassifiedForumEnabled()) return { enabled: false, closeQueued: 0 };
-  const rows = await scopedPrisma(null).playerClassified.findMany({
-    where: { expiresAt: { lte: now }, forumThreadId: { not: null }, forumClosedAt: null },
-    orderBy: { expiresAt: "asc" },
+  const scopedDb = scopedPrisma(null);
+  const rows = await scopedDb.playerClassified.findMany({
+    where: {
+      forumThreadId: { not: null },
+      forumRemovedAt: null,
+      OR: [
+        { forumClosedAt: null, expiresAt: { lte: now } },
+        { createdBy: { profileVisibility: { is: { visibility: "HIDDEN" } } } },
+      ],
+    },
+    orderBy: [{ forumSweptAt: { sort: "asc", nulls: "first" } }, { expiresAt: "asc" }],
     take: 25,
-    select: { id: true, communityId: true },
+    select: { id: true, communityId: true, forumThreadId: true, createdBy: { select: { profileVisibility: { select: { visibility: true } } } } },
   });
-  let closeQueued = 0;
+  let failed = 0;
   for (const row of rows) {
-    if ((await enqueuePlayerClassifiedForum({ listingId: row.id, communityId: row.communityId, intent: "close" })) === "queued") closeQueued++;
+    const hidden = row.createdBy.profileVisibility?.visibility === "HIDDEN";
+    failed += await enqueueForumThreadRemovals([row], hidden ? "remove" : "close");
   }
-  return { enabled: true, closeQueued };
+  if (rows.length > 0) {
+    await scopedDb.playerClassified.updateMany({ where: { id: { in: rows.map((row) => row.id) } }, data: { forumSweptAt: now } });
+  }
+
+  // Rattrapage : une annonce récente, active, jamais relayée et dont l'auteur n'est pas masqué, dont la mise en file a échoué à la création
+  // (base indisponible) ; l'enfilement est idempotent (un événement par annonce), sans effet si un événement existe déjà.
+  let postsQueued = 0;
+  if (playerClassifiedForumEnabled()) {
+    const missing = await scopedDb.playerClassified.findMany({
+      where: {
+        forumThreadId: null, forumPostingAt: null, forumRemovedAt: null,
+        expiresAt: { gt: now }, createdAt: { gte: new Date(now.getTime() - CATCH_UP_WINDOW_MS) },
+        NOT: { createdBy: { profileVisibility: { is: { visibility: "HIDDEN" } } } },
+      },
+      orderBy: { createdAt: "desc" },
+      take: 25,
+      select: { id: true, communityId: true },
+    });
+    for (const row of missing) {
+      if ((await enqueuePlayerClassifiedForum({ listingId: row.id, communityId: row.communityId, intent: "post" })) === "queued") postsQueued++;
+    }
+  }
+  return { enabled: playerClassifiedForumEnabled() || rows.length > 0, closeQueued: rows.length - failed, postsQueued };
 }

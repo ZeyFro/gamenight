@@ -26,10 +26,16 @@ const mocks = vi.hoisted(() => ({
   rows: [] as unknown[],
   forumEnabled: vi.fn(),
   forumEnqueue: vi.fn(),
+  forumRemovals: vi.fn(async () => 0),
+  forumHidden: vi.fn(async () => false),
+  optIns: vi.fn(async () => 0),
 }));
+vi.mock("@/lib/game-ping-optin", () => ({ countGamePingOptIns: mocks.optIns }));
 vi.mock("@/lib/player-classified-forum", () => ({
   playerClassifiedForumEnabled: mocks.forumEnabled,
   enqueuePlayerClassifiedForum: mocks.forumEnqueue,
+  enqueueForumThreadRemovals: mocks.forumRemovals,
+  isForumAuthorHidden: mocks.forumHidden,
 }));
 
 vi.mock("@/lib/rate-limit", () => ({ checkRateLimit: mocks.rateLimit }));
@@ -142,7 +148,7 @@ describe("synchronisation des annonces de joueurs", () => {
     expect(await listOwnListings({ userId: "user-1", communityId: "community-1", now })).toEqual([]);
   });
 
-  it("ferme le post forum avant de retirer l’annonce", async () => {
+  it("supprime le fil forum (événement portant le fil) avant de retirer l’annonce", async () => {
     mocks.forumEnabled.mockReturnValue(true);
     mocks.forumEnqueue.mockResolvedValue("queued");
     const created = await createPlayerListing({ ...discordInput, now });
@@ -151,12 +157,16 @@ describe("synchronisation des annonces de joueurs", () => {
     mocks.forumEnqueue.mockClear();
 
     await expect(deletePlayerListing({ userId: "user-1", communityId: "community-1", listingId: id })).resolves.toBe("deleted");
-    expect(mocks.forumEnqueue).toHaveBeenCalledWith({
-      listingId: id,
-      communityId: "community-1",
-      intent: "close",
-      threadId: "thread-annonce-1",
-    });
+    expect(mocks.forumRemovals).toHaveBeenCalledWith([{ id, communityId: "community-1", forumThreadId: "thread-annonce-1" }], "remove");
+  });
+
+  it("refuse le retrait (réessayable) quand la fermeture du fil ne peut pas être mise en file : jamais un fil ouvert sans annonce", async () => {
+    const created = await createPlayerListing({ ...discordInput, now });
+    const id = created.status === "created" ? created.id : "";
+    (mocks.rows[0] as Row).forumThreadId = "thread-annonce-1";
+    mocks.forumRemovals.mockResolvedValueOnce(1);
+    await expect(deletePlayerListing({ userId: "user-1", communityId: "community-1", listingId: id })).resolves.toBe("forum_unavailable");
+    expect(mocks.rows).toHaveLength(1);
   });
 
   it("un joueur ne peut pas retirer l’annonce d’un autre", async () => {

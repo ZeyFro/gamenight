@@ -1,8 +1,9 @@
 import { getScopedPrisma } from "@/lib/community-scoped-client";
 import { checkRateLimit } from "@/lib/rate-limit";
 import { wallClockNow } from "@/lib/wallclock";
-import { consumePlayerClassifiedPing } from "@/lib/player-classified-pings";
-import { enqueuePlayerClassifiedForum, playerClassifiedForumEnabled } from "@/lib/player-classified-forum";
+import { logger } from "@/lib/logger";
+import { persistServerError } from "@/lib/error-log";
+import { enqueueForumThreadRemovals, enqueuePlayerClassifiedForum, isForumAuthorHidden, playerClassifiedForumEnabled } from "@/lib/player-classified-forum";
 import type { PlayerClassifiedFilters } from "@/lib/player-classified-filters";
 import type { GameLevel } from "@/lib/game-levels-rules";
 import {
@@ -47,7 +48,7 @@ export type CreateListingOutcome =
   | { status: "starts_in_past" }
   | { status: "rate_limited" };
 
-export type DeleteListingOutcome = "deleted" | "missing" | "not_owner" | "rate_limited";
+export type DeleteListingOutcome = "deleted" | "missing" | "not_owner" | "rate_limited" | "forum_unavailable";
 
 /** Création : schéma partagé, 24 h, anti-doublon, limite de débit. */
 export async function createPlayerListing(input: {
@@ -106,28 +107,33 @@ export async function createPlayerListing(input: {
     } as Parameters<typeof scopedDb.playerClassified.create>[0]["data"],
     select: { id: true, expiresAt: true },
   });
-  // Relais forum : le ping de rôle est consommé avant l'enqueue (plafond
-  // atomique de 3 par joueur et par jour). Une panne du relais ne bloque
-  // jamais la création de l'annonce.
-  if (playerClassifiedForumEnabled()) {
-    const pinged = await consumePlayerClassifiedPing({
-      communityId: input.communityId,
-      userId: input.userId,
-      now: createdAt,
-    });
-    if (pinged) {
-      await scopedDb.playerClassified.updateMany({
-        where: { id: listing.id, communityId: input.communityId, pingedAt: null },
-        data: { pingedAt: createdAt },
-      });
-    }
-    await enqueuePlayerClassifiedForum({
-      listingId: listing.id,
-      communityId: input.communityId,
-      intent: "post",
-    });
-  }
+  await relayNewPlayerListing({ listingId: listing.id, communityId: input.communityId, userId: input.userId });
   return { status: "created", id: listing.id, expiresAt: listing.expiresAt };
+}
+
+/**
+ * Relais forum d'une annonce qui vient d'être créée (chemin Discord ET page web) : un profil masqué n'est JAMAIS relayé, sinon un événement
+ * « post » est mis en file. AUCUN ping n'est consommé ici : l'exécuteur ne le consomme qu'après avoir établi que le rôle du jeu est
+ * mentionnable (voir `runPlayerClassifiedForumAction`), sur le VRAI instant (jamais l'heure murale de `wallClockNow()`).
+ *
+ * L'annonce existe déjà : une panne du relais ne doit jamais faire échouer la création (le joueur réessaierait et créerait un doublon). Elle
+ * est donc journalisée explicitement (journal serveur + journal d'erreurs) et la création réussit.
+ */
+export async function relayNewPlayerListing(input: { listingId: string; communityId: string; userId: string }): Promise<void> {
+  if (!playerClassifiedForumEnabled()) return;
+  try {
+    if (await isForumAuthorHidden(input.userId)) return;
+    const queued = await enqueuePlayerClassifiedForum({ listingId: input.listingId, communityId: input.communityId, intent: "post" });
+    if (queued === "retry") {
+      // Échec transitoire de la mise en file : l'annonce existe, le balayage du cron des rappels rattrape le relais (annonce récente, sans fil).
+      const error = new Error("Relais forum non mis en file à la création (réessayable) : rattrapage par le balayage du cron.");
+      logger.error("player-listings", error, { step: "forum-relay-retry" });
+      persistServerError("player-listings", error, { route: "player-listings/forum-relay" });
+    }
+  } catch (error) {
+    logger.error("player-listings", error, { step: "forum-relay" });
+    persistServerError("player-listings", error, { route: "player-listings/forum-relay" });
+  }
 }
 
 /** Retrait : auteur uniquement, ou modération si `isAdmin`. */
@@ -146,15 +152,11 @@ export async function deletePlayerListing(input: {
   });
   if (!listing) return "missing";
   if (listing.createdById !== input.userId && !input.isAdmin) return "not_owner";
-  // Le fil est fermé même si la ligne disparaît : l'identifiant du fil est porté
-  // par l'événement, donc l'executor n'a pas besoin de relire l'annonce.
-  if (listing.forumThreadId && playerClassifiedForumEnabled()) {
-    await enqueuePlayerClassifiedForum({
-      listingId: listing.id,
-      communityId: input.communityId,
-      intent: "close",
-      threadId: listing.forumThreadId,
-    });
+  // Le fil est SUPPRIMÉ (pseudo et mention de l'auteur ne restent pas lisibles) même si la ligne disparaît : l'identifiant du fil est porté par
+  // l'événement. Cela ne dépend jamais de l'interrupteur de relais. Échec RÉESSAYABLE de la mise en file : retrait refusé (jamais un fil
+  // public laissé ouvert sans annonce). Échec PERMANENT (aucun serveur Discord relié) : journalisé, le retrait continue.
+  if (await enqueueForumThreadRemovals([{ id: listing.id, communityId: input.communityId, forumThreadId: listing.forumThreadId }], "remove") > 0) {
+    return "forum_unavailable";
   }
   const removed = await scopedDb.playerClassified.deleteMany({
     where: { id: listing.id, communityId: input.communityId },

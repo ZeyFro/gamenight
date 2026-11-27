@@ -484,6 +484,7 @@ function parseChannel(json: unknown): DmChannel | null {
 const channelInfoResponseSchema = z.object({
   id: z.string(),
   type: z.number(),
+  parent_id: z.string().nullish(),
   // Absent pour un canal de MP (pas de guilde) — jamais le cas pour les
   // salons de guilde ciblés par `verifyChannelDestination`, mais le champ
   // reste optionnel côté schéma pour ne pas dépendre d'une garantie de
@@ -499,12 +500,14 @@ export interface ChannelInfo {
    * chantier. */
   type: number;
   guildId: string | null;
+  /** Salon parent (forum, salon texte) d'un fil ; `null` pour un salon sans parent. */
+  parentId: string | null;
 }
 
 function parseChannelInfo(json: unknown): ChannelInfo | null {
   const result = channelInfoResponseSchema.safeParse(json);
   if (!result.success) return null;
-  return { channelId: result.data.id, type: result.data.type, guildId: result.data.guild_id ?? null };
+  return { channelId: result.data.id, type: result.data.type, guildId: result.data.guild_id ?? null, parentId: result.data.parent_id ?? null };
 }
 
 // Discord limite le nom d'un fil à 100 caractères — tronqué défensivement
