@@ -87,10 +87,33 @@ describe.skipIf(!TEST_DATABASE_URL)("balayage des espaces d'équipe dissous (D5)
   it("ne touche que les équipes réellement dissoutes : membres présents (même inactifs), recrutement ouvert, salons déjà supprimés : jamais enfilés", async () => {
     const withMember = await team("AvecMembre", { members: [ids.user] });
     await db.membership.update({ where: { communityId_userId: { communityId: ids.community, userId: ids.user } }, data: { status: "LEFT" } });
-    const recruiting = await team("Recrute", { recruiting: true });
+    // Une seule équipe par joueur et par communauté : un second joueur porte la seconde équipe.
+    const second = await db.user.create({ data: { discordId: "866666666666666666", discordName: "second" } });
+    await db.membership.create({ data: { userId: second.id, communityId: ids.community, status: "ACTIVE" } });
+    const recruitingWithMember = await team("RecruteAvecMembre", { recruiting: true, members: [second.id] });
     const alreadyDeleted = await team("Supprimee", { deleted: true });
     expect(await sweep.sweepDissolvedTeamSpaces()).toMatchObject({ enabled: true, checked: 0, queued: 0 });
-    for (const t of [withMember, recruiting, alreadyDeleted]) expect(await events(t.id)).toHaveLength(0);
+    for (const t of [withMember, recruitingWithMember, alreadyDeleted]) expect(await events(t.id)).toHaveLength(0);
+  });
+
+  it("M1 : une équipe VIDÉE mais restée en recrutement (deux départs simultanés) est quand même balayée, et son recrutement est fermé", async () => {
+    const t = await team("VideeOuverte", { recruiting: true });
+    expect(await sweep.sweepDissolvedTeamSpaces()).toMatchObject({ checked: 1, queued: 1 });
+    expect(await events(t.id)).toHaveLength(1);
+    expect((await db.communityTeam.findUniqueOrThrow({ where: { id: t.id } })).isRecruiting).toBe(false);
+  });
+
+  it("M2 : 26 équipes bloquées (en tête du tri) n'empêchent pas une équipe libre d'être balayée", async () => {
+    for (let i = 0; i < 26; i++) {
+      const blocked = await team(`Bloquee${i}`);
+      await db.moderationReport.create({ data: { communityId: ids.community, guildId: GUILD, channelId: `Bloquee${i}-chan`, messageId: `m${i}`, authorDiscordId: "a", reporterDiscordId: "r",
+        messageUrl: `https://discord.com/channels/${GUILD}/Bloquee${i}-chan/m${i}`, excerpt: "message signalé" } });
+      // Les bloquées sont les plus anciennes dans l'ordre du balayage.
+      await db.discordTeamSpace.update({ where: { teamId: blocked.id }, data: { updatedAt: new Date(Date.now() - 86_400_000 - i * 1000) } });
+    }
+    const free = await team("Libre");
+    expect(await sweep.sweepDissolvedTeamSpaces()).toMatchObject({ checked: 1, queued: 1 });
+    expect(await events(free.id)).toHaveLength(1);
   });
 
   it("sans la file des espaces d'équipe (drapeau fermé) : aucune lecture ni écriture", async () => {

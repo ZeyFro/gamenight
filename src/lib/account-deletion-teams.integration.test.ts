@@ -75,10 +75,10 @@ describe.skipIf(!TEST_DATABASE_URL)("suppression de compte : dernier membre d'un
     expect((await db.discordTeamSpace.findUniqueOrThrow({ where: { teamId: team.id } })).deletedAt).toBeNull();
     expect(await deleteEvents(team.id)).toBe(0);
     // Tant que le signalement est ouvert : le balayage n'enfile rien.
-    expect(await sweep.sweepDissolvedTeamSpaces()).toMatchObject({ checked: 1, queued: 0, blocked: 1 });
+    expect(await sweep.sweepDissolvedTeamSpaces()).toMatchObject({ checked: 0, queued: 0 });
     expect(await deleteEvents(team.id)).toBe(0);
     await db.moderationReport.update({ where: { id: report.id }, data: { closedAt: new Date() } });
-    expect(await sweep.sweepDissolvedTeamSpaces()).toMatchObject({ checked: 1, queued: 1, blocked: 0 });
+    expect(await sweep.sweepDissolvedTeamSpaces()).toMatchObject({ checked: 1, queued: 1 });
     expect(await deleteEvents(team.id)).toBe(1);
   });
 
@@ -90,11 +90,11 @@ describe.skipIf(!TEST_DATABASE_URL)("suppression de compte : dernier membre d'un
     expect((await api.deleteAccount(ids.solo, { blobOps })).status).toBe("deleted");
     expect(await deleteEvents(team.id)).toBe(0);
     expect((await db.discordTeamSpace.findUniqueOrThrow({ where: { teamId: team.id } })).deletedAt).toBeNull();
-    expect(await sweep.sweepDissolvedTeamSpaces()).toMatchObject({ queued: 0, blocked: 1 });
+    expect(await sweep.sweepDissolvedTeamSpaces()).toMatchObject({ checked: 0, queued: 0 });
     // Défi terminé mais contestation ouverte : toujours bloqué.
     await db.towerChallengeAttempt.update({ where: { id: attempt.id }, data: { status: "REJECTED", rejectedAt: new Date("2030-01-03T01:00:00Z") } });
     const appeal = await db.towerChallengeAppeal.create({ data: { communityId: ids.community, attemptId: attempt.id, authorUserId: ids.other, reason: "Contestation du verdict.", dueAt: new Date("2030-01-08") } });
-    expect(await sweep.sweepDissolvedTeamSpaces()).toMatchObject({ queued: 0, blocked: 1 });
+    expect(await sweep.sweepDissolvedTeamSpaces()).toMatchObject({ checked: 0, queued: 0 });
     await db.towerChallengeAppeal.update({ where: { id: appeal.id }, data: { status: "UPHELD", decidedAt: new Date() } });
     expect(await sweep.sweepDissolvedTeamSpaces()).toMatchObject({ queued: 1, blocked: 0 });
   });

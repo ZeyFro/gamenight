@@ -10,7 +10,8 @@ import { enqueueTeamSpaceSync, teamSpaceQueueEnabled } from "@/lib/discord-team-
  *   - un échec d'enfilement après la dissolution (la dissolution est faite, la suppression des salons n'a jamais été demandée) ;
  *   - une suppression abandonnée à l'exécution parce qu'un signalement, un défi ou une contestation était ouvert, quand le blocage tombe ;
  *   - la suppression d'un compte dont le dernier membre n'a pu dissoudre l'équipe (blocage), idem.
- * « Dissoute » = AUCUNE ligne de membre, recrutement fermé, lien `DiscordTeamSpace` non supprimé. Une équipe dont les membres existent encore
+ * « Dissoute » = AUCUNE ligne de membre, lien `DiscordTeamSpace` non supprimé, AUCUN blocage ouvert (le recrutement est fermé ici si besoin : deux départs
+ * simultanés peuvent laisser une équipe vide encore ouverte). Une équipe dont les membres existent encore
  * mais sont tous inactifs n'est JAMAIS dissoute ici (D5 exige une confirmation, qu'un cron ne peut pas donner).
  * File seulement (aucun appel Discord) : l'exécution revérifie toutes les conditions et retire les accès avant de supprimer. Branché sur le
  * cron des rappels existant, sans nouvelle route ni interrupteur ; sans effet quand la file des espaces d'équipe est fermée.
@@ -29,9 +30,19 @@ export async function sweepDissolvedTeamSpaces(limit = TEAM_SPACE_SWEEP_BATCH, e
     FROM "DiscordTeamSpace" s
     JOIN "CommunityTeam" t ON t."id" = s."teamId" AND t."communityId" = s."communityId"
     JOIN "Community" c ON c."id" = s."communityId"
-    WHERE s."deletedAt" IS NULL AND t."isRecruiting" = false
+    WHERE s."deletedAt" IS NULL
       AND c."status" = 'ACTIVE' AND c."communityTeamsEnabled" = true AND c."discordGuildId" IS NOT NULL
       AND NOT EXISTS (SELECT 1 FROM "CommunityTeamMember" m WHERE m."teamId" = t."id" AND m."communityId" = t."communityId")
+      -- Équipes BLOQUÉES exclues dans la requête (jamais en tête du LIMIT : 25 équipes bloquées n'affament pas une équipe libre).
+      AND NOT EXISTS (SELECT 1 FROM "TowerChallengeAttempt" a WHERE a."teamId" = t."id" AND a."communityId" = t."communityId" AND a."status" IN ('ASSIGNED', 'SUBMITTED'))
+      AND NOT EXISTS (
+        SELECT 1 FROM "TowerChallengeAppeal" ap JOIN "TowerChallengeAttempt" a2 ON a2."id" = ap."attemptId" AND a2."communityId" = ap."communityId"
+        WHERE a2."teamId" = t."id" AND ap."communityId" = t."communityId" AND ap."status" = 'OPEN'
+      )
+      AND NOT EXISTS (
+        SELECT 1 FROM "ModerationReport" r
+        WHERE r."communityId" = s."communityId" AND r."closedAt" IS NULL AND r."channelId" IN (s."channelId", s."voiceChannelId")
+      )
       AND NOT EXISTS (
         SELECT 1 FROM "NotificationEvent" e
         WHERE e."eventType" = 'TEAM_SPACE_SYNC' AND e."sourceId" = t."id" AND e."createdAt" > ${retryAfter}
@@ -45,6 +56,8 @@ export async function sweepDissolvedTeamSpaces(limit = TEAM_SPACE_SWEEP_BATCH, e
     try {
       const scopedDb = scopedPrisma({ communityIds: [row.communityId], includesDefault: false });
       if (await dissolutionBlocker(scopedDb as never, row.communityId, row.teamId)) { result.blocked += 1; continue; }
+      // Équipe vide : plus de candidats pendant que ses salons sont supprimés (sans effet si quelqu'un l'a rejointe entre-temps).
+      await scopedDb.communityTeam.updateMany({ where: { id: row.teamId, communityId: row.communityId, members: { none: {} } }, data: { isRecruiting: false } });
       const queued = await enqueueTeamSpaceSync({ intent: "delete", communityId: row.communityId, teamId: row.teamId });
       if (queued === "queued") {
         result.queued += 1;

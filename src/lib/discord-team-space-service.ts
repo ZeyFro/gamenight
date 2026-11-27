@@ -550,19 +550,21 @@ export async function deleteTeamSpace(input: {
     if ((byId.has(link.channelId) && byId.get(link.channelId)!.type !== 0)
       || (link.voiceChannelId && byId.has(link.voiceChannelId) && byId.get(link.voiceChannelId)!.type !== 2)) return abandon(input, "mismatch");
     const present = channelIds.filter((id) => byId.has(id));
-    // Accès à retirer : anciens membres transportés + surcharges nominatives réellement posées sur NOS salons, moins les membres ACTUELS.
+    // Accès à retirer, moins les membres ACTUELS. IM1 : sur un ABANDON (réversible : le signalement ou la contestation reste à instruire), on ne
+    // révoque QUE les anciens membres CONNUS (transportés par l'événement) ; une surcharge posée à la main (modérateur, staff) n'est JAMAIS retirée
+    // sans suppression effective. Les surcharges lues sur NOS salons ne s'ajoutent que lorsque la suppression va réellement avoir lieu.
+    const valid = (id: string) => /^[0-9]{16,20}$/.test(id);
     const currentMembers = new Set(team.members.map((member) => member.discordId).filter((id): id is string => Boolean(id)));
-    const accessIds = [...new Set([
-      ...(input.formerMemberDiscordIds ?? []),
-      ...present.flatMap((id) => byId.get(id)?.memberOverwriteIds ?? []),
-    ])].filter((id) => /^[0-9]{16,20}$/.test(id) && !currentMembers.has(id));
-    const revoke = async () => {
+    const knownIds = [...new Set(input.formerMemberDiscordIds ?? [])].filter((id) => valid(id) && !currentMembers.has(id));
+    const accessIds = [...new Set([...knownIds, ...present.flatMap((id) => byId.get(id)?.memberOverwriteIds ?? [])])]
+      .filter((id) => valid(id) && !currentMembers.has(id));
+    const revoke = (ids: readonly string[]) => async () => {
       if (!input.api.setMemberPermission) throw new Error("revoke_unavailable");
       for (const channelId of present) {
-        for (const discordId of accessIds) await input.api.setMemberPermission(channelId, discordId, "0", "remove");
+        for (const discordId of ids) await input.api.setMemberPermission(channelId, discordId, "0", "remove");
       }
     };
-    if (abandonReason) return abandon(input, abandonReason, accessIds.length > 0 && present.length > 0 ? revoke : undefined);
+    if (abandonReason) return abandon(input, abandonReason, knownIds.length > 0 && present.length > 0 ? revoke(knownIds) : undefined);
     if (input.dryRun) return { status: "dry_run", channelIds: present };
     if (present.length === 0) {
       await store.markDeleted?.(team.id, new Date());
@@ -572,7 +574,7 @@ export async function deleteTeamSpace(input: {
     // D5 : révoquer d'abord les accès nominatifs. Si la suppression échoue ensuite, plus personne ne garde l'accès aux salons.
     if (accessIds.length > 0) {
       if (!input.api.setMemberPermission) return { status: "failed", channelIds: present };
-      await revoke();
+      await revoke(accessIds)();
     }
     for (const channelId of [...present].reverse()) {
       await input.api.deleteChannel(channelId);

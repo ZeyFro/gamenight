@@ -146,6 +146,26 @@ describe("deleteTeamSpace", () => {
     expect(second.deleted).toEqual([]);
   });
 
+  it("IM1 : sur un abandon, la surcharge d'un modérateur posée à la main est CONSERVÉE (seuls les anciens membres connus sont révoqués) ; elle n'est retirée que lors d'une suppression effective", async () => {
+    const moderator = "444444444444444444";
+    const overwrites = [
+      { id: "chan-1", name: "a", type: 0, memberOverwriteIds: ["111111111111111111", moderator] },
+      { id: "voice-1", name: "b", type: 2, memberOverwriteIds: [moderator] },
+    ];
+    mocks.openReports.mockResolvedValue(1);
+    const abandoned = fakeApi(overwrites);
+    expect((await deleteTeamSpace({ teamId: TEAM, communityId: "community-1", api: abandoned.api, store: store(), env: enabled, formerMemberDiscordIds: ["111111111111111111"] })).status).toBe("open_report");
+    expect(abandoned.removed.some((entry) => entry.endsWith(":" + moderator))).toBe(false);
+    expect(abandoned.removed.every((entry) => entry.endsWith(":111111111111111111"))).toBe(true);
+    expect(abandoned.deleted).toEqual([]);
+
+    mocks.openReports.mockResolvedValue(0);
+    const real = fakeApi(overwrites);
+    expect((await deleteTeamSpace({ teamId: TEAM, communityId: "community-1", api: real.api, store: store(), env: enabled, formerMemberDiscordIds: ["111111111111111111"] })).status).toBe("deleted");
+    expect(real.removed.some((entry) => entry.endsWith(":" + moderator))).toBe(true);
+    expect(real.deleted.sort()).toEqual(["chan-1", "voice-1"]);
+  });
+
   it("I1 : si le retrait des accès échoue avant un abandon, le résultat est « partial » (rejouable), jamais un abandon silencieux", async () => {
     mocks.activeChallenges.mockResolvedValue(1);
     const { api, deleted } = fakeApi(existing);
