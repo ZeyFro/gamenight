@@ -7,39 +7,25 @@ import { Button } from "@/components/ui/Button";
 import { pageMetadata } from "@/lib/page-title";
 import { prisma } from "@/lib/prisma";
 import { resolveActiveCommunityId } from "@/lib/community-isolation";
-import { DEFAULT_COMMUNITY_SLUG } from "@/lib/default-community";
+import { onboardingCommandsChannelUrl } from "@/lib/onboarding-commands-link";
 
 export const metadata = pageMetadata("Bienvenue");
 
-const DISCORD_ID_PATTERN = /^\d{17,20}$/;
-
 /** Resolve the configured command shortcut for the active community.
- * The legacy command channel exists only for the default guild; never reuse
- * it for another community. Until a community-specific command-channel
- * setting exists, other communities keep the slash-command instructions
- * without a cross-server link.
+ * The link is built from the existing Tower guild/channel configuration and
+ * only for the community bound to that guild; another community never gets a
+ * cross-server link.
  */
 async function getOnboardingConfiguration(userId: string): Promise<{ commandsChannelUrl: string | null; towerAvailable: boolean }> {
   const communityId = await resolveActiveCommunityId(userId);
   if (!communityId) return { commandsChannelUrl: null, towerAvailable: false };
   const community = await prisma.community.findUnique({
     where: { id: communityId },
-    select: { slug: true, status: true, discordGuildId: true, towerChallengesEnabled: true },
+    select: { status: true, discordGuildId: true, towerChallengesEnabled: true },
   });
   const towerAvailable = process.env.TOWER_CHALLENGES_ENABLED === "true" &&
     community?.status === "ACTIVE" && community.towerChallengesEnabled;
-  const configuredGuildId = community?.discordGuildId?.trim();
-  const defaultGuildId = process.env.DISCORD_BOT_GUILD_ID?.trim();
-  const configuredChannelId = process.env.TOWER_DISCORD_COMMANDS_CHANNEL_ID?.trim();
-  const commandsChannelUrl = community?.status === "ACTIVE" &&
-    community.slug === DEFAULT_COMMUNITY_SLUG &&
-    configuredGuildId &&
-    configuredGuildId === defaultGuildId &&
-    configuredChannelId &&
-    DISCORD_ID_PATTERN.test(configuredGuildId) &&
-    DISCORD_ID_PATTERN.test(configuredChannelId)
-    ? `https://discord.com/channels/${configuredGuildId}/${configuredChannelId}`
-    : null;
+  const commandsChannelUrl = onboardingCommandsChannelUrl(community);
   return { commandsChannelUrl, towerAvailable };
 }
 
