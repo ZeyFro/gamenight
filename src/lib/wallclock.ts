@@ -119,6 +119,32 @@ export function toWallClock(instant: Date): Date {
   );
 }
 
+/**
+ * Convertit une date « horloge murale » de Paris (représentée en UTC, voir
+ * `toWallClock`) vers l'INSTANT RÉEL correspondant. À utiliser dès qu'une
+ * borne murale (début de saison, de mois, minuit de Paris) est comparée à
+ * une colonne d'horodatage réelle (`createdAt`, `expiresAt`…) : comparer
+ * directement les deux décale la borne de 1 h en hiver et 2 h en été.
+ *
+ * L'itération converge en deux passes pour les changements d'heure ; les
+ * bornes utilisées dans l'app (minuit, début de mois) ne tombent jamais
+ * dans l'heure répétée ou sautée du changement d'heure.
+ */
+export function wallClockToInstant(wallClock: Date): Date {
+  let instant = new Date(wallClock.getTime());
+  for (let pass = 0; pass < 3; pass++) {
+    const drift = wallClock.getTime() - toWallClock(instant).getTime();
+    if (drift === 0) break;
+    instant = new Date(instant.getTime() + drift);
+  }
+  return instant;
+}
+
+/** « Maintenant » en millisecondes d'horloge murale — pour les compteurs client qui doivent comparer un `Date.now()` réel à une deadline murale. */
+export function wallClockNowMs(): number {
+  return toWallClock(new Date()).getTime();
+}
+
 /** Aujourd'hui à minuit (même convention horloge-murale/UTC). */
 export function todayDateOnly(): Date {
   const now = wallClockNow();

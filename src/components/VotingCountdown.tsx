@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
-import { formatDurationFr } from "@/lib/wallclock";
+import { formatDurationFr, wallClockNowMs } from "@/lib/wallclock";
 
 const HOUR_MS = 60 * 60 * 1000;
 
@@ -15,10 +15,13 @@ const HOUR_MS = 60 * 60 * 1000;
  * Pulse discret + couleur ambre quand il reste moins d'1h.
  */
 export function VotingCountdown({ deadline }: { deadline: string }) {
-  const [now, setNow] = useState(() => Date.now());
+  // `deadline` est une heure murale de Paris (deadline de vote ou date de
+  // soirée) : la comparer à `Date.now()` la décalait de 1-2 h. On lit donc
+  // « maintenant » dans la même convention que la deadline.
+  const [now, setNow] = useState(wallClockNowMs);
 
   useEffect(() => {
-    const interval = setInterval(() => setNow(Date.now()), 30_000);
+    const interval = setInterval(() => setNow(wallClockNowMs()), 30_000);
     return () => clearInterval(interval);
   }, []);
 

@@ -6,6 +6,7 @@ import { accessibleSessionWhereFor } from "@/lib/session-access";
 import { DEFAULT_COMMUNITY_SLUG } from "@/lib/default-community";
 import { prisma } from "@/lib/prisma";
 import { clearTeamRecruiterRoles } from "@/lib/team-recruiter-cleanup";
+import { wallClockNow } from "@/lib/wallclock";
 import type { TeamIdentity } from "@/lib/team-identity";
 
 /**
@@ -72,7 +73,8 @@ export async function listCommunityTeams(userId: string, communityId: string) {
       createdBy: { select: { discordName: true, memberships: { where: { communityId, status: "ACTIVE" }, select: { id: true } } } },
       members: { where: activeTeamMemberWhere(communityId), select: { userId: true, joinedAt: true, user: { select: { discordName: true, communityMemberStats: { where: { communityId }, select: { xpTotal: true } } } } }, orderBy: { joinedAt: "asc" } },
       sessions: {
-        where: { AND: [accessibleSessions, { status: { in: ["VOTING", "SCHEDULED"] }, date: { gte: new Date() } }] },
+        // `Session.date` est une heure murale de Paris, jamais comparable à `new Date()` (instant réel).
+        where: { AND: [accessibleSessions, { status: { in: ["VOTING", "SCHEDULED"] }, date: { gte: wallClockNow() } }] },
         select: { id: true, date: true, status: true, decidedGame: { select: { name: true } } },
         orderBy: { date: "asc" },
       },

@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
-import { wallClockNow, toWallClock, formatDurationFr } from "@/lib/wallclock";
+import { wallClockNow, wallClockNowMs, wallClockToInstant, toWallClock, formatDurationFr } from "@/lib/wallclock";
 
 describe("wallClockNow", () => {
   beforeEach(() => {
@@ -93,6 +93,30 @@ describe("toWallClock", () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-10-12T08:26:52Z"));
     expect(wallClockNow().toISOString()).toBe(toWallClock(new Date()).toISOString());
+    vi.useRealTimers();
+  });
+});
+
+describe("wallClockToInstant", () => {
+  it("hiver : minuit mural (1er septembre) = 22:00 UTC la veille", () => {
+    expect(wallClockToInstant(new Date("2026-09-01T00:00:00.000Z")).toISOString()).toBe("2026-08-31T22:00:00.000Z");
+  });
+
+  it("été : minuit mural (1er juillet) = 22:00 UTC la veille (CEST)", () => {
+    expect(wallClockToInstant(new Date("2026-07-01T00:00:00.000Z")).toISOString()).toBe("2026-06-30T22:00:00.000Z");
+  });
+
+  it("aller-retour avec toWallClock, y compris de part et d'autre du changement d'heure", () => {
+    for (const instant of ["2026-03-29T00:00:00Z", "2026-03-29T03:00:00Z", "2026-10-24T12:00:00Z", "2026-10-26T12:00:00Z"]) {
+      const real = new Date(instant);
+      expect(wallClockToInstant(toWallClock(real)).toISOString()).toBe(real.toISOString());
+    }
+  });
+
+  it("wallClockNowMs lit l'heure murale, pas l'instant réel", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-01-15T12:00:00Z"));
+    expect(wallClockNowMs()).toBe(new Date("2026-01-15T13:00:00Z").getTime());
     vi.useRealTimers();
   });
 });

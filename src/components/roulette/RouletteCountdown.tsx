@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
-import { formatDurationFr } from "@/lib/wallclock";
+import { formatDurationFr, wallClockNowMs } from "@/lib/wallclock";
 
 const HOUR_MS = 60 * 60 * 1000;
 
@@ -14,10 +14,12 @@ const HOUR_MS = 60 * 60 * 1000;
  * duplication reste minime.
  */
 export function RouletteCountdown({ deadline }: { deadline: string }) {
-  const [now, setNow] = useState(() => Date.now());
+  // La deadline de proposition est elle aussi une heure murale de Paris
+  // (`scheduledAt − offset`, tous deux muraux) : jamais `Date.now()` réel.
+  const [now, setNow] = useState(wallClockNowMs);
 
   useEffect(() => {
-    const interval = setInterval(() => setNow(Date.now()), 30_000);
+    const interval = setInterval(() => setNow(wallClockNowMs()), 30_000);
     return () => clearInterval(interval);
   }, []);
 

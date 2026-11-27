@@ -287,7 +287,8 @@ export async function GET(request: Request) {
     });
 
     // Annonces joueurs (PLAYER_CLASSIFIED_FORUM_RELAY_ENABLED) : fermeture des posts expirés (file seulement).
-    const playerListings = await runPlayerClassifiedForumLifecycle(now).catch((error: unknown) => {
+    // `expiresAt`/`createdAt` sont de VRAIS instants : ne jamais lui passer l'heure murale `now`.
+    const playerListings = await runPlayerClassifiedForumLifecycle(new Date()).catch((error: unknown) => {
       persistServerError("cron:reminders", error, { route: "cron/reminders" });
       logger.error("cron:reminders", error, { step: "player-classified-forum" });
       return null;

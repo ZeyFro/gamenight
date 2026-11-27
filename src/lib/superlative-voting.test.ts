@@ -24,6 +24,7 @@ import {
   getPendingSuperlativeVoteSessionIds,
   getWinningProposalParticipants,
   isCarryOrMvpCategory,
+  isSuperlativeVotingDeadlinePassed,
 } from "./superlative-voting";
 
 beforeEach(() => {
@@ -31,6 +32,16 @@ beforeEach(() => {
   prisma.membership.findMany.mockResolvedValue([
     { communityId: "default", community: { slug: "default" } },
   ]);
+});
+
+describe("isSuperlativeVotingDeadlinePassed", () => {
+  const deadline = new Date("2026-11-27T20:00:00.000Z");
+
+  it("compare la deadline d'instant réel à l'horloge réelle, sans décalage mural", () => {
+    expect(isSuperlativeVotingDeadlinePassed(deadline, new Date("2026-11-27T19:59:59.999Z"))).toBe(false);
+    expect(isSuperlativeVotingDeadlinePassed(deadline, deadline)).toBe(true);
+    expect(isSuperlativeVotingDeadlinePassed(deadline, new Date("2026-11-27T20:00:00.001Z"))).toBe(true);
+  });
 });
 
 describe("isCarryOrMvpCategory", () => {

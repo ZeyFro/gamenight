@@ -113,6 +113,26 @@ describe.skipIf(!TEST_DATABASE_URL)("équipes communautaires : PostgreSQL isolé
     expect((await db.communityTeam.findUniqueOrThrow({ where: { id: team.id } })).createdById).toBe(ids.leader);
   });
 
+  it("ne montre pas comme passée une soirée encore à venir en heure murale (jamais `new Date()` réel)", async () => {
+    await teams.createCommunityTeam({ userId: ids.leader, communityId: ids.community, gameId: ids.game, name: "Horloge", description: "Vérifie la frontière horaire.", platform: "PC", maxMembers: 4 });
+    const team = await db.communityTeam.findFirstOrThrow({ where: { communityId: ids.community, name: "Horloge" } });
+    vi.useFakeTimers({ toFake: ["Date"] });
+    try {
+      // 22:30 UTC = 23:30 à Paris (hiver). La soirée est à 23:00 heure murale : encore à venir.
+      vi.setSystemTime(new Date("2026-01-15T22:30:00.000Z"));
+      await db.session.create({
+        data: {
+          createdById: ids.leader, communityId: ids.community, communityTeamId: team.id,
+          status: "SCHEDULED", visibility: "PUBLIC", date: new Date("2026-01-15T23:00:00.000Z"),
+        },
+      });
+      const [listed] = await teams.listCommunityTeams(ids.leader, ids.community);
+      expect(listed.sessions).toHaveLength(0);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("identité visuelle (§11.2) : le capitaine choisit couleur et emblème, un autre membre est refusé", async () => {
     await teams.createCommunityTeam({ userId: ids.leader, communityId: ids.community, gameId: ids.game, name: "Les Dragons", description: "Une équipe aux couleurs vives.", platform: "PC", maxMembers: 4 });
     const [team] = await db.communityTeam.findMany({ where: { communityId: ids.community } });

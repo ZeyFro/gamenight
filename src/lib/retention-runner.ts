@@ -85,6 +85,10 @@ export async function runRetentionCleanup(opts: {
   budgetMs?: number;
 }): Promise<RetentionRunReport> {
   const startedAt = opts.now ?? wallClockNow();
+  // Deux conventions dans ce passage : les dates de soirée/tournoi sont
+  // murales, les horodatages techniques (`NotificationDelivery.createdAt`)
+  // sont de vrais instants. `opts.now` injecté sert aux deux dans les tests.
+  const realStartedAt = opts.now ?? new Date();
   const budgetMs = opts.budgetMs ?? RETENTION_MAX_BATCH_DURATION_MS;
   const deadlineMs = Date.now() + budgetMs;
   const limit = opts.batchSize ?? RETENTION_BATCH_SIZE;
@@ -219,7 +223,7 @@ export async function runRetentionCleanup(opts: {
     }
 
     try {
-      report.technicalData = await purgeTechnicalDeliveriesBatch({ limit, dryRun: opts.dryRun, now: startedAt, scope });
+      report.technicalData = await purgeTechnicalDeliveriesBatch({ limit, dryRun: opts.dryRun, now: realStartedAt, scope });
     } catch (error) {
       errors.push(`technicalData: ${String(error)}`);
       logger.error("retention-runner", error, { step: "technicalData" });

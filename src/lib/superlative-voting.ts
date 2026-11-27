@@ -2,7 +2,6 @@ import { getScopedPrisma, scopedPrisma, withCommunity } from "@/lib/community-sc
 import { cronCommunityScope } from "@/lib/community-isolation";
 import { accessibleSessionWhereFor } from "@/lib/session-access";
 import { prisma } from "@/lib/prisma";
-import { wallClockNow } from "@/lib/wallclock";
 import { awardXp } from "@/lib/xp-actions";
 import { announceSessionAwards } from "@/lib/discord-session-awards";
 import { checkSuperlativesWonBadges } from "@/lib/badges";
@@ -82,10 +81,17 @@ export async function openSuperlativeVotingWindow(
     return;
   }
 
+  // VRAI instant (comme `Date.now()`), jamais l'heure murale de
+  // `wallClockNow()` : la deadline est ensuite comparée à l'horloge réelle.
   await scopedDb.session.update({
     where: { id: sessionId },
     data: { superlativeVotingDeadline: new Date(Date.now() + VOTING_WINDOW_MS) },
   });
+}
+
+/** La deadline de superlatifs est un instant réel (posée depuis `Date.now()`), pas une heure murale. */
+export function isSuperlativeVotingDeadlinePassed(deadline: Date, now: Date = new Date()): boolean {
+  return now.getTime() >= deadline.getTime();
 }
 
 async function haveAllParticipantsVoted(
@@ -290,7 +296,7 @@ export async function finalizeSuperlativeVotingIfDue(sessionId: string): Promise
     sessionId,
     session.decidedGameId
   );
-  const deadlinePassed = wallClockNow() >= session.superlativeVotingDeadline;
+  const deadlinePassed = isSuperlativeVotingDeadlinePassed(session.superlativeVotingDeadline);
   const allVoted = await haveAllParticipantsVoted(sessionId, participants);
 
   if (!allVoted && !deadlinePassed) return;
