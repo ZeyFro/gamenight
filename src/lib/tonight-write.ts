@@ -16,7 +16,9 @@ export async function replaceTonightClassifieds(input: {
     });
     await scopedDb.playerClassified.deleteMany({
       where: { communityId: input.communityId, createdById: input.userId,
-        message: { startsWith: TONIGHT_MESSAGE_PREFIX } },
+        message: { startsWith: TONIGHT_MESSAGE_PREFIX },
+        // Jamais une annonce dont le fil forum existe : sa suppression doit passer par la fermeture du fil (D3).
+        forumThreadId: null },
     });
     await scopedDb.playerClassified.createMany({
       data: input.gameIds.map((gameId) => ({

@@ -1,3 +1,4 @@
+import { enqueueForumClosuresForUser } from "@/lib/player-classified-forum";
 import { del, list } from "@vercel/blob";
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
@@ -128,6 +129,12 @@ export async function deleteAccount(
 
   // Migration du journal absente : l'erreur Prisma remonte ICI, avant toute suppression de fichier.
   await prisma.accountDeletionLog.findFirst({ select: { id: true } });
+
+  // Annonces « recherche de joueurs » relayées sur le forum (D3) : leurs fils sont fermés par la file (événement portant le fil, la ligne
+  // disparaît juste après). Aucun appel Discord ici. Mise en file impossible = refus réessayable, base intacte.
+  if ((await enqueueForumClosuresForUser(user.id)) > 0) {
+    throw new AccountBlobUnavailableError("Fermeture des fils du forum impossible pour le moment : réessaie dans un instant.");
+  }
 
   // Fichiers d'abord : un échec ici laisse la base intacte (la personne peut réessayer). Les fichiers déjà supprimés
   // ne gênent pas une nouvelle tentative.

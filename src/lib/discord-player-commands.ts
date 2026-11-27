@@ -249,7 +249,9 @@ export function handleSignedPlayerInteraction(body: unknown, timestamp: string |
                 ? "Cette annonce n’est pas la tienne : seul son auteur peut la retirer."
                 : removed === "rate_limited"
                   ? RATE_LIMIT_MESSAGE
-                  : "Annonce introuvable ou déjà retirée : rien n’a été modifié.";
+                  : removed === "forum_unavailable"
+                    ? "L’annonce n’a pas pu être retirée du forum pour le moment : réessaie dans un instant, rien n’a été modifié."
+                    : "Annonce introuvable ou déjà retirée : rien n’a été modifié.";
         } else if (subName === "chercher" && text("niveau") && !(isGameLevelsEnabled() && text("jeu") && isGameLevel(text("niveau")))) {
           // Jamais d'élargissement silencieux : un niveau sans jeu, inconnu ou drapeau éteint est refusé.
           content = !isGameLevelsEnabled()

@@ -13,8 +13,8 @@ import { logger } from "@/lib/logger";
 export const PLAYER_CLASSIFIED_DAILY_PINGS = 3;
 
 export function playerClassifiedPingDay(now: Date): Date {
-  // Le plafond est quotidien pour les joueurs : le jour se lit à Paris, jamais en UTC
-  // (23 h 30 UTC restent le même jour pour un joueur français).
+  // Le plafond est quotidien pour les joueurs : le jour se lit à Paris, jamais en UTC. Le jour change à MINUIT DE PARIS : 22 h 59 UTC
+  // (hiver) est encore la veille, 23 h 00 UTC est le lendemain ; l'été (UTC+2) la bascule est à 22 h 00 UTC.
   const parts = new Intl.DateTimeFormat("en-CA", {
     timeZone: "Europe/Paris", year: "numeric", month: "2-digit", day: "2-digit",
   }).formatToParts(now);

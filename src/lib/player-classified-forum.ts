@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { prisma } from "@/lib/prisma";
 import { scopedPrisma } from "@/lib/community-scoped-client";
 import { logger } from "@/lib/logger";
 import { createNotificationEvent, enqueueDelivery } from "@/lib/notification-delivery";
@@ -12,6 +13,13 @@ import type { DeliveryResolver } from "@/lib/notification-executor";
  *
  * Idempotence : un seul événement par annonce et par intention (`occurrence`),
  * et le runner ne crée jamais un second fil si `forumThreadId` est déjà écrit.
+ *
+ * Règles de sécurité (D3, corrections de revue du 27/11/2026) :
+ * - un profil masqué (`UserProfileVisibility = HIDDEN`) n'est JAMAIS relayé, que `PROFILE_VISIBILITY_ENABLED` soit allumé ou non (règle la
+ *   plus prudente : une personne qui a masqué son profil le reste) ; un post déjà créé dont l'auteur masque ensuite son profil est fermé par
+ *   le balayage du cron des rappels ;
+ * - la FERMETURE d'un fil ne dépend jamais de l'interrupteur de relais (il gouverne la création, pas le retrait) et son événement porte
+ *   toujours `threadId` : la ligne de l'annonce peut avoir disparu (suppression, suppression de compte).
  */
 export const PLAYER_CLASSIFIED_FORUM_EVENT = "PLAYER_CLASSIFIED_FORUM";
 export const PLAYER_CLASSIFIED_FORUM_NAME = "🔎・recherche-de-joueurs";
@@ -30,14 +38,22 @@ export function playerClassifiedForumEnabled(env: NodeJS.ProcessEnv = process.en
 const slotFor = (guildId: string, listingId: string, intent: PlayerClassifiedForumIntent) =>
   `${guildId}:ADMIN:${listingId}:player-classified-${intent}`;
 
+/** Profil masqué par son auteur : l'annonce ne doit jamais apparaître dans le forum public. */
+export async function isForumAuthorHidden(userId: string): Promise<boolean> {
+  const row = await prisma.userProfileVisibility.findUnique({ where: { userId }, select: { visibility: true } });
+  return row?.visibility === "HIDDEN";
+}
+
 export async function enqueuePlayerClassifiedForum(input: {
   listingId: string;
   communityId: string;
   intent: PlayerClassifiedForumIntent;
-  /** Fermeture après retrait : la ligne peut déjà être supprimée à l'exécution. */
+  /** Obligatoire pour une fermeture : la ligne peut déjà être supprimée à l'exécution. */
   threadId?: string;
 }): Promise<ForumEnqueueResult> {
-  if (!playerClassifiedForumEnabled()) return "disabled";
+  // L'interrupteur gouverne la CRÉATION des posts ; fermer un fil existant reste toujours possible.
+  if (input.intent === "post" && !playerClassifiedForumEnabled()) return "disabled";
+  if (input.intent === "close" && !input.threadId) return "unavailable";
   try {
     const community = await scopedPrisma(null).community.findUnique({
       where: { id: input.communityId },
@@ -119,23 +135,49 @@ export const playerClassifiedForumResolver: DeliveryResolver = {
   },
 };
 
+/**
+ * Met en file la fermeture des fils de ces annonces AVANT qu'elles ne soient supprimées. Renvoie le nombre de fermetures qui n'ont pas pu être
+ * mises en file (0 = tout est parti) : l'appelant décide de refuser le retrait pour que le fil ne reste pas ouvert sans annonce.
+ */
+export async function enqueueForumClosures(rows: Array<{ id: string; communityId: string; forumThreadId: string | null }>): Promise<number> {
+  let failed = 0;
+  for (const row of rows) {
+    if (!row.forumThreadId) continue;
+    const result = await enqueuePlayerClassifiedForum({ listingId: row.id, communityId: row.communityId, intent: "close", threadId: row.forumThreadId });
+    if (result !== "queued") failed++;
+  }
+  return failed;
+}
+
+/** Suppression de compte : ferme tous les fils encore ouverts des annonces de la personne (la ligne sera supprimée ensuite). */
+export async function enqueueForumClosuresForUser(userId: string): Promise<number> {
+  const rows = await scopedPrisma(null).playerClassified.findMany({
+    where: { createdById: userId, forumThreadId: { not: null }, forumClosedAt: null },
+    select: { id: true, communityId: true, forumThreadId: true },
+  });
+  return enqueueForumClosures(rows);
+}
+
 export interface PlayerClassifiedForumLifecycle {
   enabled: boolean;
   closeQueued: number;
 }
 
-/** Balayage (cron des rappels) : ferme les posts des annonces expirées. */
+/**
+ * Balayage (cron des rappels) : ferme les posts des annonces expirées ET ceux dont l'auteur a masqué son profil depuis. Il tourne même
+ * relais éteint : il ne fait que fermer des fils qui existent déjà.
+ */
 export async function runPlayerClassifiedForumLifecycle(now: Date = new Date()): Promise<PlayerClassifiedForumLifecycle> {
-  if (!playerClassifiedForumEnabled()) return { enabled: false, closeQueued: 0 };
   const rows = await scopedPrisma(null).playerClassified.findMany({
-    where: { expiresAt: { lte: now }, forumThreadId: { not: null }, forumClosedAt: null },
+    where: {
+      forumThreadId: { not: null },
+      forumClosedAt: null,
+      OR: [{ expiresAt: { lte: now } }, { createdBy: { profileVisibility: { is: { visibility: "HIDDEN" } } } }],
+    },
     orderBy: { expiresAt: "asc" },
     take: 25,
-    select: { id: true, communityId: true },
+    select: { id: true, communityId: true, forumThreadId: true },
   });
-  let closeQueued = 0;
-  for (const row of rows) {
-    if ((await enqueuePlayerClassifiedForum({ listingId: row.id, communityId: row.communityId, intent: "close" })) === "queued") closeQueued++;
-  }
-  return { enabled: true, closeQueued };
+  const failed = await enqueueForumClosures(rows);
+  return { enabled: playerClassifiedForumEnabled() || rows.length > 0, closeQueued: rows.length - failed };
 }

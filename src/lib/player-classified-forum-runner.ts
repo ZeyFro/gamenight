@@ -108,9 +108,15 @@ export async function runPlayerClassifiedForumAction(
   });
   if (!created.ok) return created;
 
-  await scopedDb.playerClassified.updateMany({
+  const recorded = await scopedDb.playerClassified.updateMany({
     where: { id: listing.id, communityId: listing.communityId, forumThreadId: null },
     data: { forumThreadId: created.data.threadId, forumRelayedAt: new Date() },
   });
+  if (recorded.count === 0) {
+    // L'annonce a été retirée pendant la création du post (ou un autre exécuteur l'a relayée entre-temps) : ce fil ne sera jamais
+    // retrouvé par le balayage, on l'archive tout de suite pour qu'il ne reste pas ouvert sans annonce (jamais de fil orphelin).
+    const archived = await archiveThread({ threadId: created.data.threadId, locked: false, deadline });
+    if (!archived.ok && archived.kind !== "not_found") return archived;
+  }
   return { ok: true, data: { threadId: created.data.threadId } };
 }
