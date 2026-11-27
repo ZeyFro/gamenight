@@ -22,7 +22,7 @@ if (!url) console.warn("[tower-discord-votes] Postgres absent : intégrations ig
 const guildId = "987654321098765431";
 const proofChannelId = "123456789012345671";
 const communityId = "dv-community";
-const users = ["dv-author", "dv-old", "dv-new", "dv-other"];
+const users = ["dv-author", "dv-old", "dv-new", "dv-other", "dv-voter2", "dv-voter3"];
 const attemptId = "dv-attempt";
 const proofSlot = guildId + ":TOWER:" + attemptId + ":proof";
 
@@ -128,5 +128,43 @@ describe.skipIf(!url)("votes Discord des preuves Tower", () => {
     const threads = await db.notificationDelivery.findMany({ where: { targetSlot: guildId + ":TOWER:" + attemptId + ":proof-thread" } });
     expect(threads).toHaveLength(1);
     expect(threads[0]).toMatchObject({ operation: "SEND", recipientKey: proofChannelId });
+  });
+
+  it("C078 — trois votants distincts majoritaires valident la preuve et ne créditent l'étage qu'une fois", async () => {
+    await db.towerChallengeProgress.create({ data: { communityId, userId: "dv-author" } });
+    expect((await vote("dv-old", true)).status).toBe("VOTED");
+    expect((await vote("dv-other", true)).status).toBe("VOTED");
+    expect((await vote("dv-voter2", true)).status).toBe("VOTED");
+    expect((await vote("dv-voter3", false)).status).toBe("VOTED");
+
+    clock.now = new Date("2026-12-11T10:00:00Z"); // 24 h après le dépôt : clôture du vote
+    const settled = await api.settleTowerChallenge({ communityId, userId: "dv-author", attemptId });
+    expect(settled).toMatchObject({ status: "APPROVED", rewardFloors: 1, replayed: false });
+    expect((await db.towerChallengeAttempt.findUniqueOrThrow({ where: { id: attemptId } })).status).toBe("APPROVED");
+    const floors = async () => (await db.towerChallengeProgress.findUniqueOrThrow({
+      where: { communityId_userId: { communityId, userId: "dv-author" } },
+    })).floorsClimbed;
+    expect(await floors()).toBe(BigInt(1));
+
+    expect(await api.settleTowerChallenge({ communityId, userId: "dv-author", attemptId }))
+      .toMatchObject({ status: "APPROVED", replayed: true });
+    expect(await floors()).toBe(BigInt(1));
+    expect(await db.towerChallengeVote.count({ where: { attemptId } })).toBe(4);
+  });
+
+  it("C078 — quatre votants à égalité : preuve refusée, aucun étage crédité", async () => {
+    await db.towerChallengeProgress.create({ data: { communityId, userId: "dv-author" } });
+    for (const [userId, approve] of [
+      ["dv-old", true], ["dv-other", true], ["dv-voter2", false], ["dv-voter3", false],
+    ] as const) expect((await vote(userId, approve)).status).toBe("VOTED");
+
+    clock.now = new Date("2026-12-11T10:00:00Z");
+    expect(await api.settleTowerChallenge({ communityId, userId: "dv-author", attemptId }))
+      .toMatchObject({ status: "REJECTED" });
+    expect((await db.towerChallengeAttempt.findUniqueOrThrow({ where: { id: attemptId } })).status).toBe("REJECTED");
+    expect((await db.towerChallengeProgress.findUniqueOrThrow({
+      where: { communityId_userId: { communityId, userId: "dv-author" } },
+    })).floorsClimbed).toBe(BigInt(0));
+    expect(await db.towerChallengeVote.count({ where: { attemptId } })).toBe(4);
   });
 });
