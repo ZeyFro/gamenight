@@ -3560,8 +3560,11 @@ model DiscordTeamSpace {
   guildId        String
   channelId      String   @unique
   voiceChannelId String?  @unique
-  roleId         String
+  /** Legacy : plus aucun rôle n'est créé pour un nouvel espace (permissions par membre). */
+  roleId         String?
   archived       Boolean  @default(false)
+  /** Suppression réelle effectuée (les deux salons enregistrés ont été supprimés). */
+  deletedAt      DateTime?
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 

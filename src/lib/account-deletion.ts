@@ -1,4 +1,5 @@
 import { enqueueForumRemovalsForUser } from "@/lib/player-classified-forum";
+import { dissolveEmptiedTeams, listLastMemberTeams, recordAndRequestDissolvedTeams, type LastMemberTeam } from "@/lib/account-deletion-teams";
 import { del, list } from "@vercel/blob";
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
@@ -127,6 +128,11 @@ export async function deleteAccount(
   const preCheck = await soleOwnerCommunities(prisma, user.id);
   if (preCheck.length > 0) return { status: "refused", reason: "last_owner", communities: preCheck };
 
+  // D5 : équipes dont la personne est le dernier membre (lecture avant transaction, pour les identifiants Discord seulement : la décision de
+  // dissoudre est prise DANS la transaction, après verrou et recomptage). La confirmation est celle de la suppression de compte.
+  const lastMemberTeams = await listLastMemberTeams(user.id);
+  let dissolvedTeams: LastMemberTeam[] = [];
+
   // Migration du journal absente : l'erreur Prisma remonte ICI, avant toute suppression de fichier.
   await prisma.accountDeletionLog.findFirst({ select: { id: true } });
 
@@ -160,6 +166,11 @@ export async function deleteAccount(
         const sole = await soleOwnerCommunities(tx, user.id);
         if (sole.length > 0) throw new RefusedLastOwner(sole);
       }
+
+      // D5 : verrou de la ligne d'équipe, recomptage des autres membres actifs et des blocages ; jamais de refus (droit à l'effacement).
+      const emptied = await dissolveEmptiedTeams(tx, user.id, lastMemberTeams);
+      dissolvedTeams = emptied.dissolved;
+      add("CommunityTeamMember.dissolved", emptied.removed);
 
       // Livraisons Discord en file ou passées vers la personne (identifiants de MP), jamais envoyées au compte anonymisé.
       add("NotificationDelivery.recipientKey", (await tx.notificationDelivery.deleteMany({ where: { recipientKey: `user:${user.id}` } })).count);
@@ -240,6 +251,8 @@ export async function deleteAccount(
   });
 
   if (summary instanceof RefusedLastOwner) return { status: "refused", reason: "last_owner", communities: summary.communities };
+  // Équipes réellement dissoutes : journal puis suppression des salons par la file (jamais d'appel Discord ici ; échecs journalisés, rattrapés par le balayage).
+  await recordAndRequestDissolvedTeams(user.id, dissolvedTeams);
   logger.info("account-deletion", "Account anonymized.", { userId: user.id, tables: Object.keys(summary).length });
   return { status: "deleted", summary };
 }

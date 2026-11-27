@@ -45,7 +45,9 @@ describe.skipIf(!TEST_DATABASE_URL)("équipes communautaires : PostgreSQL isolé
     row = await db.communityTeam.findFirstOrThrow({ where: { id: row.id }, include: { members: true } });
     const joined = row.members.find((m) => m.userId !== ids.leader)!;
     expect(await teams.leaveCommunityTeam(joined.userId, ids.community, row.id)).toBe("left");
-    expect(await teams.leaveCommunityTeam(ids.leader, ids.community, row.id)).toBe("leader");
+    expect(await teams.leaveCommunityTeam(ids.leader, ids.community, row.id)).toBe("confirm_dissolution");
+    expect(await teams.leaveCommunityTeam(ids.leader, ids.community, row.id, { confirmDissolution: true })).toBe("dissolved_last_member");
+    expect(await db.communityTeamMember.count({ where: { teamId: row.id } })).toBe(0);
   });
 
   it("limits teams to 8 and blocks joining or creating a second team", async () => {
@@ -222,14 +224,90 @@ describe.skipIf(!TEST_DATABASE_URL)("équipes communautaires : PostgreSQL isolé
       expect((await db.communityTeam.findUniqueOrThrow({ where: { id: team.id } })).captainId).toBe(ids.member);
     });
 
-    it("renvoie « leader » si le capitaine est seul (ou si les autres ne sont pas actifs)", async () => {
+    it("demande confirmation puis dissout l'équipe quand le dernier membre actif la quitte", async () => {
       const team = await setup();
-      expect(await teams.leaveCommunityTeam(ids.leader, ids.community, team.id)).toBe("leader");
+      expect(await teams.leaveCommunityTeam(ids.leader, ids.community, team.id)).toBe("confirm_dissolution");
+      expect(await db.communityTeamMember.count({ where: { teamId: team.id } })).toBe(1);
+      expect(await teams.leaveCommunityTeam(ids.leader, ids.community, team.id, { confirmDissolution: true })).toBe("dissolved_last_member");
+      expect(await db.communityTeamMember.count({ where: { teamId: team.id } })).toBe(0);
+      expect((await db.communityTeam.findUniqueOrThrow({ where: { id: team.id } })).isRecruiting).toBe(false);
+      const membership = await db.membership.findUniqueOrThrow({ where: { communityId_userId: { communityId: ids.community, userId: ids.leader } }, select: { lastTeamLeftAt: true } });
+      expect(membership.lastTeamLeftAt).toBeInstanceOf(Date);
+
       await join(ids.racer, team.id, new Date("2030-01-02"));
       await db.membership.update({ where: { communityId_userId: { communityId: ids.community, userId: ids.racer } }, data: { status: "LEFT" } });
-      expect(await teams.leaveCommunityTeam(ids.leader, ids.community, team.id)).toBe("leader");
-      expect(await db.communityTeamMember.count({ where: { teamId: team.id, userId: ids.leader } })).toBe(1);
-      expect((await db.communityTeam.findUniqueOrThrow({ where: { id: team.id } })).captainId).toBe(ids.leader);
+      expect(await teams.leaveCommunityTeam(ids.leader, ids.community, team.id)).toBe("missing");
+    });
+
+    it("applique les blocages de dissolution au dernier membre", async () => {
+      const team = await setup();
+      await db.discordTeamSpace.create({ data: { teamId: team.id, communityId: ids.community,
+        guildId: "guild-last", channelId: "chan-last", voiceChannelId: "voice-last" } });
+      const report = await db.moderationReport.create({ data: { communityId: ids.community, guildId: "guild-last",
+        channelId: "chan-last", messageId: "msg-last", authorDiscordId: "author", reporterDiscordId: "reporter",
+        messageUrl: "https://discord.com/channels/guild-last/chan-last/msg-last", excerpt: "message signalé" } });
+      expect(await teams.leaveCommunityTeam(ids.leader, ids.community, team.id, { confirmDissolution: true })).toBe("open_report_or_appeal");
+      expect(await db.communityTeamMember.count({ where: { teamId: team.id } })).toBe(1);
+      await db.moderationReport.update({ where: { id: report.id }, data: { closedAt: new Date() } });
+
+      const definition = await db.towerChallengeDefinition.create({ data: { communityId: ids.community,
+        title: "Défi", instructions: "Réaliser le défi.", rewardFloors: 1 } });
+      await db.towerChallengeAttempt.create({ data: { communityId: ids.community, userId: ids.leader,
+        teamId: team.id, definitionId: definition.id, requestKey: "req-last", title: "Défi",
+        instructions: "Réaliser le défi.", rewardFloors: 1, assignedAt: new Date("2030-01-01T00:00:00Z"),
+        expiresAt: new Date("2030-01-03T00:00:00Z") } });
+      expect(await teams.leaveCommunityTeam(ids.leader, ids.community, team.id, { confirmDissolution: true })).toBe("active_challenges");
+      expect(await db.communityTeamMember.count({ where: { teamId: team.id } })).toBe(1);
+    });
+
+    it("D5 : une contestation Tower ouverte bloque aussi le départ du dernier membre (mêmes blocages que la dissolution)", async () => {
+      const team = await setup();
+      const definition = await db.towerChallengeDefinition.create({ data: { communityId: ids.community, title: "Défi", instructions: "Réaliser le défi.", rewardFloors: 1 } });
+      const attempt = await db.towerChallengeAttempt.create({ data: { communityId: ids.community, userId: ids.leader, teamId: team.id,
+        definitionId: definition.id, requestKey: "req-last-appeal", title: "Défi", instructions: "Réaliser le défi.", rewardFloors: 1,
+        assignedAt: new Date("2030-01-01T00:00:00Z"), expiresAt: new Date("2030-01-03T00:00:00Z"), status: "REJECTED", rejectedAt: new Date("2030-01-03T01:00:00Z") } });
+      const appeal = await db.towerChallengeAppeal.create({ data: { communityId: ids.community, attemptId: attempt.id, authorUserId: ids.leader, reason: "Contestation du verdict.", dueAt: new Date("2030-01-08") } });
+      expect(await teams.leaveCommunityTeam(ids.leader, ids.community, team.id, { confirmDissolution: true })).toBe("open_report_or_appeal");
+      expect(await db.communityTeamMember.count({ where: { teamId: team.id } })).toBe(1);
+      await db.towerChallengeAppeal.update({ where: { id: appeal.id }, data: { status: "UPHELD", decidedAt: new Date() } });
+      expect(await teams.leaveCommunityTeam(ids.leader, ids.community, team.id, { confirmDissolution: true })).toBe("dissolved_last_member");
+    });
+
+    it("D5 : le dernier membre ACTIF qui n'est PAS capitaine (capitaine parti) applique les mêmes blocages et la même confirmation, puis vide toute l'équipe", async () => {
+      const team = await setup();
+      await join(ids.racer, team.id, new Date("2030-01-02"));
+      // Le capitaine n'est plus membre actif du serveur : sa ligne d'équipe reste, mais il ne compte plus.
+      await db.membership.update({ where: { communityId_userId: { communityId: ids.community, userId: ids.leader } }, data: { status: "LEFT" } });
+      await db.discordTeamSpace.create({ data: { teamId: team.id, communityId: ids.community, guildId: "guild-nc", channelId: "chan-nc", voiceChannelId: "voice-nc" } });
+      const report = await db.moderationReport.create({ data: { communityId: ids.community, guildId: "guild-nc", channelId: "chan-nc", messageId: "msg-nc",
+        authorDiscordId: "author", reporterDiscordId: "reporter", messageUrl: "https://discord.com/channels/guild-nc/chan-nc/msg-nc", excerpt: "message signalé" } });
+      // Même blocage qu'à la dissolution manuelle, même quand la personne n'est pas capitaine.
+      expect(await teams.leaveCommunityTeam(ids.racer, ids.community, team.id, { confirmDissolution: true })).toBe("open_report_or_appeal");
+      await db.moderationReport.update({ where: { id: report.id }, data: { closedAt: new Date() } });
+      // Même confirmation : sans elle, rien ne bouge (avant D5 le départ passait en silence et laissait une équipe vide avec ses salons).
+      expect(await teams.leaveCommunityTeam(ids.racer, ids.community, team.id)).toBe("confirm_dissolution");
+      expect(await db.communityTeamMember.count({ where: { teamId: team.id } })).toBe(2);
+      expect(await teams.leaveCommunityTeam(ids.racer, ids.community, team.id, { confirmDissolution: true })).toBe("dissolved_last_member");
+      // Toutes les lignes disparaissent (y compris celle du capitaine parti) : l'équipe est réellement vide pour l'exécution de la suppression.
+      expect(await db.communityTeamMember.count({ where: { teamId: team.id } })).toBe(0);
+      expect((await db.communityTeam.findUniqueOrThrow({ where: { id: team.id } })).isRecruiting).toBe(false);
+    });
+
+    it("D5 « inscrite au journal » : la DISSOLUTION elle-même est journalisée au moment où elle est décidée (manuelle, dernier départ), file des espaces éteinte", async () => {
+      await db.sensitiveOperationLog.deleteMany({ where: { action: "team.dissolve" } });
+      const team = await setup();
+      expect(await teams.leaveCommunityTeam(ids.leader, ids.community, team.id)).toBe("confirm_dissolution");
+      expect(await db.sensitiveOperationLog.count({ where: { action: "team.dissolve" } })).toBe(0);
+      expect(await teams.leaveCommunityTeam(ids.leader, ids.community, team.id, { confirmDissolution: true })).toBe("dissolved_last_member");
+      expect(await db.sensitiveOperationLog.findMany({ where: { action: "team.dissolve" }, select: { actorId: true, outcome: true, target: true } }))
+        .toEqual([{ actorId: ids.leader, outcome: "last_leave", target: team.id }]);
+
+      await db.sensitiveOperationLog.deleteMany({ where: { action: "team.dissolve" } });
+      expect(await teams.createCommunityTeam({ ...input(), userId: ids.member, name: "Manuelle" })).toBe("created");
+      const manual = await db.communityTeam.findFirstOrThrow({ where: { communityId: ids.community, createdById: ids.member } });
+      expect(await teams.dissolveCommunityTeam(ids.member, ids.community, manual.id)).toBe("dissolved");
+      expect(await db.sensitiveOperationLog.findMany({ where: { action: "team.dissolve" }, select: { actorId: true, outcome: true, target: true } }))
+        .toEqual([{ actorId: ids.member, outcome: "manual", target: manual.id }]);
     });
 
     it("est atomique : un échec en fin de transaction annule la passation", async () => {
@@ -245,6 +323,51 @@ describe.skipIf(!TEST_DATABASE_URL)("équipes communautaires : PostgreSQL isolé
       }
       expect((await db.communityTeam.findUniqueOrThrow({ where: { id: team.id } })).captainId).toBe(ids.leader);
       expect(await db.communityTeamMember.count({ where: { teamId: team.id, userId: ids.leader } })).toBe(1);
+    });
+  });
+
+  describe("blocage de dissolution par un signalement ou une contestation ouverte", () => {
+    const setupTeam = async (suffix: string) => {
+      await teams.createCommunityTeam({ userId: ids.leader, communityId: ids.community, gameId: ids.game,
+        name: `Bloquée ${suffix}`, description: "Équipe dont la dissolution est protégée.", platform: "PC", maxMembers: 4 });
+      const team = await db.communityTeam.findFirstOrThrow({ where: { communityId: ids.community, name: `Bloquée ${suffix}` } });
+      await db.discordTeamSpace.create({ data: { teamId: team.id, communityId: ids.community,
+        guildId: "guild-1", channelId: `chan-${suffix}`, voiceChannelId: `voice-${suffix}` } });
+      return team;
+    };
+
+    it("refuse tant qu'un signalement sur un salon de l'équipe est ouvert, puis dissout après clôture", async () => {
+      const team = await setupTeam("report");
+      const report = await db.moderationReport.create({ data: { communityId: ids.community, guildId: "guild-1",
+        channelId: "chan-report", messageId: "msg-1", authorDiscordId: "author", reporterDiscordId: "reporter",
+        messageUrl: "https://discord.com/channels/guild-1/chan-report/msg-1", excerpt: "message signalé" } });
+
+      expect(await teams.dissolveCommunityTeam(ids.leader, ids.community, team.id)).toBe("open_report_or_appeal");
+      expect(await db.communityTeamMember.count({ where: { teamId: team.id } })).toBe(1);
+
+      await db.moderationReport.update({ where: { id: report.id }, data: { closedAt: new Date() } });
+      expect(await teams.dissolveCommunityTeam(ids.leader, ids.community, team.id)).toBe("dissolved");
+      expect(await db.communityTeamMember.count({ where: { teamId: team.id } })).toBe(0);
+    });
+
+    it("refuse tant qu'une contestation Tower sur un défi de l'équipe est ouverte", async () => {
+      const team = await setupTeam("appeal");
+      const definition = await db.towerChallengeDefinition.create({ data: { communityId: ids.community,
+        title: "Défi", instructions: "Réaliser le défi.", rewardFloors: 1 } });
+      const attempt = await db.towerChallengeAttempt.create({ data: { communityId: ids.community,
+        userId: ids.leader, teamId: team.id, definitionId: definition.id, requestKey: "req-appeal",
+        title: "Défi", instructions: "Réaliser le défi.", rewardFloors: 1,
+        assignedAt: new Date("2030-01-01T00:00:00Z"), expiresAt: new Date("2030-01-03T00:00:00Z"),
+        status: "REJECTED", rejectedAt: new Date("2030-01-03T01:00:00Z") } });
+      const appeal = await db.towerChallengeAppeal.create({ data: { communityId: ids.community,
+        attemptId: attempt.id, authorUserId: ids.leader, reason: "Contestation du verdict.",
+        dueAt: new Date("2030-01-08") } });
+
+      expect(await teams.dissolveCommunityTeam(ids.leader, ids.community, team.id)).toBe("open_report_or_appeal");
+      expect(await db.communityTeamMember.count({ where: { teamId: team.id } })).toBe(1);
+
+      await db.towerChallengeAppeal.update({ where: { id: appeal.id }, data: { status: "UPHELD", decidedAt: new Date() } });
+      expect(await teams.dissolveCommunityTeam(ids.leader, ids.community, team.id)).toBe("dissolved");
     });
   });
 

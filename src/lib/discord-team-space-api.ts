@@ -2,9 +2,12 @@ import {
   addGuildMemberRole,
   createGuildRole,
   createSetupChannel,
+  deleteChannelMemberPermission,
+  deleteGuildChannel,
   editGuildChannel,
   listGuildRoles,
   listSetupChannels,
+  putChannelMemberPermission,
   removeGuildMemberRole,
   type DiscordRestFailure,
 } from "@/lib/discord-rest";
@@ -43,16 +46,18 @@ export function createDiscordTeamSpaceApi(executorDeadline?: Date): TeamSpaceDis
           name: channel.name,
           type: channel.type,
           parentId: channel.parent_id ?? null,
+          memberOverwriteIds: (channel.permission_overwrites ?? []).filter((row) => row.type === 1).map((row) => row.id),
         })),
         roles: unwrap(roles).roles,
       };
     },
+    // Legacy : plus appelé par le provisionnement sans rôle, conservé pour les liens antérieurs.
     async createRole(guildId, name) {
       return unwrap(await createGuildRole({ guildId, name, deadline: deadline() })).id;
     },
-    async createChannel(guildId, name, type, overwrites, roleId) {
-      // `type` vient du plan : 0 = salon textuel, 2 = salon vocal (option A).
-      // Les deux salons portent les MÊMES overwrites privés.
+    async createChannel(guildId, name, type, overwrites) {
+      // `type` vient du plan : 0 = salon textuel, 2 = salon vocal.
+      // Chaque membre reçoit sa permission nominative, sans rôle d'équipe.
       const created = unwrap(
         await createSetupChannel({
           guildId,
@@ -60,11 +65,24 @@ export function createDiscordTeamSpaceApi(executorDeadline?: Date): TeamSpaceDis
           channel: {
             name,
             type,
-            permission_overwrites: buildOverwrites(guildId, roleId, overwrites),
+            permission_overwrites: buildOverwrites(guildId, overwrites),
           },
         })
       );
       return created.id;
+    },
+    async setMemberPermission(channelId, userId, allow, action) {
+      if (action === "remove") {
+        const result = await deleteChannelMemberPermission({ channelId, userId, deadline: deadline() });
+        if (!result.ok && result.kind !== "not_found") throw new Error(`discord_${result.kind}`);
+        return;
+      }
+      unwrap(await putChannelMemberPermission({ channelId, userId, allow, deadline: deadline() }));
+    },
+    async deleteChannel(channelId) {
+      const result = await deleteGuildChannel({ channelId, deadline: deadline() });
+      // Déjà absent = état cible atteint ; le rejeu après échec partiel reste idempotent.
+      if (!result.ok && result.kind !== "not_found") throw new Error(`discord_${result.kind}`);
     },
     async renameChannel(channelId, name) {
       unwrap(await editGuildChannel({ channelId, name, deadline: deadline() }));
@@ -81,13 +99,28 @@ export function createDiscordTeamSpaceApi(executorDeadline?: Date): TeamSpaceDis
 }
 
 /** Traduit les cibles symboliques du plan en identifiants Discord réels. */
-export function buildOverwrites(guildId: string, roleId: string | null, overwrites: OverwritePlan[]) {
+export function buildOverwrites(
+  guildId: string,
+  roleIdOrOverwrites: string | null | OverwritePlan[],
+  legacyOverwrites?: OverwritePlan[],
+) {
+  // Compatibilité des appels historiques (rôle) : le chemin actuel passe le plan.
+  const overwrites = Array.isArray(roleIdOrOverwrites)
+    ? roleIdOrOverwrites
+    : (legacyOverwrites ?? []).map((row) => row.target === "everyone"
+      ? row
+      : { ...row, target: "member" as const, userId: roleIdOrOverwrites ?? undefined });
   return overwrites
     .map((overwrite) => {
-      const id = overwrite.target === "everyone" ? guildId : roleId;
+      const id = overwrite.target === "everyone" ? guildId : overwrite.userId;
       if (!id) return null;
-      return { id, type: 0, allow: overwrite.allow ?? "0", deny: overwrite.deny ?? "0" };
+      return {
+        id,
+        type: overwrite.target === "everyone" ? 0 : 1,
+        allow: overwrite.allow ?? "0",
+        deny: overwrite.deny ?? "0",
+      };
     })
-    .filter((row): row is { id: string; type: 0; allow: string; deny: string } => row !== null);
+    .filter((row): row is { id: string; type: 0 | 1; allow: string; deny: string } => row !== null);
 }
 

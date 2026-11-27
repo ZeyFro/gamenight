@@ -207,9 +207,11 @@ async function commandResult(guildId: string, discordId: string, subcommand: Sub
       await requestTeamSpaceMemberSync({ communityId, teamId: team.id, discordId });
       return `Tu as quitté **${clean(team.name)}**. Un délai de 7 jours s’applique avant de rejoindre une autre équipe.`;
     }
-    return result === "leader"
-      ? "Tu es seul dans ce projet : dissous-le depuis GameNight (`/equipes/gestion`)."
-      : "Projet introuvable ou tu n’y participais pas.";
+    // D5 : le dernier départ dissout le projet et supprime ses salons ; la confirmation explicite se donne sur le site (jamais depuis Discord).
+    if (result === "confirm_dissolution" || result === "leader") return "Tu es le dernier membre : quitter dissout le projet et supprime ses salons. Confirme depuis GameNight (`/equipes`).";
+    if (result === "active_challenges") return "Ce projet a des défis en cours : termine-les avant de le quitter.";
+    if (result === "open_report_or_appeal") return "Un signalement ou une contestation est ouvert : le projet ne peut pas être dissous pour le moment.";
+    return "Projet introuvable ou tu n’y participais pas.";
   }
   if (subcommand === "recrutement") {
     const open = options.find((option) => option.name === "ouvert")?.value;

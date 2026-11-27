@@ -23,11 +23,14 @@ export const TEAM_SPACE_EVENT = "TEAM_SPACE_SYNC";
 const BUCKET_MS = 10 * 60_000;
 
 const payloadSchema = z.object({
-  intent: z.enum(["provision", "member", "reconcile"]),
+  intent: z.enum(["provision", "member", "reconcile", "delete"]),
   discordId: z.string().regex(/^[0-9]{16,20}$/).optional(),
+  actorUserId: z.string().min(1).max(191).optional(),
+  formerMemberDiscordIds: z.array(z.string().regex(/^[0-9]{16,20}$/)).max(50).optional(),
 });
 
-export type TeamSpaceEnqueueResult = "queued" | "disabled" | "unavailable";
+/** « error » : échec technique d'enfilement (base, file), distinct de « unavailable » (communauté non reliée) : l'appelant le journalise. */
+export type TeamSpaceEnqueueResult = "queued" | "disabled" | "unavailable" | "error";
 
 export function teamSpaceQueueEnabled(env: NodeJS.ProcessEnv = process.env): boolean {
   return teamSpacesEnabled(env) && env.NOTIFICATION_EXECUTOR_ENABLED === "true" && Boolean(env.DISCORD_BOT_TOKEN?.trim());
@@ -44,7 +47,7 @@ const slotFor = (guildId: string, teamId: string, intent: TeamSpaceIntent, disco
  * demande encore en attente (`supersedeStaleDeliveries`) ; l'état final est relu à l'exécution.
  */
 export async function enqueueTeamSpaceSync(
-  input: { teamId: string; communityId: string; intent: TeamSpaceIntent; discordId?: string },
+  input: { teamId: string; communityId: string; intent: TeamSpaceIntent; discordId?: string; actorUserId?: string; formerMemberDiscordIds?: readonly string[] },
   now: Date = new Date()
 ): Promise<TeamSpaceEnqueueResult> {
   if (!teamSpaceQueueEnabled()) return "disabled";
@@ -63,7 +66,12 @@ export async function enqueueTeamSpaceSync(
       occurrence: input.intent === "member"
         ? `member:${input.discordId}:${now.getTime()}`
         : `${input.intent}:${input.discordId ?? "-"}:${Math.floor(now.getTime() / BUCKET_MS)}`,
-      payload: { intent: input.intent, ...(input.discordId ? { discordId: input.discordId } : {}) },
+      payload: {
+        intent: input.intent,
+        ...(input.discordId ? { discordId: input.discordId } : {}),
+        ...(input.actorUserId ? { actorUserId: input.actorUserId } : {}),
+        ...(input.formerMemberDiscordIds?.length ? { formerMemberDiscordIds: [...input.formerMemberDiscordIds] } : {}),
+      },
     });
     await enqueueDelivery({
       eventId: event.id,
@@ -79,7 +87,7 @@ export async function enqueueTeamSpaceSync(
     logger.warn("discord-team-space", "Demande d'espace d'équipe non enfilée.", {
       errorType: error instanceof Error ? error.name : "unknown",
     });
-    return "unavailable";
+    return "error";
   }
 }
 
@@ -90,7 +98,7 @@ export const teamSpaceSyncResolver: DeliveryResolver = {
     }
     const payload = payloadSchema.safeParse(event.payload);
     if (!payload.success) return { eligible: false, reason: "unresolvable" };
-    const { intent, discordId } = payload.data;
+    const { intent, discordId, actorUserId, formerMemberDiscordIds } = payload.data;
     if (!teamSpacesEnabled()) return { eligible: false, reason: "not_configured" };
     if (!process.env.DISCORD_BOT_TOKEN?.trim()) return { eligible: false, reason: "configuration_unavailable" };
     const community = await prisma.community.findUnique({
@@ -105,6 +113,6 @@ export const teamSpaceSyncResolver: DeliveryResolver = {
       delivery.targetSlot !== slotFor(community.discordGuildId, event.sourceId, intent, discordId)) {
       return { eligible: false, reason: "unresolvable" };
     }
-    return { eligible: true, action: { kind: "sync_team_space", intent, teamId: event.sourceId, communityId: event.communityId, discordId } };
+    return { eligible: true, action: { kind: "sync_team_space", intent, teamId: event.sourceId, communityId: event.communityId, discordId, actorUserId, formerMemberDiscordIds } };
   },
 };

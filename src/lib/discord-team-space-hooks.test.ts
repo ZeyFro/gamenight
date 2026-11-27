@@ -84,16 +84,15 @@ describe("accroches d'espace d'équipe — aucun appel Discord, uniquement la fi
     expect(mocks.enqueue).toHaveBeenCalledWith({ intent: "member", communityId: "c1", teamId: "team-1", discordId: DISCORD_A });
   });
 
-  it("après dissolution : retire chaque ancien membre puis réconcilie, sans supprimer de salon", async () => {
+  it("après dissolution : enfile la suppression réelle avec l'acteur, sans toucher aux autres équipes", async () => {
     await requestTeamSpaceAfterDissolution({
       communityId: "c1",
       teamId: "team-1",
+      actorUserId: "user-1",
       formerMemberDiscordIds: [DISCORD_A, DISCORD_B],
     });
     expect(mocks.enqueue.mock.calls.map((call) => call[0])).toEqual([
-      { intent: "member", communityId: "c1", teamId: "team-1", discordId: DISCORD_A },
-      { intent: "member", communityId: "c1", teamId: "team-1", discordId: DISCORD_B },
-      { intent: "reconcile", communityId: "c1", teamId: "team-1" },
+      { intent: "delete", communityId: "c1", teamId: "team-1", actorUserId: "user-1", formerMemberDiscordIds: [DISCORD_A, DISCORD_B] },
     ]);
   });
 

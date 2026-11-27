@@ -130,7 +130,7 @@ Remplacer `<ID_COMMUNAUTE>` par l'identifiant de la communauté The Tower (colon
 - **Actions (soirée)** :
   4. Créer une soirée de test dans 40 minutes, publique ou privée. À T-30 min, capturer le fil privé et le vocal privé créés.
   5. Terminer la soirée ; vérifier que les espaces temporaires sont supprimés quand le vocal est vide.
-- **Résultat attendu** : espaces créés **par la file** (aucun salon créé tant que l'executor n'a pas tourné), privés, supprimés ou archivés ensuite ; jamais de suppression d'un rôle ou salon préexistant.
+- **Résultat attendu** : espaces créés **par la file** (aucun salon créé tant que l'executor n'a pas tourné), privés. À la dissolution uniquement, les deux salons enregistrés dans `DiscordTeamSpace` sont supprimés par identifiant ; jamais un salon préexistant, jamais par nom, jamais un rôle.
 - **Critère OK** : captures 2, 4 et 5 conformes et ligne SQL présente ; KO sinon.
 - **Retour arrière** : retirer les deux variables ; archiver l'équipe de test sur le site (les salons d'équipe sont renommés « archivé », jamais supprimés : nettoyage manuel par Maxime).
 

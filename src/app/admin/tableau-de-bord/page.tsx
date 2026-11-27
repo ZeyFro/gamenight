@@ -61,6 +61,12 @@ export default async function AdminDashboardV2Page() {
         </p>
       )}
 
+      {dashboard.communities.some((community) => community.channels.count !== null && community.channels.count >= 350) && (
+        <p role="alert" className="rounded-lg bg-destructive/10 p-3 text-sm text-destructive">
+          Alerte capacité : au moins un serveur utilise 70 % du plafond de 500 salons Discord. Vérifie aussi la limite de 50 salons par catégorie avant de créer un espace d’équipe.
+        </p>
+      )}
+
       {dashboard.communities.length === 0 && <Card className="text-sm text-muted">Aucune communauté active.</Card>}
       {dashboard.communities.map((community) => (
         <Card key={community.id} className="flex flex-col gap-4">

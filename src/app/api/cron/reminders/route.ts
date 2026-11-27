@@ -6,6 +6,7 @@ import { WEBHOOK_ANNOUNCE_DISABLED_FOR_PRIVACY } from "@/lib/discord";
 import { enqueueSessionReminderDelivery } from "@/lib/session-announce";
 import { runProjectLifecycle } from "@/lib/project-space-queue";
 import { runPlayerClassifiedForumLifecycle } from "@/lib/player-classified-forum";
+import { sweepDissolvedTeamSpaces } from "@/lib/discord-team-space-sweep";
 import { scheduleSessionSpaces } from "@/lib/session-space-queue";
 import { logger } from "@/lib/logger";
 import { persistServerError } from "@/lib/error-log";
@@ -293,11 +294,18 @@ export async function GET(request: Request) {
       return null;
     });
 
+    // Espaces d'équipe dissous dont les salons existent encore (D5) : rattrapage idempotent, file seulement (jamais d'appel Discord ici).
+    const teamSpaces = await sweepDissolvedTeamSpaces().catch((error: unknown) => {
+      persistServerError("cron:reminders", error, { route: "cron/reminders" });
+      logger.error("cron:reminders", error, { step: "team-space-sweep" });
+      return null;
+    });
+
     logger.info(
       "cron:reminders",
       `${sent.length} rappel(s) envoyé(s), ${failed.length} échec(s), ${staleSkipped.length} seuil(s) obsolète(s) consommé(s) sans envoi, sur ${sessions.length} session(s) vérifiée(s).`
     );
-    return NextResponse.json({ checked: sessions.length, sent, failed, staleSkipped, ...(spaces?.enabled ? { sessionSpaces: spaces } : {}), ...(projects?.enabled ? { projects } : {}), ...(playerListings?.enabled ? { playerListings } : {}) });
+    return NextResponse.json({ checked: sessions.length, sent, failed, staleSkipped, ...(spaces?.enabled ? { sessionSpaces: spaces } : {}), ...(projects?.enabled ? { projects } : {}), ...(playerListings?.enabled ? { playerListings } : {}), ...(teamSpaces?.enabled ? { teamSpaces } : {}) });
   } catch (error) {
     // Ne jamais laisser une erreur inattendue remonter en 500 non
     // capturé — cron-job.org compte ça comme un échec et finit par

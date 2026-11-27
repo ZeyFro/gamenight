@@ -6,6 +6,8 @@ import { accessibleSessionWhereFor } from "@/lib/session-access";
 import { DEFAULT_COMMUNITY_SLUG } from "@/lib/default-community";
 import { prisma } from "@/lib/prisma";
 import { clearTeamRecruiterRoles } from "@/lib/team-recruiter-cleanup";
+import { logger } from "@/lib/logger";
+import { recordSensitiveOperation } from "@/lib/sensitive-operation-log";
 import type { TeamIdentity } from "@/lib/team-identity";
 
 /**
@@ -218,22 +220,72 @@ export async function joinCommunityTeam(userId: string, communityId: string, tea
   }
 }
 
+/** D5 « inscrite au journal » : la DISSOLUTION elle-même est journalisée au moment où elle est décidée, même si la file des espaces Discord est éteinte. */
+export async function recordTeamDissolution(actorId: string, communityId: string, teamId: string, outcome: "manual" | "last_leave" | "account_deleted"): Promise<void> {
+  try {
+    await recordSensitiveOperation({ actorId, action: "team.dissolve", communityId, target: teamId, outcome });
+  } catch (error) {
+    logger.warn("community-teams", "Dissolution d'équipe non inscrite au journal.", { teamId, errorType: error instanceof Error ? error.name : "unknown" });
+  }
+}
+
+/** Blocages COMMUNS de toute dissolution (manuelle ou au départ du dernier membre, D5) : défi non terminé, signalement ouvert sur
+ * un des salons enregistrés, contestation Tower ouverte sur un défi de l'équipe. Même lecture partout, jamais deux règles. */
+export async function dissolutionBlocker(
+  scopedDb: Prisma.TransactionClient, communityId: string, teamId: string,
+): Promise<"active_challenges" | "open_report_or_appeal" | null> {
+  const pending = await scopedDb.towerChallengeAttempt.count({
+    where: { communityId, teamId, status: { in: ["ASSIGNED", "SUBMITTED"] } },
+  });
+  if (pending) return "active_challenges";
+  const space = await scopedDb.discordTeamSpace.findUnique({ where: { teamId }, select: { channelId: true, voiceChannelId: true } });
+  const channels = [space?.channelId, space?.voiceChannelId].filter((id): id is string => Boolean(id));
+  const openReports = channels.length
+    ? await scopedDb.moderationReport.count({ where: { communityId, channelId: { in: channels }, closedAt: null } })
+    : 0;
+  const openAppeals = await scopedDb.towerChallengeAppeal.count({ where: { communityId, status: "OPEN", attempt: { teamId } } });
+  return openReports || openAppeals ? "open_report_or_appeal" : null;
+}
+
 /** Départ volontaire. Le capitaine passe la main au plus ancien membre ACTIF (joinedAt, userId) dans la même
  * transaction sérialisable, puis quitte avec le délai habituel ; « leader » seulement s'il est seul.
  */
-export async function leaveCommunityTeam(userId: string, communityId: string, teamId: string): Promise<"left" | "leader" | "missing" | "unavailable"> {
+export async function leaveCommunityTeam(
+  userId: string, communityId: string, teamId: string,
+  options: { confirmDissolution?: boolean } = {},
+): Promise<"left" | "dissolved_last_member" | "confirm_dissolution" | "active_challenges" | "open_report_or_appeal" | "leader" | "missing" | "unavailable"> {
   if (await getCommunityTeamsCommunityId(userId) !== communityId) return "unavailable";
   const attempt = () => prisma.$transaction(async (tx) => {
     if (!await canUseTeams(tx, userId, communityId)) return "unavailable";
     const scopedDb = scopedTransactionPrisma(tx, { communityIds: [communityId], includesDefault: false });
     const team = await scopedDb.communityTeam.findFirst({ where: { id: teamId, communityId }, select: { createdById: true, captainId: true } });
     if (!team) return "missing";
-    if ((team.captainId ?? team.createdById) === userId) {
-      const successor = await scopedDb.communityTeamMember.findFirst({
-        where: { teamId, communityId, userId: { not: userId }, ...activeTeamMemberWhere(communityId) },
-        orderBy: [{ joinedAt: "asc" }, { userId: "asc" }], select: { userId: true },
+    const activeMember = await scopedDb.communityTeamMember.count({
+      where: { teamId, communityId, userId, ...activeTeamMemberWhere(communityId) },
+    });
+    if (!activeMember) return "missing";
+    // Prochain membre ACTIF (autre que la personne qui part) : successeur du capitaine, ou preuve que ce départ est le DERNIER.
+    // D5 : le dernier départ (capitaine OU non, par exemple capitaine devenu inactif) applique les gardes de la dissolution manuelle.
+    const successor = await scopedDb.communityTeamMember.findFirst({
+      where: { teamId, communityId, userId: { not: userId }, ...activeTeamMemberWhere(communityId) },
+      orderBy: [{ joinedAt: "asc" }, { userId: "asc" }], select: { userId: true },
+    });
+    if (!successor) {
+      const blocked = await dissolutionBlocker(scopedDb, communityId, teamId);
+      if (blocked) return blocked;
+      if (!options.confirmDissolution) return "confirm_dissolution";
+      await scopedDb.communityTeam.updateMany({ where: { id: teamId, communityId }, data: { isRecruiting: false } });
+      // Toutes les lignes de membre (y compris celles de comptes devenus inactifs) : l'équipe est réellement vide,
+      // sinon l'exécution de la suppression des salons la jugerait « repeuplée » et ne ferait rien.
+      const removed = await scopedDb.communityTeamMember.deleteMany({ where: { teamId, communityId } });
+      if (!removed.count) throw new Error("team_leave_member_missing");
+      await clearTeamRecruiterRoles(tx, communityId, teamId);
+      await tx.membership.update({
+        where: { communityId_userId: { communityId, userId } }, data: { lastTeamLeftAt: new Date() },
       });
-      if (!successor) return "leader";
+      return "dissolved_last_member";
+    }
+    if ((team.captainId ?? team.createdById) === userId) {
       const changed = await scopedDb.communityTeam.updateMany({
         where: { id: teamId, communityId, captainId: team.captainId },
         data: { captainId: successor.userId, captainLastActivityAt: new Date() },
@@ -250,7 +302,9 @@ export async function leaveCommunityTeam(userId: string, communityId: string, te
   }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
   for (let retry = 0; ; retry++) {
     try {
-      return await attempt();
+      const result = await attempt();
+      if (result === "dissolved_last_member") await recordTeamDissolution(userId, communityId, teamId, "last_leave");
+      return result;
     } catch (error) {
       if (error instanceof Error && error.message === "team_leave_member_missing") return "missing";
       if (await waitBeforeSerializationRetry(error, retry)) continue;
@@ -356,19 +410,17 @@ export async function transferCommunityTeamCaptain(
  */
 export async function dissolveCommunityTeam(
   userId: string, communityId: string, teamId: string,
-): Promise<"dissolved" | "active_challenges" | "invalid" | "unavailable"> {
+): Promise<"dissolved" | "active_challenges" | "open_report_or_appeal" | "invalid" | "unavailable"> {
   if (await getCommunityTeamsCommunityId(userId) !== communityId) return "unavailable";
-  return prisma.$transaction(async tx => {
+  const result = await prisma.$transaction(async tx => {
     if (!await canUseTeams(tx, userId, communityId)) return "unavailable";
     const scopedDb = scopedTransactionPrisma(tx, { communityIds: [communityId], includesDefault: false });
     const team = await scopedDb.communityTeam.findFirst({ where: { id: teamId, communityId },
       select: { captainId: true, createdById: true, isRecruiting: true,
         members: { select: { userId: true } } } });
     if (!team || (team.captainId ?? team.createdById) !== userId || team.members.length === 0) return "invalid";
-    const pending = await scopedDb.towerChallengeAttempt.count({
-      where: { communityId, teamId, status: { in: ["ASSIGNED", "SUBMITTED"] } },
-    });
-    if (pending) return "active_challenges";
+    const blocked = await dissolutionBlocker(scopedDb, communityId, teamId);
+    if (blocked) return blocked;
     await scopedDb.communityTeam.update({
       where: { id: teamId }, data: { isRecruiting: false },
     });
@@ -380,4 +432,6 @@ export async function dissolveCommunityTeam(
     });
     return "dissolved";
   }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+  if (result === "dissolved") await recordTeamDissolution(userId, communityId, teamId, "manual");
+  return result;
 }

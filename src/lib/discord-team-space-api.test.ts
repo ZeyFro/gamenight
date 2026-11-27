@@ -26,7 +26,7 @@ describe("permissions d’espace", () => {
       ])
     ).toEqual([
       { id: GUILD, type: 0, allow: "0", deny: "1024" },
-      { id: ROLE, type: 0, allow: "1024", deny: "0" },
+      { id: ROLE, type: 1, allow: "1024", deny: "0" },
     ]);
   });
 
