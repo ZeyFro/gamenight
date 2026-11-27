@@ -75,4 +75,5 @@
 
 Les anciens journaux et états de reprise sont dans [l’archive documentaire](archive/README.md). Ils préservent leur contexte historique ; pour l’état de reprise courant, utiliser uniquement [docs/REPRISE_AUTONOME.md](REPRISE_AUTONOME.md).
 
+- [Recette par parcours](RECETTE_PARCOURS.md) — les 61 lignes actives regroupées en 6 parcours de test réel (arrivée et /role, recherche, équipe, compétition, soirée, sans code), avec ce qui est testable maintenant ou après une PR.
 - [Recette des 61 lignes actives](RECETTE_61_LIGNES.md) — prérequis, scénarios et preuves attendues.

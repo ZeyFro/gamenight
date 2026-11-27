@@ -110,6 +110,25 @@ Le rôle n'existe pas dans le site. On teste les droits Discord.
 | **MP fermés** | Un compte qui refuse les MP du serveur : le créateur reçoit une mention de secours, les autres non. | Capture |
 | **Pages légales** | Relire les trois textes en entier. Vérifier que l'adresse de contact est bien celle que tu veux rendre publique. | Captures |
 
+## 9 bis. Lignes « sans code » du cahier (12)
+
+Ces lignes de [CAHIER_FINAL.md](CAHIER_FINAL.md) n'ont pas de code à tester : elles se prouvent par une action humaine, dans Discord ou sur le site. Elles sont regroupées dans le parcours **P6** de [RECETTE_PARCOURS.md](RECETTE_PARCOURS.md) (C109 et C118 dans **P1**). Le détail des étapes est dans [RECETTE_61_LIGNES.md § A1](RECETTE_61_LIGNES.md). Une ligne ne devient verte qu'avec un test réel d'un compte non-admin, daté et consigné (règle D1) : la capture d'un admin ne suffit pas.
+
+| Ligne | Ce qu'il faut constater | Compte | Preuve |
+| --- | --- | --- | --- |
+| C104 | Le parcours complet du joueur, par les lignes déjà vertes des parcours P1 à P5 | Membre | Tableau récapitulatif daté |
+| C108 | Organisation du serveur : noms, emojis, mobile, pas de salon vide, fils et panneaux | Membre | Captures mobile et ordinateur |
+| C109 | Règlement, validation YAGPDB, rôle Régulars, comme un vrai nouveau membre | Compte neuf | Captures avant et après validation |
+| C111 | Direction artistique (icône, bannière, panneaux, annonces) | Membre | Planche de captures et avis de Maxime |
+| C112 | Éléments visuels harmonisés entre eux | Membre | Planche comparée, écarts listés |
+| C115 | Atlas n'attribue plus d'étage (une seule source) | Maxime | Liste des bots, salon d'activité |
+| C118 | YAGPDB valide le règlement et donne les rôles hors jeux | Compte neuf | Message YAGPDB, rôle obtenu |
+| C120 | Ticket Tool : ticket privé ouvert puis fermé | Membre | Panneau, ticket, fermeture |
+| C121 | Appy : une candidature arrive au staff | Membre | Candidature reçue côté staff |
+| C123 | Anti-raid, anti-spam, contrôle des bots et applications | Maxime | Réglages AutoMod, vérification, bots |
+| C125 | Exigences générales : mobile, aucune donnée d'une autre communauté | Membre | Captures mobile et SELECT en lecture seule |
+| C127 | Développement communautaire : soirées hebdomadaires, créateurs, partenariats | Maxime | Liste datée des actions |
+
 ## 10. Quand arrêter
 
 Arrête les tests et suis le [runbook](RUNBOOK.md) si tu vois :
