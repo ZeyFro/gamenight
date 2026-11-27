@@ -42,7 +42,7 @@ function memoryStore(seed: SessionSpaceLink | null = null): SessionSpaceStore & 
     async save(link: Parameters<SessionSpaceStore["save"]>[0]) {
       const { sessionId, communityId, guildId, parentChannelId, ...rest } = link;
       store.row = {
-        threadId: null, voiceChannelId: null, cleanedAt: null, ...(store.row ?? {}),
+        threadId: null, voiceChannelId: null, cleanedAt: null, accessRevokedAt: null, ...(store.row ?? {}),
         sessionId, communityId, guildId, parentChannelId,
         ...Object.fromEntries(Object.entries(rest).filter(([, value]) => value !== undefined && value !== null)),
       };
@@ -69,7 +69,7 @@ function fakeApi(overrides: Partial<SessionSpaceApi> = {}) {
 
 const fullLink = (overrides: Partial<SessionSpaceLink> = {}): SessionSpaceLink => ({
   sessionId: "s1", communityId: "c1", guildId: GUILD, parentChannelId: PARENT,
-  threadId: "300000000000000001", voiceChannelId: "400000000000000001", cleanedAt: null, ...overrides,
+  threadId: "300000000000000001", voiceChannelId: "400000000000000001", cleanedAt: null, accessRevokedAt: null, ...overrides,
 });
 
 describe("provisionSessionSpace", () => {
@@ -173,6 +173,31 @@ describe("cleanupSessionSpace", () => {
     expect(store.row?.cleanedAt).toBeNull();
   });
 
+  it("ne rejoue pas la coupure d'accès lors d'une reprise après vocal occupé", async () => {
+    const { api, calls } = fakeApi({ memberVoiceChannel: vi.fn(async () => "400000000000000001") });
+    const store = memoryStore(fullLink());
+    const first = await cleanupSessionSpace({ sessionId: "s1", api, store, source: memorySource(makeSession()), env: ENV, now: AFTER_END });
+    expect(first.status).toBe("occupied");
+    expect(store.row?.accessRevokedAt).toBeInstanceOf(Date);
+    expect(calls).toHaveLength(4);
+
+    calls.length = 0;
+    const second = await cleanupSessionSpace({ sessionId: "s1", api, store, source: memorySource(makeSession()), env: ENV, now: AFTER_END });
+    expect(second.status).toBe("occupied");
+    expect(calls).toEqual([]);
+  });
+
+  it("une soirée devenue publique est nettoyée avant sa date de fin", async () => {
+    const { api, calls } = fakeApi();
+    const store = memoryStore(fullLink());
+    const result = await cleanupSessionSpace({ sessionId: "s1", api, store, source: memorySource(makeSession({ visibility: "PUBLIC" })), env: ENV, now: BEFORE_START });
+    expect(result.status).toBe("cleaned");
+    expect(calls).toEqual([
+      `thread-remove:${A}`, `voice-deny:${A}`, `thread-remove:${B}`, `voice-deny:${B}`,
+      "delete:400000000000000001", "delete:300000000000000001",
+    ]);
+  });
+
   it("un participant dans un AUTRE vocal ne bloque pas la suppression", async () => {
     const { api, calls } = fakeApi({ memberVoiceChannel: vi.fn(async () => "999999999999999999") });
     const result = await cleanupSessionSpace({ sessionId: "s1", api, store: memoryStore(fullLink()), source: memorySource(makeSession()), env: ENV, now: AFTER_END });
@@ -210,6 +235,8 @@ describe("cleanupSessionSpace", () => {
     expect(result.status).toBe("failed");
     expect(calls).toEqual([`thread-remove:${A}`, `voice-deny:${A}`, `thread-remove:${B}`, `voice-deny:${B}`]);
     expect(store.row?.cleanedAt).toBeNull();
+    // La coupure a réussi : la reprise ne la rejoue pas, elle retente seulement la lecture/suppression.
+    expect(store.row?.accessRevokedAt).toBeInstanceOf(Date);
   });
 
   it("sans espace ou flag éteint : rien", async () => {

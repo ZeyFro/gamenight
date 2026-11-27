@@ -883,6 +883,10 @@ model SessionDiscordSpace {
   threadId        String?   @unique
   voiceChannelId  String?   @unique
   cleanedAt       DateTime?
+  // Coupure d'accès déjà appliquée : évite de rejouer 2 appels Discord par
+  // personne à chaque reprise du nettoyage. La suppression utilise toujours
+  // uniquement threadId/voiceChannelId enregistrés.
+  accessRevokedAt DateTime?
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
 

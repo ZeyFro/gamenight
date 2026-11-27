@@ -44,11 +44,12 @@ export interface SessionSpaceLink {
   threadId: string | null;
   voiceChannelId: string | null;
   cleanedAt: Date | null;
+  accessRevokedAt: Date | null;
 }
 
 export interface SessionSpaceStore {
   find(sessionId: string): Promise<SessionSpaceLink | null>;
-  save(link: Pick<SessionSpaceLink, "sessionId" | "communityId" | "guildId" | "parentChannelId"> & Partial<Pick<SessionSpaceLink, "threadId" | "voiceChannelId" | "cleanedAt">>): Promise<void>;
+  save(link: Pick<SessionSpaceLink, "sessionId" | "communityId" | "guildId" | "parentChannelId"> & Partial<Pick<SessionSpaceLink, "threadId" | "voiceChannelId" | "cleanedAt" | "accessRevokedAt">>): Promise<void>;
 }
 
 export interface SessionSpaceSession {
@@ -85,7 +86,7 @@ export function createPrismaSessionSpaceStore(): SessionSpaceStore {
     async find(sessionId) {
       return scopedDb.sessionDiscordSpace.findUnique({
         where: { sessionId },
-        select: { sessionId: true, communityId: true, guildId: true, parentChannelId: true, threadId: true, voiceChannelId: true, cleanedAt: true },
+        select: { sessionId: true, communityId: true, guildId: true, parentChannelId: true, threadId: true, voiceChannelId: true, cleanedAt: true, accessRevokedAt: true },
       });
     },
     async save(link) {
@@ -245,6 +246,10 @@ export async function syncSessionSpaceMember(input: {
 /**
  * Nettoyage après la fin : supprime le vocal puis le fil, SEULEMENT si le vocal est vide.
  * Participants vérifiés un par un ; une lecture impossible compte comme « peut-être occupé ».
+ *
+ * Une soirée passée en PUBLIC est nettoyée sans attendre la fin : son espace privé
+ * ne doit plus exister. La coupure d'accès est marquée en base après succès pour
+ * qu'une reprise (vocal occupé, erreur Discord) ne rejoue pas 2 appels par personne.
  */
 export async function cleanupSessionSpace(input: {
   sessionId: string;
@@ -263,11 +268,24 @@ export async function cleanupSessionSpace(input: {
     if (!link || link.cleanedAt) return { status: "nothing_to_do" };
     const session = await source.load(input.sessionId);
     if (!session) return { status: "not_found" };
-    if (!sessionEndedAt(session, input.now ?? wallClockNow())) return { status: "not_ended" };
+    const now = input.now ?? wallClockNow();
+    // PUBLIC : l'espace privé doit disparaître même avant la date de fin.
+    if (session.visibility !== "PUBLIC" && !sessionEndedAt(session, now)) return { status: "not_ended" };
     // Couper les accès avant d'attendre que le vocal soit vide ou de le supprimer.
-    for (const discordId of session.cleanupRoster ?? session.roster) {
-      if (link.threadId) await input.api.removeThreadMember(link.threadId, discordId);
-      if (link.voiceChannelId) await input.api.denyVoiceMember(link.voiceChannelId, discordId);
+    // Le marqueur n'est posé qu'après la boucle complète : une erreur au milieu
+    // laisse la reprise refaire la coupure, sans jamais supprimer un accès encore actif.
+    if (!link.accessRevokedAt) {
+      for (const discordId of session.cleanupRoster ?? session.roster) {
+        if (link.threadId) await input.api.removeThreadMember(link.threadId, discordId);
+        if (link.voiceChannelId) await input.api.denyVoiceMember(link.voiceChannelId, discordId);
+      }
+      await store.save({
+        sessionId: link.sessionId,
+        communityId: link.communityId,
+        guildId: link.guildId,
+        parentChannelId: link.parentChannelId,
+        accessRevokedAt: now,
+      });
     }
     if (link.voiceChannelId) {
       for (const discordId of session.cleanupRoster ?? session.roster) {

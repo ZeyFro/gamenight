@@ -184,6 +184,50 @@ describe.skipIf(!TEST_DATABASE_URL)("file d'espace temporaire de soirée : Postg
     });
   });
 
+  it("reprend un nettoyage échoué plus de 24 h après la fin, sans abandon", async () => {
+    const session = await makeSession("DONE", new Date(START.getTime() - 80 * 3_600_000));
+    await db.sessionDiscordSpace.create({
+      data: {
+        sessionId: session.id,
+        communityId: ids.community,
+        guildId: GUILD,
+        parentChannelId: CHANNEL,
+        threadId: "300000000000000001",
+        voiceChannelId: "400000000000000001",
+      },
+    });
+
+    const scan = await queue.scheduleSessionSpaces(new Date(START), START.getTime());
+    expect(scan.cleanupQueued).toBe(1);
+    expect(await db.notificationDelivery.count({
+      where: { targetSlot: `${GUILD}:ADMIN:${session.id}:session-space-cleanup` },
+    })).toBe(1);
+  });
+
+  it("met en file le nettoyage d'une soirée APPLICATION devenue PUBLIQUE avant sa fin", async () => {
+    const session = await makeSession("SCHEDULED", START, "APPLICATION");
+    await db.sessionDiscordSpace.create({
+      data: {
+        sessionId: session.id,
+        communityId: ids.community,
+        guildId: GUILD,
+        parentChannelId: CHANNEL,
+        threadId: "300000000000000001",
+        voiceChannelId: "400000000000000001",
+      },
+    });
+    await db.session.update({ where: { id: session.id }, data: { visibility: "PUBLIC" } });
+
+    const beforeStart = new Date(START.getTime() - 20 * 60_000);
+    const scan = await queue.scheduleSessionSpaces(beforeStart, beforeStart.getTime());
+    expect(scan.cleanupQueued).toBe(1);
+    const { result } = await resolveQueued(session.id, "cleanup");
+    expect(result).toEqual({
+      eligible: true,
+      action: { kind: "sync_session_space", intent: "cleanup", sessionId: session.id, communityId: ids.community },
+    });
+  });
+
   it("reste inerte sans executor ou sans jeton, sans aucune écriture", async () => {
     await makeSession();
     vi.stubEnv("NOTIFICATION_EXECUTOR_ENABLED", "false");
