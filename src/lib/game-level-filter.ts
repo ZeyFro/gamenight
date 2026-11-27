@@ -18,7 +18,7 @@ export function parseGameLevelFilter(params: Record<string, string | string[] | 
   return gameLevelFilterSchema.safeParse({ gameId: params.gameId, level: params.level, levelMatch: params.levelMatch });
 }
 
-export type GameLevelFilter = { gameId?: string; level?: string; levelMatch?: string };
+export type GameLevelFilter = { gameId?: string; gameIds?: readonly string[]; level?: string; levelMatch?: string };
 
 /**
  * Condition sur un utilisateur : a déclaré, pour le jeu choisi, un niveau minimum (par défaut) ou exact.
@@ -27,10 +27,15 @@ export type GameLevelFilter = { gameId?: string; level?: string; levelMatch?: st
  */
 export function gameLevelUserWhere(filter: GameLevelFilter): Prisma.UserWhereInput {
   if (!filter.level) return {};
-  if (!isGameLevelsEnabled() || !filter.gameId || !isGameLevel(filter.level)) return { id: { in: [] } };
+  // Un jeu replié dans le sélecteur garde plusieurs lignes équivalentes : le
+  // niveau déclaré sur l'une d'elles vaut pour les annonces de toutes.
+  const gameIds = filter.gameIds?.length
+    ? [...new Set(filter.gameIds)]
+    : filter.gameId ? [filter.gameId] : [];
+  if (!isGameLevelsEnabled() || !gameIds.length || !isGameLevel(filter.level)) return { id: { in: [] } };
   const level: GameLevel = filter.level;
   return {
-    gameLevels: { some: { gameId: filter.gameId, level: filter.levelMatch === "exact" ? level : { in: gameLevelsFrom(level) } } },
+    gameLevels: { some: { gameId: gameIds.length === 1 ? gameIds[0] : { in: gameIds }, level: filter.levelMatch === "exact" ? level : { in: gameLevelsFrom(level) } } },
     ...profileVisibilityWhere(),
   };
 }

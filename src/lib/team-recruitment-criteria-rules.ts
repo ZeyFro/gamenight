@@ -88,7 +88,7 @@ export function isEmptyTeamCriteria(criteria: TeamRecruitmentCriteriaView | null
 export function describeTeamCriteria(criteria: TeamRecruitmentCriteriaView): { label: string; values: string[] }[] {
   const rows: { label: string; values: string[] }[] = [];
   if (criteria.goals.length) rows.push({ label: "Objectifs", values: criteria.goals.map((goal) => TEAM_GOAL_LABELS[goal]) });
-  if (criteria.minLevel) rows.push({ label: "Niveau minimum", values: [TEAM_LEVEL_LABELS[criteria.minLevel]] });
+  if (criteria.minLevel) rows.push({ label: "Niveau de jeu minimum", values: [TEAM_LEVEL_LABELS[criteria.minLevel]] });
   if (criteria.mic) rows.push({ label: "Micro", values: [TEAM_MIC_LABELS[criteria.mic]] });
   if (criteria.slots.length) rows.push({ label: "Créneaux (heure de Paris)", values: criteria.slots.map((slot) => TEAM_SLOT_LABELS[slot]) });
   if (criteria.platforms.length) rows.push({ label: "Plateformes", values: criteria.platforms });

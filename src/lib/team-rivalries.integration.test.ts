@@ -5,13 +5,14 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } 
  * Nécessite `TEST_DATABASE_URL`. Suite entièrement SKIPPÉE si absente.
  */
 const TEST_DATABASE_URL = process.env.TEST_DATABASE_URL;
+const mocks = vi.hoisted(() => ({ createNotification: vi.fn(async () => undefined) }));
 
 vi.mock("@/lib/prisma", async () => {
   const { PrismaClient } = await import("@prisma/client");
   if (!TEST_DATABASE_URL) return { prisma: {} as unknown };
   return { prisma: new PrismaClient({ datasourceUrl: TEST_DATABASE_URL }) };
 });
-vi.mock("@/lib/notifications", () => ({ createNotification: vi.fn(async () => undefined) }));
+vi.mock("@/lib/notifications", () => ({ createNotification: mocks.createNotification }));
 
 if (!TEST_DATABASE_URL) {
   console.warn("[team-rivalries.integration.test] TEST_DATABASE_URL absente — suite SKIPPÉE. Les défis, confirmations par les deux capitaines et intérêts ne sont PAS validés par cette exécution.");
@@ -34,6 +35,7 @@ describe.skipIf(!TEST_DATABASE_URL)("rivalités et intérêt (intégration Postg
     await db.$disconnect();
   });
   beforeEach(async () => {
+    vi.clearAllMocks();
     vi.stubEnv("TEAM_RIVALRIES_ENABLED", "true");
     await db.$executeRawUnsafe(`TRUNCATE "TeamChallenge", "InstantSessionInterest", "InstantSessionPresenceInterval", "InstantSession", "CommunityTeamMember", "CommunityTeam", "Game", "User" CASCADE`);
     const community = await db.community.upsert({
@@ -80,12 +82,20 @@ describe.skipIf(!TEST_DATABASE_URL)("rivalités et intérêt (intégration Postg
 
   describe("défi", () => {
     it("seul le capitaine propose, jamais contre sa propre équipe, un seul défi ouvert par paire", async () => {
-      const { capA, teamA, teamB } = await scene();
+      const { capA, capB, teamA, teamB } = await scene();
       const mate = (await db.communityTeamMember.findFirstOrThrow({ where: { teamId: teamA.id, userId: { not: capA.id } } })).userId;
       expect(await propose(mate, teamA.id, teamB.id)).toEqual({ ok: false, reason: "forbidden" });
       expect(await propose(capA.id, teamA.id, teamA.id)).toEqual({ ok: false, reason: "same_team" });
       expect(await propose(capA.id, teamA.id, teamB.id)).toEqual({ ok: true });
+      expect(mocks.createNotification).toHaveBeenCalledExactlyOnceWith({
+        communityId,
+        userId: capB.id,
+        type: "REMINDER",
+        title: "Défi d'une autre équipe",
+        message: `${teamA.name} défie ${teamB.name}. Réponds depuis la fiche de ton équipe.`,
+      });
       expect(await propose(capA.id, teamA.id, teamB.id)).toEqual({ ok: false, reason: "pair_open" });
+      expect(mocks.createNotification).toHaveBeenCalledTimes(1);
     });
 
     it("flag éteint : tout est refusé", async () => {
@@ -104,6 +114,13 @@ describe.skipIf(!TEST_DATABASE_URL)("rivalités et intérêt (intégration Postg
       expect(await rivalries.respondToChallenge(mateB, communityId, challenge.id, "ACCEPT")).toEqual({ ok: false, reason: "forbidden" });
       expect(await rivalries.respondToChallenge(capB.id, communityId, challenge.id, "ACCEPT")).toEqual({ ok: true });
       expect((await db.teamChallenge.findUniqueOrThrow({ where: { id: challenge.id } })).status).toBe("ACCEPTED");
+      expect(mocks.createNotification).toHaveBeenNthCalledWith(2, {
+        communityId,
+        userId: capA.id,
+        type: "REMINDER",
+        title: "Défi accepté",
+        message: `${teamB.name} a accepté le défi de ${teamA.name}.`,
+      });
       expect(await rivalries.respondToChallenge(capB.id, communityId, challenge.id, "DECLINE")).toEqual({ ok: false, reason: "not_proposed" });
     });
 
@@ -145,6 +162,20 @@ describe.skipIf(!TEST_DATABASE_URL)("rivalités et intérêt (intégration Postg
       // Avant confirmation, rien n'est compté.
       expect((await rivalries.getTeamRivalries(capA.id, communityId, teamA.id))?.record.played).toBe(0);
       expect(await rivalries.answerChallengeResult(capB.id, communityId, challengeId, "CONFIRM")).toEqual({ ok: true });
+      expect(mocks.createNotification).toHaveBeenNthCalledWith(3, {
+        communityId,
+        userId: capB.id,
+        type: "REMINDER",
+        title: "Résultat à confirmer",
+        message: `${teamA.name} a déclaré le résultat de votre défi. Confirme-le ou conteste-le.`,
+      });
+      expect(mocks.createNotification).toHaveBeenNthCalledWith(4, {
+        communityId,
+        userId: capA.id,
+        type: "REMINDER",
+        title: "Résultat confirmé",
+        message: `${teamB.name} a confirmé le résultat du défi.`,
+      });
       const done = await db.teamChallenge.findUniqueOrThrow({ where: { id: challengeId } });
       expect(done).toMatchObject({ status: "COMPLETED", outcome: "CHALLENGER_WON" });
       expect((await rivalries.getTeamRivalries(capA.id, communityId, teamA.id))?.record).toEqual({ played: 1, wins: 1, losses: 0, draws: 0 });
@@ -224,6 +255,13 @@ describe.skipIf(!TEST_DATABASE_URL)("rivalités et intérêt (intégration Postg
       const session = await makeInstant(creator.id);
       expect(await interest.markInstantSessionInterest(session.id, player.id, new Date(0))).toEqual({ ok: true });
       expect(await interest.markInstantSessionInterest(session.id, player.id, new Date(0))).toEqual({ ok: true });
+      expect(mocks.createNotification).toHaveBeenCalledExactlyOnceWith({
+        communityId: null,
+        userId: creator.id,
+        type: "REMINDER",
+        title: "Quelqu'un est intéressé",
+        message: "Un joueur est intéressé par ta soirée « Jouer maintenant ».",
+      });
       expect(await db.instantSessionInterest.count()).toBe(1);
       const listed = await interest.listInstantSessionInterest(session.id, player.id);
       expect(listed.viewerIsInterested).toBe(true);

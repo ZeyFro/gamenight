@@ -130,6 +130,18 @@ describe.skipIf(!TEST_DATABASE_URL)("Qui joue ce soir ? : Postgres local", () =>
     expect(await tonightRows("bob")).toHaveLength(1);
   });
 
+  it("tableau : un profil masqué n'est jamais exposé, mais voit et retire sa propre déclaration", async () => {
+    vi.stubEnv("PROFILE_VISIBILITY_ENABLED", "true");
+    await db.userProfileVisibility.create({ data: { userId: ids.bob, visibility: "HIDDEN" } });
+    await as("bob");
+    await expect(actions.declareTonightAction(form([["gameId", ids.valheim]]))).rejects.toThrow("REDIRECT");
+
+    const seenByAlice = await board.getTonightBoard(ids.alice, ids.on, wallclock.wallClockNow());
+    expect(seenByAlice.players).toEqual([]);
+    const seenByBob = await board.getTonightBoard(ids.bob, ids.on, wallclock.wallClockNow());
+    expect(seenByBob.myGames).toEqual(["Valheim"]);
+  });
+
   it("tableau : joueurs groupés par jeu, seulement les soirées visibles par le lecteur", async () => {
     await as("alice");
     await expect(actions.declareTonightAction(form([["gameId", ids.valheim]]))).rejects.toThrow("REDIRECT");

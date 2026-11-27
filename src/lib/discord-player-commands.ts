@@ -155,7 +155,7 @@ export function renderListings(listings: PlayerListing[], communityName: string,
       const when = listing.expired
         ? "⏳ expirée"
         : `expire le ${listing.expiresAt.toLocaleDateString("fr-FR")}`;
-      const level = listing.authorLevel ? ` · niveau ${GAME_LEVEL_LABELS[listing.authorLevel]}` : "";
+      const level = listing.authorLevel ? ` · niveau de jeu ${GAME_LEVEL_LABELS[listing.authorLevel]}` : "";
       return `• **${listing.game}** — ${listing.message.slice(0, 140)} · ${listing.authorName}${level} · ${when} · \`${listing.id}\``;
     }),
     onlyMine
@@ -255,8 +255,8 @@ export function handleSignedPlayerInteraction(body: unknown, timestamp: string |
           content = !isGameLevelsEnabled()
             ? "Les niveaux de jeu ne sont pas activés."
             : !text("jeu")
-              ? "Précise le jeu pour filtrer par niveau."
-              : `Niveau inconnu : choisis parmi ${GAME_LEVELS.map((level) => GAME_LEVEL_LABELS[level]).join(", ")}.`;
+              ? "Précise le jeu pour filtrer par niveau de jeu."
+              : `Niveau de jeu inconnu : choisis parmi ${GAME_LEVELS.map((level) => GAME_LEVEL_LABELS[level]).join(", ")}.`;
         } else {
           const levelText = subName === "chercher" ? text("niveau") : "";
           const levelGame = levelText ? await resolveGameId(text("jeu")) : null;

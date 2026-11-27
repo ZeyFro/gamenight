@@ -95,6 +95,40 @@ describe.skipIf(!TEST_DATABASE_URL)("petites annonces LFG : Postgres local", () 
     expect(await db.playerClassified.count()).toBe(0);
   });
 
+  it("filtres combinés : jeu, plateforme, matériel, type de partie et horaire ne gardent que l'annonce complète", async () => {
+    await db.user.update({ where: { id: ids.alice }, data: { availablePlatforms: ["WINDOWS"], microphoneAvailable: true } });
+    await db.user.update({ where: { id: ids.bob }, data: { availablePlatforms: ["WINDOWS"], microphoneAvailable: false } });
+    const startsAt = new Date("2026-12-01T20:00:00Z");
+    const make = (userId: string, extra: Record<string, unknown> = {}) => db.playerClassified.create({
+      data: { communityId: ids.on, gameId: ids.game, createdById: userId, message: "m", createdAt: new Date(), expiresAt: new Date(Date.now() + 3600_000), ...extra },
+    });
+    const complete = await make(ids.alice, { platform: "WINDOWS", microphoneRequirement: "REQUIRED", partyType: "COMPETITIVE", startsAt, durationMinutes: 120 });
+    await make(ids.alice, { platform: "PLAYSTATION", microphoneRequirement: "REQUIRED", partyType: "COMPETITIVE", startsAt, durationMinutes: 120 });
+    await make(ids.bob, { platform: "WINDOWS", microphoneRequirement: "REQUIRED", partyType: "COMPETITIVE", startsAt, durationMinutes: 120 });
+
+    const rows = await lib.listPlayerClassifieds(ids.bob, ids.on, new Date(), {
+      gameId: ids.game, platform: "WINDOWS", microphone: "yes", partyPlatform: "WINDOWS",
+      microphoneRequirement: "REQUIRED", partyType: "COMPETITIVE",
+      startsAfterDate: "2026-12-01", startsAfterTime: "19:00", startsBeforeDate: "2026-12-01", startsBeforeTime: "21:00",
+    });
+    expect(rows.map((row) => row.id)).toEqual([complete.id]);
+  });
+
+  it("profil masqué : jamais exposé à un autre membre, sa propre annonce reste visible", async () => {
+    vi.stubEnv("PROFILE_VISIBILITY_ENABLED", "true");
+    await db.userProfileVisibility.create({ data: { userId: ids.bob, visibility: "HIDDEN" } });
+    const make = (userId: string) => db.playerClassified.create({
+      data: { communityId: ids.on, gameId: ids.game, createdById: userId, message: "m", createdAt: new Date(), expiresAt: new Date(Date.now() + 3600_000) },
+    });
+    await make(ids.alice);
+    await make(ids.bob);
+
+    const seenByAlice = await lib.listPlayerClassifieds(ids.alice, ids.on, new Date());
+    expect(seenByAlice.map((row) => row.createdBy.id)).toEqual([ids.alice]);
+    const seenByBob = await lib.listPlayerClassifieds(ids.bob, ids.on, new Date());
+    expect(seenByBob.map((row) => row.createdBy.id).sort()).toEqual([ids.alice, ids.bob].sort());
+  });
+
   it("une annonce d'un autre serveur est introuvable pour la suppression", async () => {
     const foreign = await db.playerClassified.create({ data: { communityId: ids.off, gameId: ids.game, createdById: ids.offUser, message: "m", createdAt: new Date(), expiresAt: new Date(Date.now() + 3600_000) } });
     await as("admin");
