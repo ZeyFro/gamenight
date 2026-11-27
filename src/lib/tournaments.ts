@@ -208,7 +208,8 @@ export async function advanceWinner(
     // de l'arbitrage, décision du 26/11/2026). Posé une seule fois ; sans effet pour les tournois individuels.
     await tx.tournamentMatch.updateMany({
       where: { tournamentId, round: nextRound, position: nextPosition, team1Id: { not: null }, team2Id: { not: null }, scheduledAt: null },
-      data: { scheduledAt: wallClockNow() },
+      // VRAI instant : `arbitrationOpen` compare cette ouverture à `Date.now()`.
+      data: { scheduledAt: new Date() },
     });
   }
   return { tournamentFinalized: false };

@@ -252,7 +252,8 @@ export async function buildRegisteredTeamBracket(tx: Prisma.TransactionClient, t
     await scopedDb.tournament.update({ where: { id: tournamentId }, data: { status: "IN_PROGRESS" } });
     const days = roundRobinSchedule(competitorIds);
     // Ouverture de chaque rencontre = lancement : départ du délai de repli de l'arbitrage (48 h sans déclaration).
-    const openedAt = wallClockNow();
+    // `scheduledAt` est comparé à `Date.now()` par l'arbitrage : c'est un VRAI instant, jamais l'heure murale.
+    const openedAt = new Date();
     await scopedDb.tournamentMatch.createMany({
       data: days.flatMap((day) => day.matches.map(([team1Id, team2Id], position) => ({ tournamentId, round: day.round, position, team1Id, team2Id, scheduledAt: openedAt }))),
     });
@@ -264,7 +265,8 @@ export async function buildRegisteredTeamBracket(tx: Prisma.TransactionClient, t
   }));
   await scopedDb.tournament.update({ where: { id: tournamentId }, data: { status: "IN_PROGRESS" } });
   // Un match du 1er tour qui oppose deux équipes est ouvert dès le lancement (départ du délai de repli de 48 h).
-  const openedAt = wallClockNow();
+  // VRAI instant : la borne est ensuite comparée à `Date.now()` par l'arbitrage.
+  const openedAt = new Date();
   await scopedDb.tournamentMatch.createMany({ data: round1.map((match) => ({ tournamentId, round: 1, position: match.position, team1Id: match.team1Id, team2Id: match.team2Id, scheduledAt: match.team1Id && match.team2Id ? openedAt : null })) });
   for (let round = 2; round <= totalRounds; round++) {
     await scopedDb.tournamentMatch.createMany({

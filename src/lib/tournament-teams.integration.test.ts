@@ -157,7 +157,9 @@ describe.skipIf(!TEST_DATABASE_URL)("tournois par équipes inscrites : PostgreSQ
     await enter("B", "b1");
     const match = await finalMatch();
     // Ouverture du match = lancement (décision du 26/11 : départ du délai de repli).
+    // C'est un instant réel, pas l'heure murale de Paris (qui ouvrirait 1-2 h trop tard).
     expect(match.scheduledAt).toBeInstanceOf(Date);
+    expect(Math.abs(match.scheduledAt!.getTime() - Date.now())).toBeLessThan(5 * 60_000);
     await db.membership.update({ where: { communityId_userId: { communityId: ids.community, userId: ids.outsider } }, data: { role: "ADMIN" } });
     const later = new Date(Date.now() + 25 * H);
     // Sans aucune déclaration : refusé à 25 h et à 47 h, puis possible 48 h après l'ouverture.
