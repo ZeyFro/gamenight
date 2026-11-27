@@ -159,6 +159,43 @@ describe.skipIf(!TEST_DATABASE_URL)("projets à organisateur (intégration Postg
     expect(await projects.applyToProject(player.id, communityId, projectId, "")).toEqual({ ok: false, reason: "closed" });
   });
 
+  it("C083 — projet daté : deux candidats, décision de l'organisateur, isolation, clôture puis archivage", async () => {
+    const organizer = await makeUser();
+    const alice = await makeUser();
+    const bob = await makeUser();
+    const projectId = await makeProject(organizer.id, 2);
+    const created = await db.project.findUniqueOrThrow({ where: { id: projectId } });
+    expect(created.endsAt.getTime()).toBeGreaterThan(Date.now());
+    expect(await projects.applyToProject(alice.id, communityId, projectId, "Disponible")).toEqual({ ok: true });
+    expect(await projects.applyToProject(bob.id, communityId, projectId, "Motivé")).toEqual({ ok: true });
+
+    const organizerView = await projects.getProject(organizer.id, communityId, projectId);
+    expect(organizerView).toMatchObject({ name: input.name, description: input.description, status: "OPEN" });
+    expect(organizerView!.pending).toHaveLength(2);
+    const aliceEntry = await db.projectEntry.findFirstOrThrow({ where: { projectId, userId: alice.id } });
+    const bobEntry = await db.projectEntry.findFirstOrThrow({ where: { projectId, userId: bob.id } });
+    expect(await projects.decideProjectEntry(organizer.id, communityId, aliceEntry.id, "ACCEPT")).toEqual({ ok: true });
+    expect(await projects.decideProjectEntry(organizer.id, communityId, bobEntry.id, "DECLINE")).toEqual({ ok: true });
+
+    const aliceView = await projects.getProject(alice.id, communityId, projectId);
+    expect(aliceView?.participants.map((participant) => participant.userId)).toEqual([alice.id]);
+    expect(await db.projectEntry.findFirstOrThrow({ where: { projectId, userId: bob.id } })).toMatchObject({ status: "DECLINED" });
+    expect((await projects.listProjects(alice.id, communityId)).map((project) => project.id)).toContain(projectId);
+
+    const outsider = await db.community.create({ data: { slug: `c083-${++counter}`, name: "Autre", status: "ACTIVE" } });
+    const foreign = await makeUser(outsider.id);
+    expect(await projects.getProject(foreign.id, communityId, projectId)).toBeNull();
+    expect(await projects.applyToProject(foreign.id, communityId, projectId, "")).toEqual({ ok: false, reason: "missing" });
+
+    expect(await projects.closeProject(organizer.id, communityId, projectId)).toEqual({ ok: true });
+    expect(await projects.applyToProject(alice.id, communityId, projectId, "Encore" )).toEqual({ ok: false, reason: "closed" });
+    await db.project.update({ where: { id: projectId }, data: { endsAt: new Date(Date.now() - 8 * 24 * H) } });
+    expect(await queue.runProjectLifecycle(new Date(), new Date(Date.now() + 8 * 24 * H))).toMatchObject({ enabled: true, archivedWithoutDiscord: 1 });
+    const archived = await db.project.findUniqueOrThrow({ where: { id: projectId } });
+    expect(archived.status).toBe("ARCHIVED");
+    expect(archived.archivedAt).not.toBeNull();
+  });
+
   it("cycle de vie : clôture à la date de fin puis archivage 7 jours après (sans fil : direct)", async () => {
     const organizer = await makeUser();
     const ended = await db.project.create({

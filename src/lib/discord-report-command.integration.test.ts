@@ -79,6 +79,50 @@ describe.skipIf(!TEST_DATABASE_URL)("PostgreSQL isolé — signalements de messa
     expect(await db.moderationReport.count()).toBe(5);
   });
 
+  it("C088 — deux membres signalent le même message : deux tickets staff privés, aucune sanction", async () => {
+    const secondDiscordId = "100000000000000077";
+    const second = await db.user.create({ data: { discordId: secondDiscordId, discordName: "Marc" } });
+    await db.membership.create({ data: { userId: second.id, communityId, status: "ACTIVE", joinedAt: new Date() } });
+    const target = "100000000000000055";
+    expect(await submit(target)).toBe("recorded");
+    expect(await reports.submitModerationReport({ guildId: GUILD, reporterDiscordId: secondDiscordId, message: message(target) })).toBe("recorded");
+    expect(await db.moderationReport.count()).toBe(2);
+
+    const deliveries = await db.notificationDelivery.findMany({ include: { event: true } });
+    expect(deliveries).toHaveLength(2);
+    for (const delivery of deliveries) {
+      expect(String(delivery.targetSlot)).toMatch(/:ADMIN:.*:report-ticket$/);
+      expect(delivery.channel).toBe("DISCORD_CHANNEL");
+      expect(JSON.stringify(delivery.event.payload)).not.toContain("Message à examiner");
+      const resolution = await dispatch.DISPATCH_RESOLVER.resolve({ event: delivery.event, delivery } as never);
+      expect(resolution).toMatchObject({ eligible: true, action: { kind: "send_channel_message", channelId: STAFF } });
+    }
+    const rows = await db.moderationReport.findMany();
+    expect(rows.every((row) => row.closedAt === null)).toBe(true);
+  });
+
+  it("D14 — le signalement est journalisé avec son contexte, sans action de sanction", async () => {
+    expect(await submit("100000000000000056")).toBe("recorded");
+    const row = await db.moderationReport.findFirstOrThrow();
+    expect(row).toMatchObject({
+      channelId: "100000000000000044",
+      messageId: "100000000000000056",
+      authorDiscordId: AUTHOR,
+      reporterDiscordId: REPORTER,
+      excerpt: "Message à examiner",
+      attachmentCount: 1,
+      closedAt: null,
+    });
+    expect(row.ticketQueuedAt).not.toBeNull();
+    const delivery = await db.notificationDelivery.findFirstOrThrow({ include: { event: true } });
+    expect(String(delivery.targetSlot)).toContain(":ADMIN:");
+    expect(delivery.event.payload).toMatchObject({ reportId: row.id });
+    const columns = await db.$queryRawUnsafe<Array<{ column_name: string }>>(
+      `SELECT column_name FROM information_schema.columns WHERE table_name = 'ModerationReport'`
+    );
+    expect(columns.map((column) => column.column_name).filter((name) => /action|sanction|ban|mute|kick/i.test(name))).toEqual([]);
+  });
+
   it("n'applique aucune sanction : la table ne porte aucune colonne d'action", async () => {
     const columns = await db.$queryRawUnsafe<Array<{ column_name: string }>>(
       `SELECT column_name FROM information_schema.columns WHERE table_name = 'ModerationReport'`

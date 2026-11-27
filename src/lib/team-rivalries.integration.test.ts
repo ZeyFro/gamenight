@@ -285,6 +285,34 @@ describe.skipIf(!TEST_DATABASE_URL)("rivalités et intérêt (intégration Postg
       expect(await interest.markInstantSessionInterest(stale.id, other.id)).toEqual({ ok: false, reason: "ended" });
     });
 
+    it("C084 — défi confirmé par les deux capitaines, puis trois intéressés dont un rejoint", async () => {
+      const { capA, capB, teamA, teamB } = await scene();
+      await propose(capA.id, teamA.id, teamB.id);
+      const challenge = await db.teamChallenge.findFirstOrThrow();
+      expect(await rivalries.respondToChallenge(capB.id, communityId, challenge.id, "ACCEPT")).toEqual({ ok: true });
+      expect(await rivalries.reportChallengeResult(capA.id, communityId, challenge.id, "CHALLENGER_WON")).toEqual({ ok: true });
+      expect(await rivalries.answerChallengeResult(capB.id, communityId, challenge.id, "CONFIRM")).toEqual({ ok: true });
+      expect(await db.teamChallenge.findUniqueOrThrow({ where: { id: challenge.id } })).toMatchObject({ status: "COMPLETED", outcome: "CHALLENGER_WON" });
+      expect((await rivalries.getTeamRivalries(capA.id, communityId, teamA.id))?.record).toEqual({ played: 1, wins: 1, losses: 0, draws: 0 });
+      expect((await rivalries.getTeamRivalries(capB.id, communityId, teamB.id))?.record).toEqual({ played: 1, wins: 0, losses: 1, draws: 0 });
+      expect((await rivalries.getTeamRivalries(capB.id, communityId, teamB.id))?.history[0]).toMatchObject({ role: "opponent" });
+
+      const creator = await makeUser();
+      const players = [await makeUser(), await makeUser(), await makeUser()];
+      const session = await makeInstant(creator.id);
+      await db.instantSessionPresenceInterval.create({ data: { instantSessionId: session.id, userId: creator.id, startedAt: new Date() } });
+      for (const player of players) expect(await interest.markInstantSessionInterest(session.id, player.id, new Date(0))).toEqual({ ok: true });
+      const listed = await interest.listInstantSessionInterest(session.id, players[1].id);
+      expect(listed.interested.map((row) => row.userId).sort()).toEqual(players.map((player) => player.id).sort());
+      expect(listed.viewerIsInterested).toBe(true);
+
+      const { joinInstantSession } = await import("./instant-sessions");
+      expect((await joinInstantSession(session.id, players[1].id)).ok).toBe(true);
+      const after = await interest.listInstantSessionInterest(session.id, players[0].id);
+      expect(after.interested.map((row) => row.userId).sort()).toEqual([players[0].id, players[2].id].sort());
+      expect(after.viewerIsInterested).toBe(true);
+    });
+
     it("rejoindre efface l'intérêt", async () => {
       const { joinInstantSession } = await import("./instant-sessions");
       const creator = await makeUser();

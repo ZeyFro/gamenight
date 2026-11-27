@@ -19,6 +19,33 @@ export async function withStartupRetry<T>(launch: () => Promise<T>, attempts = 2
   throw lastError;
 }
 
+/**
+ * Supprime un profil Chromium temporaire. Chromium écrit encore dedans (crashpad, zygote) juste après la
+ * fermeture : la suppression récursive lève alors ENOTEMPTY même avec `maxRetries`. Le profil est un
+ * temporaire de test qui n'a aucun effet sur les assertions : on réessaie avec un délai croissant, puis on
+ * abandonne sans lever (un dossier /tmp résiduel est préférable à une CI rouge). Renvoie `true` si le
+ * dossier a disparu.
+ */
+export async function removeProfileDirectory(
+  directory: string,
+  options: { attempts?: number; retryDelayMs?: number; remove?: (dir: string) => void; wait?: (ms: number) => Promise<unknown> } = {},
+): Promise<boolean> {
+  const attempts = options.attempts ?? 6;
+  const retryDelayMs = options.retryDelayMs ?? 150;
+  const remove = options.remove ?? ((dir: string) => rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 }));
+  const wait = options.wait ?? delay;
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    try {
+      remove(directory);
+      return true;
+    } catch {
+      if (attempt === attempts - 1) return false;
+      await wait(retryDelayMs * (attempt + 1));
+    }
+  }
+  return false;
+}
+
 /** Chromium local via CDP natif Node22 : aucune dépendance ni navigation distante. */
 export class LocalChromium {
   private process: ChildProcess;
@@ -131,6 +158,6 @@ export class LocalChromium {
       await Promise.race([exited, delay(3000)]);
       if (this.process.exitCode === null && this.process.signalCode === null) { this.process.kill("SIGKILL"); await exited; }
     }
-    rmSync(this.directory, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 });
+    await removeProfileDirectory(this.directory);
   }
 }
