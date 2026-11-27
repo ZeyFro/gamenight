@@ -131,6 +131,18 @@ describe("parcours Discord The Tower signé", () => {
     await out.runTower?.();
     expect(mocks.edit.mock.calls.at(-1)?.[0].content).toContain("TWR-ABCD2345");
   });
+  it("affiche un défi ASSIGNED échu et masque le bouton de preuve", async () => {
+    mocks.state.mockResolvedValue({ status: "STATE", floor: "1", attempts: [{
+      id: "attempt_expired", title: "Construis", instructions: "Une maison", status: "ASSIGNED", rewardFloors: 2,
+      proofCode: "TWR-ABCD2345", assignedAt: new Date(Date.now() - 49 * 3600000), expiresAt: new Date(Date.now() - 3600000), submittedAt: null,
+    }] });
+    const out = await run(payload("gn:tower:mine"));
+    await out.runTower?.();
+    const edit = mocks.edit.mock.calls.at(-1)?.[0];
+    expect(edit.content).toContain("Défi échu");
+    expect(edit.content).toContain("échu");
+    expect(JSON.stringify(edit.components)).not.toContain("gn:tower:proof:");
+  });
   it("enregistre une preuve consentie dont le message appartient au membre", async () => {
     const out = await run(modal()); await out.runTower?.();
     expect(mocks.readProof).toHaveBeenCalledWith(expect.objectContaining({ channelId: channel, messageId: message }));

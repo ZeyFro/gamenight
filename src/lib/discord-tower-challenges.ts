@@ -67,14 +67,18 @@ function proofInput(data: z.infer<typeof componentDataSchema>, guildId: string, 
   return { proofText: values.proof_text, proofChannelId: match[2], proofMessageId: match[3], publicationConsent: publication === "OUI" };
 }
 type State = Extract<Awaited<ReturnType<typeof getTowerChallengeState>>, { status: "STATE" }>;
+function isAttemptExpired(attempt: { status: string; expiresAt: Date }, now = new Date()) {
+  return attempt.status === "ASSIGNED" && attempt.expiresAt.getTime() <= now.getTime();
+}
 function renderState(state: State) {
   const latest = state.attempts[0];
-  const history = state.attempts.map(attempt => `**${attempt.title}** — ${attempt.status === "ASSIGNED" ? "à réaliser" : attempt.status === "SUBMITTED" ? "en vote" : attempt.status === "APPROVED" ? "réussi" : "refusé"}`).join("\n");
+  const expired = latest ? isAttemptExpired(latest) : false;
+  const history = state.attempts.map(attempt => `**${attempt.title}** — ${attempt.status === "ASSIGNED" ? (isAttemptExpired(attempt) ? "échu" : "à réaliser") : attempt.status === "SUBMITTED" ? "en vote" : attempt.status === "APPROVED" ? "réussi" : "refusé"}`).join("\n");
   const proofCode = latest?.allowsPastProof
     ? `\n${towerProofRuleNotice(true)}`
     : latest?.proofCode
     ? `\nCode de preuve : **${latest.proofCode}**. Inscris-le dans le jeu si possible, sinon dans la composition GameNight qui accompagne la capture. Il associe les éléments, mais ne prouve pas la date de capture.` : "";
-  const measure = latest?.measureKind && latest.status === "ASSIGNED"
+  const measure = !expired && latest?.measureKind && latest.status === "ASSIGNED"
     ? latest.measureStatus === "PRIVATE"
       ? "\n🔒 Mesure Steam impossible (profil privé ou non lié) : dépose une preuve, la communauté votera."
       : latest.autoValidatedAt
@@ -82,10 +86,13 @@ function renderState(state: State) {
         : "\n🤖 Mesuré automatiquement sur Steam" + (latest.measureKind === "STEAM_PLAYTIME" && latest.measureTarget !== null
           ? " : " + (latest.measureValue ?? 0) + "/" + latest.measureTarget + " min" : "") + ". Garde ton profil Steam public ; aucune preuve à déposer."
     : "";
-  const details = latest ? `\n\n${proofCode}\n${latest.instructions.slice(0, state.attempts.length === 1 ? 1500 : 900)}${measure}\nGain :+${latest.rewardFloors} étage(s) · À réaliser avant <t:${Math.floor(latest.expiresAt.getTime() / 1000)}:f>.`
+  const details = latest
+    ? expired
+      ? `\n\n${latest.instructions.slice(0, state.attempts.length === 1 ? 1500 : 900)}\nGain :+${latest.rewardFloors} étage(s) · ⏳ Défi échu le <t:${Math.floor(latest.expiresAt.getTime() / 1000)}:f> : il n'est plus possible de déposer une preuve.`
+      : `\n\n${proofCode}\n${latest.instructions.slice(0, state.attempts.length === 1 ? 1500 : 900)}${measure}\nGain :+${latest.rewardFloors} étage(s) · À réaliser avant <t:${Math.floor(latest.expiresAt.getTime() / 1000)}:f>.`
     : "\nAucun défi attribué pour le moment.";
   const buttons = [button("Actualiser", "gn:tower:mine")];
-  if (latest?.status === "ASSIGNED") buttons.push(button("Déposer ma preuve", `gn:tower:proof:${latest.id}`, 1));
+  if (latest?.status === "ASSIGNED" && !expired) buttons.push(button("Déposer ma preuve", `gn:tower:proof:${latest.id}`, 1));
   if (latest?.status === "SUBMITTED") buttons.push(button("Voir le résultat", `gn:tower:settle:${latest.id}`, 1));
   const components: DiscordActionRow[] = [{ type: 1, components: buttons }];
   if (state.attempts.length > 1) components.push({ type: 1, components: state.attempts.slice(0,5).map((attempt, index) =>
