@@ -1,8 +1,10 @@
 # Plan d'allumage des interrupteurs — par lots, pour ChatGPT
 
-> Relevé du 23 novembre 2026. Objectif : **un seul lancement, cahier entièrement terminé** (voir [CAHIER_FINAL.md](CAHIER_FINAL.md)). Les allumages se font **par ChatGPT dans Vercel**, guidé par ce document. Claude Code n'écrit jamais dans Vercel.
+> Relevé du 23 novembre 2026, complété le 27 novembre 2026. Objectif : **un seul lancement, cahier entièrement terminé** (voir [CAHIER_FINAL.md](CAHIER_FINAL.md)). Les allumages se font **par ChatGPT dans Vercel**, guidé par ce document. Claude Code n'écrit jamais dans Vercel.
 
 > **Relevé Production du 25/11/2026, 19 h 45 (Paris)** : R5 a commencé à être configuré, mais n'est pas validé. Vercel liste en Production `RETENTION_CLEANUP_ENABLED`, `RETENTION_CLEANUP_MODE`, `VOICE_PRESENCE_ENABLED`, `HOSTING_ALERT_ENABLED`, `DISCORD_THREAD_CLEANUP_ENABLED` et `DISCORD_THREAD_CLEANUP_MODE` ; leurs valeurs Sensitive sont cachées. Sur le déploiement `dpl_8aqUmjR9VU3G9qv51dnN3iaPUC4N` (READY, commit `ccbba827`), le cron `discord-thread-cleanup` s'est exécuté à 19 h 15, 19 h 30 et 19 h 45 en `dryRun: true`, avec zéro fil archivé ou supprimé. Les journaux montrent aussi des passages sans erreur pour Steam (7 comptes traités), boosters (15 membres contrôlés), rappels (une soirée vérifiée), notifications (aucun envoi en attente) et vérification Steam des défis (zéro défi à vérifier). Ces six passages prouvent que les tâches s'exécutent ; ils ne valident ni les parcours de joueurs, ni l'effacement après une semaine, ni les push, le vocal ou l'alerte d'hébergement. Aucune nouvelle écriture ou activation ne découle de ce constat. La branche Neon `avant-R5-20261125` existe (créée le 25/11 à 00 h 55, heure de Paris) ; le projet compte 10 branches sur 10. Vérifier les valeurs effectives et préserver cette sauvegarde avant tout autre geste.
+
+> **Relevé Production du 27/11/2026** : 20 interrupteurs sont `true` en Production, ajoutés les 23 ou 24/11 : `ADMIN_DASHBOARD_V2_ENABLED`, `DISCORD_CONNECTIONS_SCOPE_ENABLED`, `DISCORD_ROLE_AUTOCREATE_ENABLED`, `DISCORD_ROLE_COMMAND_ENABLED`, `DISCORD_TEAM_SPACES_ENABLED`, `GAME_LEVELS_ENABLED`, `GAME_LEVELS_MATCHMAKING_ENABLED`, `GAME_PLATFORMS_ENABLED`, `NOTIFICATION_CENTER_ENABLED`, `PLAYER_MATCHING_ENABLED`, `POTES_FRIENDS_ENABLED`, `PROFILE_CUSTOMIZATION_ENABLED`, `PROFILE_VISIBILITY_ENABLED`, `TOWER_CHALLENGE_PROPOSALS_ENABLED`, `TOWER_CHALLENGE_REPLACEMENT_ENABLED`, `TOWER_IRREGULAR_GRANTS_ENABLED`, `TOWER_SEASON_AWARDS_ENABLED`, `TOWER_STEAM_AUTOVALIDATE_ENABLED`, `TOWER_TEAM_DAILY_ENABLED`, `WHO_PLAYS_TONIGHT_ENABLED`. `DISCORD_BOOSTERS_ENABLED` et `SESSION_VISIBILITY_ENABLED` sont également `true` (mis à jour le 24/11). **Aucun n'est vérifié en réel** : les lots ci-dessous gardent leurs contrôles, mais les variables correspondantes n'ont plus à être posées. Aucun autre flag ne s'allume sans accord explicite de Maxime.
 
 ## Règles pour chaque lot
 
@@ -27,7 +29,9 @@
 
 ---
 
-## Lot A1 — PREMIER LOT, prêt à allumer (7 variables, affichage seulement)
+## Lot A1 — PREMIER LOT (7 variables, affichage seulement)
+
+> **État du 27/11** : `ADMIN_DASHBOARD_V2_ENABLED` est déjà allumé en Production (ajouté le 24/11). Ne pas le recréer ; faire le contrôle 7.
 
 > **Pourquoi celui-là d’abord** : chaque variable est déjà codée et testée (tests Vitest indiqués), **aucune n’écrit dans la base ni dans Discord**, aucune migration n’est nécessaire, et éteinte, chacune rend exactement l’ancien affichage. Les 7 se posent ensemble puis **un seul Redeploy**.
 
@@ -71,6 +75,8 @@
 
 ## Lot B — The Tower complète
 
+> **État du 27/11** : les 7 variables de ce lot sont déjà allumées en Production (23–25/11). Ne pas les recréer ; faire les contrôles réels ci-dessous.
+
 **Prérequis** : P2, P3 faits ; salon des preuves configuré (`TOWER_DISCORD_CHANNEL_ID`, déjà présent).
 
 **Variables (7)** : `TOWER_DISCORD_VOTES_ENABLED`, `TOWER_SEASON_AWARDS_ENABLED`, `TOWER_CHALLENGE_PROPOSALS_ENABLED`, `TOWER_CHALLENGE_REPLACEMENT_ENABLED`, `TOWER_IRREGULAR_GRANTS_ENABLED`, `TOWER_STEAM_AUTOVALIDATE_ENABLED`, `TOWER_TEAM_DAILY_ENABLED`.
@@ -91,6 +97,8 @@
 ---
 
 ## Lot C — Profil et joueurs
+
+> **État du 27/11** : les 10 variables de ce lot sont déjà allumées en Production (23–24/11). Ne pas les recréer ; faire les contrôles réels ci-dessous.
 
 **Variables (10)** : `PROFILE_VISIBILITY_ENABLED`, `GAME_LEVELS_ENABLED`, `GAME_LEVELS_MATCHMAKING_ENABLED`, `GAME_PLATFORMS_ENABLED`, `DISCORD_CONNECTIONS_SCOPE_ENABLED`, `PROFILE_CUSTOMIZATION_ENABLED`, `WHO_PLAYS_TONIGHT_ENABLED`, `NOTIFICATION_CENTER_ENABLED`, `PLAYER_MATCHING_ENABLED` (après P6), `POTES_FRIENDS_ENABLED` (migration `friendships` appliquée, PR Code 7).
 
@@ -163,6 +171,8 @@
 ---
 
 ## Lot G — Écritures Discord (rôles, salons, signalement)
+
+> **État du 27/11** : `DISCORD_ROLE_COMMAND_ENABLED`, `DISCORD_ROLE_AUTOCREATE_ENABLED`, `DISCORD_TEAM_SPACES_ENABLED`, `SESSION_VISIBILITY_ENABLED` et `DISCORD_BOOSTERS_ENABLED` sont déjà allumés en Production (23–24/11). Les autres variables du lot restent à traiter selon l'accord de Maxime ; faire les contrôles réels ci-dessous.
 
 **Prérequis** : P4 (plus aucun bot Administrateur, GameNight avec ses 13 permissions, dont « Mentionner @everyone, @here et tous les rôles ») ; **suppression des 134 rôles « Étage »** confirmée (déjà faite le 20/11) ; un salon staff privé pour les signalements.
 
@@ -319,7 +329,7 @@ Le dépôt ne déclare **aucune** tâche planifiée dans `vercel.json` : tout le
 
 ### (c) Ordre des prochains lots d'interrupteurs
 
-Rien n'est allumé aujourd'hui par les PR récentes : les plafonds anti-abus (#569 XP de présence, #583 temps Steam, #584 XP de tournoi, #585 XP de vote, #586 créations par jour) n'ont **aucun interrupteur** et agissent dès le déploiement de `main`. Leurs valeurs sont à faire valider par Maxime (voir `AUDIT_FINAL.md`). Ordre à suivre, un lot à la fois (règles du début du document) :
+Les interrupteurs du relevé du 27/11 sont déjà allumés ; l'ordre ci-dessous vaut pour les variables qui restent à poser. Les plafonds anti-abus (#569 XP de présence, #583 temps Steam, #584 XP de tournoi, #585 XP de vote, #586 créations par jour) n'ont **aucun interrupteur** et agissent dès le déploiement de `main`. Leurs valeurs sont à faire valider par Maxime (voir `AUDIT_FINAL.md`). Ordre à suivre, un lot à la fois (règles du début du document) :
 
 | Ordre | Lot | Variables (Production) | Branche Neon avant | Tâches cron-job.org à créer en même temps (numéros du tableau (b)) |
 | --- | --- | --- | --- | --- |
@@ -340,14 +350,14 @@ Avant de commencer, relever le quota Vercel (100 déploiements par jour en offre
 
 | Lot | Date et heure | Branche de sauvegarde | Vérifications OK | Retour arrière fait ? |
 | --- | --- | --- | --- | --- |
-| A1 | | — | ☐ | |
+| A1 | 24/11/2026 (relevé 27/11) | — | ☐ `ADMIN_DASHBOARD_V2_ENABLED` allumé, contrôle non fait | |
 | A2 | | — | ☐ | |
-| B | | | ☐ | |
-| C | | — | ☐ | |
+| B | 23–25/11/2026 (relevé 27/11) | | ☐ 7 flags allumés, contrôles réels non faits | |
+| C | 23–24/11/2026 (relevé 27/11) | — | ☐ 10 flags allumés, contrôles réels non faits | |
 | D | | — | ☐ | |
 | E | | | ☐ | |
 | F | | — | ☐ | |
-| G | | | ☐ | |
+| G | 23–24/11/2026 (relevé 27/11) | | ☐ 5 flags allumés, contrôles réels non faits | |
 | G2 | | — | ☐ | |
 | H | | | ☐ | |
 | I | | — | ☐ | |

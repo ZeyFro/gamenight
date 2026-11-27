@@ -1,8 +1,8 @@
 # Lancement — la ligne d'arrivée (GO / NO-GO)
 
-> État documentaire mis à jour le 26 novembre 2026. Aucun jour de lancement n’est fixé : l’ouverture intervient lorsque les **61 lignes actives** du cahier sont toutes vertes selon la règle de preuve ci-dessous. Les exigences C095 à C103 (9 lignes reportées) restent hors lancement ; C098 ne sera jamais activée en v1. Sources : code de `main`, variables de Production lues dans Vercel (valeurs « Sensibles » illisibles), base Neon lue par une requête `SELECT`, exécutions GitHub. Ce document **remplace** pour le jour J : [CHECKLIST_LANCEMENT.md](CHECKLIST_LANCEMENT.md), [PLAN_TESTS.md](PLAN_TESTS.md) (à exécuter), [CONTROLE_SECURITE.md](CONTROLE_SECURITE.md) et les 21 constats « avant ouverture » de [AUDIT_APP_20261120.md](AUDIT_APP_20261120.md).
+> État documentaire mis à jour le 27 novembre 2026. Aucun jour de lancement n’est fixé : l’ouverture intervient lorsque les **61 lignes actives** du cahier sont toutes vertes selon la règle de preuve ci-dessous. Les exigences C095 à C103 (9 lignes reportées) restent hors lancement ; C098 ne sera jamais activée en v1. Sources : code de `main`, variables de Production lues dans Vercel (valeurs « Sensibles » illisibles), base Neon lue par une requête `SELECT`, exécutions GitHub. Ce document **remplace** pour le jour J : [CHECKLIST_LANCEMENT.md](CHECKLIST_LANCEMENT.md), [PLAN_TESTS.md](PLAN_TESTS.md) (à exécuter), [CONTROLE_SECURITE.md](CONTROLE_SECURITE.md) et les 21 constats « avant ouverture » de [AUDIT_APP_20261120.md](AUDIT_APP_20261120.md).
 >
-> **Règle du lancement** (décision de Maxime, 26/11) : aucun flag ne sera allumé sans son accord explicite. GO = 61/61 lignes actives vertes, avec preuve datée d’un test réel par un compte non-admin consignée dans le cahier. Les 9 lignes C095–C103 restent exclues de ce seuil ; C098 demeure désactivée en v1. Aucun lancement à date fixe.
+> **Règle du lancement** (décision de Maxime, amendée le 27/11) : aucun flag ne sera allumé sans son accord explicite. GO = 61/61 lignes actives vertes, avec une preuve datée et consignée selon la règle amendée : **ZeyFro ou Melah** sont acceptés ; l’**accès, la visibilité, la confidentialité et l’arrivée** se vérifient avec **Melah** ; pour les lignes à **3 comptes ou plus**, un **scénario automatisé multi-utilisateurs** est accepté, les **éléments Discord** restant vérifiés en réel. Les 9 lignes C095–C103 restent exclues de ce seuil ; C098 demeure désactivée en v1. Aucun lancement à date fixe.
 >
 > **Lecture.** ✅ fait et vérifié · 🔴 à faire avant l'annonce · 🟠 à faire, non bloquant · ⬜ non vérifiable d'ici (preuve à apporter). Responsables : **Maxime** (comptes, décisions, secrets), **ChatGPT** (gestes dans Discord et dans les consoles, guidé pas à pas), **Claude Code** (code et documentation).
 
@@ -10,7 +10,7 @@
 
 ## 1. Les critères (liste fermée)
 
-**GO = 61/61 lignes actives vertes.** Une ligne ne passe au vert qu’après un test réel daté d’un compte non-admin, avec résultat et preuve consignés. C095–C103 sont reportées et exclues du lancement ; C098 ne s’allume jamais en v1. Aucun lancement à date fixe.
+**GO = 61/61 lignes actives vertes.** Une ligne ne passe au vert qu’avec une preuve datée et consignée, selon la règle amendée du 27/11 : ZeyFro ou Melah ; accès, visibilité, confidentialité et arrivée vérifiés avec Melah ; scénario automatisé multi-utilisateurs accepté à partir de 3 comptes, éléments Discord vérifiés en réel. C095–C103 sont reportées et exclues du lancement ; C098 ne s’allume jamais en v1. Aucun lancement à date fixe.
 
 ### A. Base de données et déploiement
 
