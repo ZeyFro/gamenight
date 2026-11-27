@@ -9,6 +9,11 @@ const mocks = vi.hoisted(() => ({
   archive: vi.fn(),
   optIns: vi.fn(),
   ping: vi.fn(),
+  hidden: vi.fn(async () => false),
+}));
+vi.mock("@/lib/player-classified-forum", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/player-classified-forum")>()),
+  isForumAuthorHidden: mocks.hidden,
 }));
 
 vi.mock("@/lib/community-scoped-client", () => ({
@@ -84,14 +89,14 @@ describe("runPlayerClassifiedForumAction", () => {
     }));
   });
 
-  it("ferme le post expiré et note la fermeture, sans verrouiller", async () => {
+  it("ferme le post expiré (archivé ET verrouillé) et note la fermeture", async () => {
     mocks.findUnique.mockResolvedValue({ ...base, forumThreadId: "666666666666666666" });
     mocks.archive.mockResolvedValue({ ok: true, data: { threadId: "666666666666666666", archived: true } });
     const result = await runPlayerClassifiedForumAction(
       { intent: "close", listingId: "listing-1", communityId: "c1" }, DEADLINE,
     );
     expect(result).toEqual({ ok: true, data: { threadId: "666666666666666666" } });
-    expect(mocks.archive).toHaveBeenCalledWith(expect.objectContaining({ threadId: "666666666666666666", locked: false }));
+    expect(mocks.archive).toHaveBeenCalledWith(expect.objectContaining({ threadId: "666666666666666666", locked: true }));
     expect(mocks.updateMany).toHaveBeenCalledWith(expect.objectContaining({
       data: expect.objectContaining({ forumClosedAt: expect.any(Date) }),
     }));

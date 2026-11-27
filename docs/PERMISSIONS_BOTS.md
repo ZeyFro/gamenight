@@ -44,6 +44,18 @@ Les rôles du serveur **Gaming, Minecraft, Yama, Otaku, Chef-Otaku, The-Hell, Ci
 
 ---
 
+### GameNight et le forum « 🔎・recherche-de-joueurs » (D3, 27/11/2026)
+
+Le relais des annonces de joueurs publie un post par annonce dans le forum `🔎・recherche-de-joueurs` et **supprime** ce post quand l'annonce est retirée, que le compte est supprimé ou que le profil est masqué (à l'expiration, il est seulement fermé : archivé et verrouillé). Sur **ce forum** (permissions du salon, pas seulement du serveur), le rôle de GameNight doit avoir :
+
+| Permission | Pourquoi |
+| --- | --- |
+| *Voir le salon* et *Envoyer des messages* | créer les posts |
+| *Mentionner @everyone, @here et tous les rôles* | le ping du rôle de jeu (opt-in), jamais @everyone ni @here |
+| **_Gérer les fils_** | **supprimer** un post (`DELETE` d'un fil) et archiver/verrouiller un fil |
+
+Sans *Gérer les fils*, la suppression est refusée par Discord : GameNight **replie alors sur l'archivage + verrouillage** du fil et signale l'échec dans `/admin/erreurs` (« permission Gérer les fils manquante ? »). Le contenu reste alors lisible : l'accorder avant d'allumer `PLAYER_CLASSIFIED_FORUM_RELAY_ENABLED`. Avant chaque suppression, GameNight vérifie par un `GET` que l'identifiant est bien un fil public de ce forum ; sinon il refuse de supprimer.
+
 ## 2. Deux règles de Discord à connaître avant de commencer
 
 1. **La hiérarchie des rôles.** Un bot ne peut donner ou retirer **que** les rôles placés **en dessous** de son propre rôle. Sans Administrateur, MEE6 (rôles de niveau), Koya et YAGPDB (rôles automatiques), UnbelievaBoat (rôles de boutique), Appy et GameNight (rôles de jeu) doivent avoir leur rôle **au-dessus** des rôles qu'ils distribuent, mais **en dessous** des rôles du staff.

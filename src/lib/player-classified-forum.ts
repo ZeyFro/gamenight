@@ -182,10 +182,16 @@ export async function enqueueForumRemovalsForUser(userId: string): Promise<numbe
 export interface PlayerClassifiedForumLifecycle {
   enabled: boolean;
   closeQueued: number;
+  /** Annonces récentes dont le relais n'avait pas pu être mis en file à la création (rattrapage). */
+  postsQueued: number;
 }
 
+/** Une annonce plus ancienne que cela n'est plus rattrapée (le balayage ne fait pas ressortir une vieille annonce dans le forum). */
+const CATCH_UP_WINDOW_MS = 6 * 60 * 60_000;
+
 /**
- * Balayage (cron des rappels) : supprime les fils dont l'auteur a masqué son profil, archive ceux des annonces expirées. Il tourne même
+ * Balayage (cron des rappels) : supprime les fils dont l'auteur a masqué son profil, ferme (archive et verrouille) ceux des annonces
+ * expirées, et rattrape les relais dont la mise en file a échoué à la création. Il tourne même
  * relais éteint (il ne fait que retirer des fils qui existent déjà). Curseur `forumSweptAt` : les lignes les moins récemment traitées
  * passent d'abord, une ligne bloquée en permanence ne monopolise donc jamais les 25 lignes d'un passage.
  */
@@ -212,5 +218,24 @@ export async function runPlayerClassifiedForumLifecycle(now: Date = new Date()):
   if (rows.length > 0) {
     await scopedDb.playerClassified.updateMany({ where: { id: { in: rows.map((row) => row.id) } }, data: { forumSweptAt: now } });
   }
-  return { enabled: playerClassifiedForumEnabled() || rows.length > 0, closeQueued: rows.length - failed };
+
+  // Rattrapage : une annonce récente, active, jamais relayée et dont l'auteur n'est pas masqué, dont la mise en file a échoué à la création
+  // (base indisponible) ; l'enfilement est idempotent (un événement par annonce), sans effet si un événement existe déjà.
+  let postsQueued = 0;
+  if (playerClassifiedForumEnabled()) {
+    const missing = await scopedDb.playerClassified.findMany({
+      where: {
+        forumThreadId: null, forumPostingAt: null, forumRemovedAt: null,
+        expiresAt: { gt: now }, createdAt: { gte: new Date(now.getTime() - CATCH_UP_WINDOW_MS) },
+        NOT: { createdBy: { profileVisibility: { is: { visibility: "HIDDEN" } } } },
+      },
+      orderBy: { createdAt: "desc" },
+      take: 25,
+      select: { id: true, communityId: true },
+    });
+    for (const row of missing) {
+      if ((await enqueuePlayerClassifiedForum({ listingId: row.id, communityId: row.communityId, intent: "post" })) === "queued") postsQueued++;
+    }
+  }
+  return { enabled: playerClassifiedForumEnabled() || rows.length > 0, closeQueued: rows.length - failed, postsQueued };
 }

@@ -123,7 +123,13 @@ export async function relayNewPlayerListing(input: { listingId: string; communit
   if (!playerClassifiedForumEnabled()) return;
   try {
     if (await isForumAuthorHidden(input.userId)) return;
-    await enqueuePlayerClassifiedForum({ listingId: input.listingId, communityId: input.communityId, intent: "post" });
+    const queued = await enqueuePlayerClassifiedForum({ listingId: input.listingId, communityId: input.communityId, intent: "post" });
+    if (queued === "retry") {
+      // Échec transitoire de la mise en file : l'annonce existe, le balayage du cron des rappels rattrape le relais (annonce récente, sans fil).
+      const error = new Error("Relais forum non mis en file à la création (réessayable) : rattrapage par le balayage du cron.");
+      logger.error("player-listings", error, { step: "forum-relay-retry" });
+      persistServerError("player-listings", error, { route: "player-listings/forum-relay" });
+    }
   } catch (error) {
     logger.error("player-listings", error, { step: "forum-relay" });
     persistServerError("player-listings", error, { route: "player-listings/forum-relay" });

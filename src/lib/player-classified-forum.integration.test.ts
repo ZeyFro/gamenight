@@ -16,7 +16,7 @@ if (url) {
   }
 }
 const discord = vi.hoisted(() => ({
-  forums: vi.fn(), roles: vi.fn(), createPost: vi.fn(), archive: vi.fn(), deleteThread: vi.fn(),
+  forums: vi.fn(), roles: vi.fn(), createPost: vi.fn(), archive: vi.fn(), deleteThread: vi.fn(), getChannel: vi.fn(),
 }));
 const faults = vi.hoisted(() => ({ hiddenCheck: false, eventCreation: false }));
 vi.mock("@/lib/prisma", async () => {
@@ -30,6 +30,7 @@ vi.mock("@/lib/discord-rest", async (importOriginal) => ({
   createForumPost: discord.createPost,
   archiveThread: discord.archive,
   deleteThreadPermanently: discord.deleteThread,
+  getChannel: discord.getChannel,
 }));
 vi.mock("@/lib/player-classified-forum", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/lib/player-classified-forum")>();
@@ -101,6 +102,8 @@ describe.skipIf(!url)("relais forum des annonces de joueurs", () => {
     discord.createPost.mockResolvedValue({ ok: true, data: { threadId: THREAD } });
     discord.archive.mockResolvedValue({ ok: true, data: {} });
     discord.deleteThread.mockResolvedValue({ ok: true, data: { threadId: THREAD } });
+    // Contrôle avant suppression : un fil PUBLIC (11) du serveur, dans le forum des recherches de joueurs.
+    discord.getChannel.mockImplementation(async ({ channelId }: { channelId: string }) => ({ ok: true, data: { channelId, type: 11, guildId: GUILD, parentId: FORUM } }));
     session.admin.mockResolvedValue(null);
     await cleanup();
     await db.user.createMany({ data: ["author", "other", "admin"].map((name, index) => ({ id: id(name), discordId: scope + index, discordName: name })) });
@@ -278,7 +281,8 @@ describe.skipIf(!url)("relais forum des annonces de joueurs", () => {
       expect(await events("close")).toHaveLength(1);
       expect(await events("remove")).toHaveLength(0);
       expect((await run("close", row.id, THREAD)).ok).toBe(true);
-      expect(discord.archive).toHaveBeenCalledWith(expect.objectContaining({ threadId: THREAD }));
+      // Expiration : le fil est FERMÉ (archivé ET verrouillé), jamais supprimé.
+      expect(discord.archive).toHaveBeenCalledWith(expect.objectContaining({ threadId: THREAD, locked: true }));
       expect(discord.deleteThread).not.toHaveBeenCalled();
     });
 
@@ -335,6 +339,61 @@ describe.skipIf(!url)("relais forum des annonces de joueurs", () => {
       expect(discord.archive).not.toHaveBeenCalled();
       expect((await run("remove", row.id, THREAD)).ok).toBe(true);
       expect(discord.deleteThread).toHaveBeenCalledWith(expect.objectContaining({ threadId: THREAD }));
+    });
+  });
+
+  describe("suppression d'un fil : course au masquage, repli sans permission, contrôle du fil", () => {
+    it("profil masqué ENTRE le contrôle et la création du post : le fil créé est retiré (suppression mise en file avec le fil)", async () => {
+      const row = await listing();
+      discord.createPost.mockImplementation(async () => {
+        await hideInDb();
+        return { ok: true, data: { threadId: THREAD } };
+      });
+      expect((await run("post", row.id)).ok).toBe(true);
+      expect((await db.playerClassified.findUniqueOrThrow({ where: { id: row.id } })).forumThreadId).toBe(THREAD);
+      const [event] = await events("remove");
+      expect(event?.occurrence).toBe("remove:" + THREAD);
+      expect(event?.payload).toMatchObject({ intent: "remove", threadId: THREAD });
+    });
+
+    it("Discord refuse la suppression (permission) : repli sur l'archivage VERROUILLÉ, échec signalé sans donnée personnelle, fil non marqué supprimé", async () => {
+      const row = await relayed();
+      discord.deleteThread.mockResolvedValue({ ok: false, kind: "auth_or_permission", message: "Missing Permissions", retryable: false });
+      const { logger } = await import("@/lib/logger");
+      const warn = vi.spyOn(logger, "warn");
+      expect((await run("remove", row.id, THREAD)).ok).toBe(true);
+      expect(discord.archive).toHaveBeenCalledWith(expect.objectContaining({ threadId: THREAD, locked: true }));
+      expect(warn).toHaveBeenCalledWith("player-classified-forum", expect.stringContaining("repli"), expect.any(Object));
+      expect(JSON.stringify(warn.mock.calls)).not.toMatch(new RegExp(id("author")));
+      const after = await db.playerClassified.findUniqueOrThrow({ where: { id: row.id } });
+      expect(after.forumRemovedAt).toBeNull();
+      expect(after.forumClosedAt).not.toBeNull();
+    });
+
+    it("échec d'une autre nature (réseau) : aucun repli, l'échec remonte pour un nouvel essai", async () => {
+      const row = await relayed();
+      discord.deleteThread.mockResolvedValue({ ok: false, kind: "network_uncertain", message: "réseau", retryable: true });
+      expect(await run("remove", row.id, THREAD)).toMatchObject({ ok: false, retryable: true });
+      expect(discord.archive).not.toHaveBeenCalled();
+    });
+
+    it.each([
+      ["un salon texte (type 0)", { type: 0, guildId: GUILD, parentId: FORUM }],
+      ["un fil d'un autre serveur", { type: 11, guildId: "888888888888888888", parentId: FORUM }],
+      ["un fil d'un autre forum", { type: 11, guildId: GUILD, parentId: "777777777777777777" }],
+      ["un fil sans parent", { type: 11, guildId: GUILD, parentId: null }],
+    ])("contrôle avant suppression : %s n'est JAMAIS supprimé", async (_label, info) => {
+      const row = await relayed();
+      discord.getChannel.mockResolvedValue({ ok: true, data: { channelId: THREAD, ...info } });
+      expect(await run("remove", row.id, THREAD)).toMatchObject({ ok: false, retryable: false });
+      expect(discord.deleteThread).not.toHaveBeenCalled();
+    });
+
+    it("fil déjà absent (404 au contrôle) : objectif atteint, aucune suppression tentée", async () => {
+      const row = await relayed();
+      discord.getChannel.mockResolvedValue({ ok: false, kind: "not_found", message: "absent", retryable: false });
+      expect((await run("remove", row.id, THREAD)).ok).toBe(true);
+      expect(discord.deleteThread).not.toHaveBeenCalled();
     });
   });
 
@@ -476,6 +535,34 @@ describe.skipIf(!url)("relais forum des annonces de joueurs", () => {
       expect(await createViaWeb("Panne de la file")).toBe("REDIRECT:/joueurs");
       expect(await db.playerClassified.count({ where: { createdById: id("author") } })).toBe(2);
       expect(error).toHaveBeenCalledWith("player-listings", expect.any(Error), expect.objectContaining({ step: "forum-relay" }));
+      expect(await events("post")).toHaveLength(0);
+    });
+  });
+
+  describe("rattrapage d'un relais non mis en file", () => {
+    it("échec réessayable à la création : l'erreur est journalisée, puis le balayage du cron met le relais en file (annonce récente, auteur visible)", async () => {
+      const { logger } = await import("@/lib/logger");
+      const error = vi.spyOn(logger, "error");
+      faults.eventCreation = true;
+      expect((await create("Relais raté à la création")).status).toBe("created");
+      expect(error).toHaveBeenCalledWith("player-listings", expect.any(Error), expect.objectContaining({ step: "forum-relay-retry" }));
+      expect(await events("post")).toHaveLength(0);
+      faults.eventCreation = false;
+      const { runPlayerClassifiedForumLifecycle } = await import("./player-classified-forum");
+      expect((await runPlayerClassifiedForumLifecycle(new Date())).postsQueued).toBe(1);
+      expect(await events("post")).toHaveLength(1);
+      // Idempotent : un second passage ne crée rien de plus.
+      await runPlayerClassifiedForumLifecycle(new Date());
+      expect(await events("post")).toHaveLength(1);
+    });
+
+    it("le rattrapage ignore un profil masqué, une annonce ancienne (plus de 6 h) et une annonce retirée", async () => {
+      await listing({ message: "ancienne", createdAt: new Date(Date.now() - 7 * 3600_000), expiresAt: new Date(Date.now() + 3600_000) });
+      await listing({ message: "retirée", forumRemovedAt: new Date() });
+      await hideInDb();
+      await listing({ message: "masquée" });
+      const { runPlayerClassifiedForumLifecycle } = await import("./player-classified-forum");
+      expect((await runPlayerClassifiedForumLifecycle(new Date())).postsQueued).toBe(0);
       expect(await events("post")).toHaveLength(0);
     });
   });
