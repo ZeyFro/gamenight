@@ -254,6 +254,22 @@ describe.skipIf(!TEST_DATABASE_URL)("retention (intégration Postgres isolée + 
       expect(await db.notification.findUnique({ where: { id: oldRead.id } })).toBeNull();
     });
 
+    it("frontière de saison : une notification créée après minuit de Paris reste dans la saison active", async () => {
+      const user = await makeUser();
+      // La saison commence le 1er septembre à minuit MURAL = 31/08 22:00 UTC.
+      await db.season.create({
+        data: {
+          community: { connectOrCreate: { where: { slug: "default" }, create: { slug: "default", name: "GameNight", status: "ACTIVE" } } }, number: 2, name: "Saison 2", startDate: new Date("2026-09-01T00:00:00.000Z"), endDate: new Date("2026-10-01T00:00:00.000Z"), isActive: true },
+      });
+      const firstHour = await db.notification.create({
+        data: { userId: user.id, type: "SESSION_CREATED", title: "t", message: "m", read: true, createdAt: new Date("2026-08-31T23:00:00.000Z") },
+      });
+
+      const result = await retention.purgeClosedSeasonNotificationsBatch({ dryRun: false });
+      expect(result.notificationsAffected).toBe(0);
+      expect(await db.notification.findUnique({ where: { id: firstHour.id } })).not.toBeNull();
+    });
+
     it("notification NON LUE, même ancienne : jamais purgée — encore nécessaire tant que l'utilisateur ne l'a pas vue", async () => {
       const user = await makeUser();
       await db.season.create({

@@ -346,4 +346,32 @@ describe.skipIf(!TEST_DATABASE_URL)("GET /api/cron/reminders (Postgres isolé)",
     expect(result.sent).toEqual([`${session.id}:60min`]);
     expect(await reminderEvents(session.id)).toHaveLength(1);
   });
+
+  it("relais forum : compare les expirations à l'instant réel, pas à l'heure murale en avance", async () => {
+    // 22:30 UTC = 00:30 à Paris le lendemain. L'annonce expire à 23:00 UTC :
+    // elle est encore active dans la réalité, mais déjà expirée pour wallClockNow().
+    vi.setSystemTime(new Date("2026-06-15T22:30:00.000Z"));
+    const community = await db.community.create({ data: { slug: `forum-clock-${Math.random()}`, name: "Forum", status: "ACTIVE", discordGuildId: "123456789012345678" } });
+    const user = await db.user.create({ data: { discordId: `forum-${Math.random()}`, discordName: "auteur" } });
+    const game = await db.game.create({ data: { name: `forum-game-${Math.random()}`, source: "MANUAL", addedById: user.id } });
+    const listing = await db.playerClassified.create({
+      data: {
+        communityId: community.id, gameId: game.id, createdById: user.id, message: "Encore active",
+        createdAt: new Date("2026-06-15T21:30:00.000Z"), expiresAt: new Date("2026-06-15T23:00:00.000Z"),
+        forumThreadId: "123456789012345678",
+      },
+    });
+
+    try {
+      await call();
+      expect(await db.notificationEvent.count({ where: { eventType: "PLAYER_CLASSIFIED_FORUM", sourceId: listing.id } })).toBe(0);
+    } finally {
+      // Cette suite ne truncate pas les communautés : ne jamais laisser une
+      // annonce expirée que le balayage d'une AUTRE suite compterait.
+      await db.playerClassified.deleteMany({ where: { communityId: community.id } });
+      await db.community.delete({ where: { id: community.id } });
+      await db.game.delete({ where: { id: game.id } });
+      await db.user.delete({ where: { id: user.id } });
+    }
+  });
 });

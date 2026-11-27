@@ -4,7 +4,7 @@ import { scopedPrisma, scopedTransactionPrisma } from "@/lib/community-scoped-cl
 import { cronCommunityScope, communityIdFilter, isCommunityIsolationEnabled, type IsolationScope } from "@/lib/community-isolation";
 import { DEFAULT_COMMUNITY_SLUG, getDefaultCommunityId } from "@/lib/default-community";
 import { deleteSessionGalleryBlobs } from "@/lib/session-gallery";
-import { wallClockNow } from "@/lib/wallclock";
+import { wallClockNow, wallClockToInstant } from "@/lib/wallclock";
 import { HISTORY_VISIBILITY_WINDOW_DAYS, isWithinHistoryWindow } from "@/lib/history-visibility";
 import { getActiveSeason } from "@/lib/seasons";
 import { enqueueSessionThreadDelete, getSessionThreadDeleteStatus } from "@/lib/session-announce";
@@ -595,6 +595,11 @@ export interface NotificationPurgeBatchResult {
  * et n'est JAMAIS purgée tant qu'elle ne l'a pas été, quel que soit son
  * âge. Ne purge JAMAIS les notifications de la saison ACTIVE elle-même
  * (bornage strict `createdAt < startDate`).
+ *
+ * `Season.startDate` est une heure murale de Paris, `Notification.createdAt`
+ * un instant réel : la borne est convertie (`wallClockToInstant`) avant la
+ * comparaison, sinon les notifications créées entre minuit UTC et minuit de
+ * Paris à la frontière de saison étaient purgées à tort (1-2 h de trop).
  */
 export async function purgeClosedSeasonNotificationsBatch(
   opts: RetentionOptions
@@ -611,7 +616,7 @@ export async function purgeClosedSeasonNotificationsBatch(
 
   const where: Prisma.NotificationWhereInput = { read: true, OR: activeSeasons.map((season) => ({
     ...(scope ? communityIdFilter({ communityIds: [season.communityId], includesDefault: scope.includesDefault && season.communityId === defaultId }) : {}),
-    createdAt: { lt: season.startDate },
+    createdAt: { lt: wallClockToInstant(season.startDate) },
   })) };
 
   if (opts.dryRun) {
@@ -668,7 +673,10 @@ export async function purgeTechnicalDeliveriesBatch(
 ): Promise<TechnicalDataPurgeBatchResult> {
   const scope = await activeRetentionScope(opts.scope);
   const limit = opts.limit ?? RETENTION_BATCH_SIZE;
-  const now = opts.now ?? wallClockNow();
+  // `NotificationDelivery.createdAt` est un instant réel : jamais l'heure
+  // murale de `wallClockNow()` (qui retardait la purge de 1-2 h). `opts.now`
+  // doit donc être un instant réel pour cette fonction.
+  const now = opts.now ?? new Date();
   const cutoff = new Date(now.getTime() - RETENTION_TECHNICAL_DATA_RETENTION_DAYS * 24 * 60 * 60 * 1000);
 
   const where = {

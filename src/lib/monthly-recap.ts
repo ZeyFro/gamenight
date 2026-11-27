@@ -1,7 +1,7 @@
 import { getActiveScopedPrisma, scopedPrismaForCommunityId } from "@/lib/community-scoped-client";
 import { listCronCommunityIds } from "@/lib/community-isolation";
 import { isUniqueConstraintViolation } from "@/lib/xp-actions";
-import { wallClockNow, startOfMonthUTC, endOfMonthUTC } from "@/lib/wallclock";
+import { wallClockNow, startOfMonthUTC, endOfMonthUTC, wallClockToInstant } from "@/lib/wallclock";
 import { ACCENT_COLOR } from "@/lib/discord";
 import { postToCommunity } from "@/lib/community-announce";
 import { logger } from "@/lib/logger";
@@ -33,15 +33,33 @@ function topEntry<T>(
 }
 
 /**
+ * Bornes du mois de Paris, dans les DEUX conventions utilisées par les
+ * colonnes du récap :
+ * - `sessionStart`/`sessionEnd` (heures murales) pour `Session.date` ;
+ * - `instantStart`/`instantEnd` (instants réels) pour `createdAt`.
+ * Les confondre décalait les statistiques de 1-2 h au changement de mois.
+ */
+export function monthlyRecapWindows(year: number, month: number) {
+  const sessionStart = startOfMonthUTC(new Date(Date.UTC(year, month - 1, 1)));
+  const sessionEnd = endOfMonthUTC(sessionStart);
+  const nextMonthStart = new Date(sessionEnd.getTime() + 1);
+  return {
+    sessionStart,
+    sessionEnd,
+    instantStart: wallClockToInstant(sessionStart),
+    instantEnd: new Date(wallClockToInstant(nextMonthStart).getTime() - 1),
+  };
+}
+
+/**
  * Sprint 4 (FEATURE 2, Recap mensuel Wrapped) — calcule les stats du mois
- * `year`/`month` (1-12). Toutes les requêtes sont bornées à
- * `[startOfMonthUTC, endOfMonthUTC]` de ce mois — un recap est un
- * instantané figé du mois concerné, jamais recalculé après coup (cf.
+ * `year`/`month` (1-12). Toutes les requêtes sont bornées au mois de Paris,
+ * chacune dans la convention de sa colonne — un recap est un instantané
+ * figé du mois concerné, jamais recalculé après coup (cf.
  * `MonthlyRecap.@@unique([communityId, year, month])`).
  */
 async function computeMonthlyRecapData(year: number, month: number, communityId: string): Promise<MonthlyRecapData> {
-  const start = startOfMonthUTC(new Date(Date.UTC(year, month - 1, 1)));
-  const end = endOfMonthUTC(start);
+  const { sessionStart: start, sessionEnd: end, instantStart, instantEnd } = monthlyRecapWindows(year, month);
   const scopedDb = await scopedPrismaForCommunityId(communityId);
 
   const [doneSessions, participateEvents, xpSum, correctPronostics, allUsers] =
@@ -51,15 +69,15 @@ async function computeMonthlyRecapData(year: number, month: number, communityId:
         include: { decidedGame: true },
       }),
       scopedDb.xpEvent.findMany({
-        where: { communityId, reason: "PARTICIPATE", createdAt: { gte: start, lte: end } },
+        where: { communityId, reason: "PARTICIPATE", createdAt: { gte: instantStart, lte: instantEnd } },
         include: { user: true },
       }),
       scopedDb.xpEvent.aggregate({
-        where: { communityId, createdAt: { gte: start, lte: end }, reason: { not: "SHOP_BALANCE_PURCHASE" } },
+        where: { communityId, createdAt: { gte: instantStart, lte: instantEnd }, reason: { not: "SHOP_BALANCE_PURCHASE" } },
         _sum: { amount: true },
       }),
       scopedDb.pronostic.findMany({
-        where: { correct: true, createdAt: { gte: start, lte: end } },
+        where: { correct: true, createdAt: { gte: instantStart, lte: instantEnd } },
         include: { voter: true },
       }),
       scopedDb.communityMemberStats.findMany({
@@ -81,7 +99,7 @@ async function computeMonthlyRecapData(year: number, month: number, communityId:
 
   const mvpCategoryAwards = await scopedDb.superlativeAward.findMany({
     where: {
-      createdAt: { gte: start, lte: end },
+      createdAt: { gte: instantStart, lte: instantEnd },
       category: { name: { contains: "MVP", mode: "insensitive" } },
     },
     include: { winner: true },
