@@ -9,6 +9,8 @@ import { ChangeInstantSessionGameControl } from "@/components/jouer-maintenant/C
 import type { LocalGameOption } from "@/lib/game-search";
 import type { InstantSessionViewDTO } from "@/lib/instant-sessions";
 import { INSTANT_SESSION_ELIGIBLE_PRESENCE_MS } from "@/lib/instant-session-constants";
+import { instantSessionRemainingMs } from "@/lib/instant-session-countdown";
+import { formatDurationFr } from "@/lib/wallclock";
 import {
   getInstantSessionViewAction,
   joinInstantSessionAction,
@@ -66,6 +68,11 @@ export function InstantSessionDetail({
   const [view, setView] = useState(initialView);
   const [pollError, setPollError] = useState(false);
   const [nowMs, setNowMs] = useState(() => Date.now());
+  // Temps restant serveur + instant local de réception : le tick ne retire que
+  // le temps écoulé depuis, jamais la différence entre deux conventions d'horloge.
+  // L'échéance d'une session ne change jamais ; un poll ultérieur n'a donc pas
+  // à rebaser ce compteur.
+  const [countdownBaseline] = useState(() => ({ remainingMs: initialView.timeRemainingMs, atMs: Date.now() }));
 
   const [joinState, joinAction, joinPending] = useActionState(
     joinInstantSessionAction,
@@ -165,14 +172,18 @@ export function InstantSessionDetail({
   }, [view.status]);
 
   const isEnded = view.status === "ENDED";
-  // Dérivé d'un horodatage ABSOLU (`expiresAtIso`), jamais d'un delta
-  // depuis un instant de fetch mémorisé — évite tout état/ref supplémentaire
-  // à synchroniser ; une légère dérive horloge client/serveur est sans
-  // conséquence pour un simple affichage cosmétique (le serveur reste seul
-  // à faire autorité sur l'expiration réelle, voir `settleInstantSessionIfDue`).
-  const liveRemainingMs = isEnded
-    ? 0
-    : Math.max(0, new Date(view.expiresAtIso).getTime() - nowMs);
+  // `timeRemainingMs` vient du serveur ; on ne retire que le temps local
+  // écoulé depuis sa réception. Comparer `expiresAt` à `Date.now()` ajoutait
+  // le décalage Paris (1 h en hiver) au compteur, d'où « 2 h 59 » pour 2 h.
+  const liveRemainingMs = instantSessionRemainingMs({
+    remainingAtLoadMs: countdownBaseline.remainingMs,
+    loadedAtMs: countdownBaseline.atMs,
+    nowMs,
+    ended: isEnded,
+  });
+  const maxDurationLabel = formatDurationFr(
+    new Date(view.expiresAtIso).getTime() - new Date(view.createdAtIso).getTime()
+  );
 
   return (
     <div className="flex flex-col gap-6">
@@ -204,7 +215,7 @@ export function InstantSessionDetail({
       {isEnded && (
         <p className="rounded-lg bg-surface p-3 text-sm text-muted">
           {view.endedReason === "expired"
-            ? "Cette soirée a atteint sa durée maximale (3h) et s'est terminée automatiquement."
+            ? `Cette soirée a atteint sa durée maximale (${maxDurationLabel}) et s'est terminée automatiquement.`
             : "Le créateur a terminé cette soirée pour tout le monde."}
         </p>
       )}
