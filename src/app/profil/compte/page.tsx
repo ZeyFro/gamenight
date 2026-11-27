@@ -1,6 +1,8 @@
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/current-user";
+import { listLastMemberTeams } from "@/lib/account-deletion-teams";
+import { logger } from "@/lib/logger";
 import { isAccountDeletionEnabled } from "@/lib/account-deletion-flag";
 import { pageMetadata } from "@/lib/page-title";
 import { RATE_LIMIT_MESSAGE } from "@/lib/rate-limit";
@@ -12,7 +14,6 @@ export const metadata = pageMetadata("Mon compte et mes données");
 const ERRORS: Record<string, string> = {
   confirmation: "La confirmation ne correspond pas : tape ton pseudo exact ou le mot SUPPRIMER.",
   proprietaire: "Tu es le dernier propriétaire d’une communauté. Désigne un autre propriétaire avant de supprimer ton compte : rien n’a été effacé.",
-  equipe: "Tu es le dernier membre d’une équipe qui a un défi en cours, un signalement ou une contestation ouverts : elle ne peut pas être dissoute pour le moment. Rien n’a été effacé.",
   stockage: "Tes fichiers n’ont pas pu être supprimés pour le moment. Rien n’a été effacé : réessaie plus tard.",
   rate_limited: RATE_LIMIT_MESSAGE,
 };
@@ -47,6 +48,14 @@ export default async function AccountPage({ searchParams }: { searchParams: Prom
   const user = await getCurrentUser({ recordActivity: false });
   if (!user) redirect("/");
   const { erreur } = await searchParams;
+  // D5 : la confirmation « SUPPRIMER » doit être INFORMÉE : équipes dont la personne est le dernier membre (dissolution et salons supprimés).
+  let lastMemberTeams: string[] | null = [];
+  try {
+    lastMemberTeams = (await listLastMemberTeams(user.id)).map((team) => team.name);
+  } catch (error) {
+    logger.warn("account-page", "Équipes du dernier membre illisibles.", { errorType: error instanceof Error ? error.name : "unknown" });
+    lastMemberTeams = null;
+  }
 
   return (
     <div className="flex flex-col gap-4">
@@ -93,6 +102,27 @@ export default async function AccountPage({ searchParams }: { searchParams: Prom
             </ul>
           </div>
         </div>
+        {lastMemberTeams === null || lastMemberTeams.length > 0 ? (
+          <div role="note" className="rounded-lg border border-destructive/40 p-3 text-sm text-foreground">
+            {lastMemberTeams === null ? (
+              <p>
+                La liste de tes équipes n’a pas pu être lue. Si tu es le dernier membre d’une équipe, elle sera dissoute et ses deux salons Discord
+                (texte et vocal) seront supprimés.
+              </p>
+            ) : (
+              <>
+                <p className="font-medium">Équipes dont tu es le dernier membre : {lastMemberTeams.join(", ")}</p>
+                <p className="mt-1 text-muted">
+                  En supprimant ton compte, ces équipes seront dissoutes et leurs deux salons Discord (texte et vocal) supprimés.
+                </p>
+              </>
+            )}
+            <p className="mt-1 text-muted">
+              Si un défi est en cours, ou si un signalement ou une contestation est ouvert, l’équipe est conservée telle quelle jusqu’à la fin du
+              blocage, puis dissoute.
+            </p>
+          </div>
+        ) : null}
         <DeleteAccountForm discordName={user.discordName} />
       </Card>
 

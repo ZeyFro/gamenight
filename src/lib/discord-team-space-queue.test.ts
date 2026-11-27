@@ -98,10 +98,10 @@ describe("enqueueTeamSpaceSync", () => {
     expect(mocks.delivery).not.toHaveBeenCalled();
   });
 
-  it("ne casse jamais l'action appelante si la file échoue", async () => {
+  it("ne lève jamais si la file échoue : résultat « error » (distinct de « unavailable »), que l'appelant journalise", async () => {
     enableAll();
     mocks.event.mockRejectedValue(new Error("db"));
-    expect(await enqueueTeamSpaceSync({ teamId: "team-1", communityId: "c1", intent: "provision" })).toBe("unavailable");
+    expect(await enqueueTeamSpaceSync({ teamId: "team-1", communityId: "c1", intent: "provision" })).toBe("error");
   });
 });
 

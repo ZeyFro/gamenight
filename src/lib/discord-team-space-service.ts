@@ -455,15 +455,40 @@ export type SpaceDeleteResult = {
   channelIds: string[];
 };
 
-/** Abandon propre d'une suppression dont une condition a changé : aucune écriture Discord, trace au journal C055 et dans les logs. */
-async function abandon(
-  input: { teamId: string; communityId: string; actorId?: string },
-  status: "open_report" | "blocked" | "mismatch" | "not_dissolved",
-): Promise<SpaceDeleteResult> {
-  logger.warn("discord-team-space", "Suppression d’espace abandonnée avant tout appel Discord.", { teamId: input.teamId, reason: status });
-  await recordSensitiveOperation({
-    actorId: input.actorId ?? null, action: "discord.team_space_delete", communityId: input.communityId, target: input.teamId, outcome: status,
-  }).catch(() => undefined);
+type SpaceAbandonReason = "open_report" | "blocked" | "mismatch" | "not_dissolved";
+type DeletionTrace = { teamId: string; communityId: string; actorId?: string };
+
+/** Journal C055 sans catch silencieux : un échec d'écriture du journal est visible dans les logs (l'opération, elle, est déjà jouée). */
+async function traceDeletion(input: DeletionTrace, outcome: string): Promise<void> {
+  try {
+    await recordSensitiveOperation({
+      actorId: input.actorId ?? null, action: "discord.team_space_delete", communityId: input.communityId, target: input.teamId, outcome,
+    });
+  } catch (error) {
+    logger.warn("discord-team-space", "Journal de suppression d’espace non écrit.", {
+      teamId: input.teamId, outcome, errorType: error instanceof Error ? error.name : "unknown",
+    });
+  }
+}
+
+/**
+ * Abandon propre d'une suppression dont une condition a changé : AUCUNE suppression de salon, trace au journal C055 et dans les logs.
+ * `revoke` retire d'abord les accès nominatifs des anciens membres (réversible, ne détruit aucune preuve) : l'abandon est terminal, les
+ * anciens membres ne doivent pas garder l'accès indéfiniment. Si ce retrait échoue, le résultat est « partial » (rejouable), jamais un
+ * abandon silencieux avec des accès restants.
+ */
+async function abandon(input: DeletionTrace, status: SpaceAbandonReason, revoke?: () => Promise<void>): Promise<SpaceDeleteResult> {
+  if (revoke) {
+    try {
+      await revoke();
+    } catch (error) {
+      logger.warn("discord-team-space", "Retrait des accès avant abandon impossible.", { teamId: input.teamId, errorType: error instanceof Error ? error.name : "unknown" });
+      await traceDeletion(input, "partial");
+      return { status: "partial", channelIds: [] };
+    }
+  }
+  logger.warn("discord-team-space", "Suppression d’espace abandonnée : aucun salon supprimé.", { teamId: input.teamId, reason: status });
+  await traceDeletion(input, status);
   return { status, channelIds: [] };
 }
 
@@ -472,6 +497,11 @@ async function abandon(
  * CETTE équipe sont ciblés ; un dry-run vérifie leur présence sans rien écrire.
  * Un échec partiel laisse le lien en place : le rejeu reprend les identifiants
  * restants et ignore ceux déjà absents.
+ *
+ * D5 : toutes les conditions sont REVÉRIFIÉES ici (équipe vide, aucun signalement, défi ou contestation ouvert). Les accès nominatifs sont
+ * retirés AVANT toute suppression ET avant tout abandon : les identifiants viennent des anciens membres transportés par l'événement ET
+ * des surcharges réellement présentes sur les salons enregistrés (jamais d'un membre actuel de l'équipe), donc une liste perdue n'empêche pas
+ * la révocation.
  */
 export async function deleteTeamSpace(input: {
   teamId: string;
@@ -493,21 +523,24 @@ export async function deleteTeamSpace(input: {
     const link = await store.find(team.id);
     if (!link?.channelId) return { status: "unlinked", channelIds: [] };
     const channelIds = [link.channelId, link.voiceChannelId].filter((id): id is string => Boolean(id));
-    // L'exécution ne fait pas confiance à l'état au moment de l'enqueue :
-    // une équipe repeuplée ou un signalement ouvert annule la suppression.
-    if (team.members.length > 0) return abandon(input, "not_dissolved");
     const scopedDb = scopedPrisma({ communityIds: [input.communityId], includesDefault: false });
-    // Mêmes blocages que la dissolution, REVÉRIFIÉS ici (D5) : un défi relancé, un signalement ou une contestation ouverts depuis la demande
-    // annulent la suppression AVANT tout appel Discord. Terminal (jamais rejoué) et tracé au journal.
-    const openReports = await scopedDb.moderationReport.count({
-      where: { communityId: input.communityId, channelId: { in: channelIds }, closedAt: null },
-    });
-    if (openReports > 0) return abandon(input, "open_report");
-    const [activeChallenges, openAppeals] = await Promise.all([
-      scopedDb.towerChallengeAttempt.count({ where: { communityId: input.communityId, teamId: team.id, status: { in: ["ASSIGNED", "SUBMITTED"] } } }),
-      scopedDb.towerChallengeAppeal.count({ where: { communityId: input.communityId, status: "OPEN", attempt: { teamId: team.id } } }),
-    ]);
-    if (activeChallenges > 0 || openAppeals > 0) return abandon(input, "blocked");
+    // Conditions de la dissolution, revérifiées À L'EXÉCUTION (pas seulement à la demande).
+    let abandonReason: Exclude<SpaceAbandonReason, "mismatch"> | null = null;
+    if (team.members.length > 0) {
+      abandonReason = "not_dissolved";
+    } else {
+      const openReports = await scopedDb.moderationReport.count({
+        where: { communityId: input.communityId, channelId: { in: channelIds }, closedAt: null },
+      });
+      if (openReports > 0) abandonReason = "open_report";
+      else {
+        const [activeChallenges, openAppeals] = await Promise.all([
+          scopedDb.towerChallengeAttempt.count({ where: { communityId: input.communityId, teamId: team.id, status: { in: ["ASSIGNED", "SUBMITTED"] } } }),
+          scopedDb.towerChallengeAppeal.count({ where: { communityId: input.communityId, status: "OPEN", attempt: { teamId: team.id } } }),
+        ]);
+        if (activeChallenges > 0 || openAppeals > 0) abandonReason = "blocked";
+      }
+    }
     // Identifiants ENREGISTRÉS uniquement, jamais un salon système : un identifiant égal à un salon configuré (…_CHANNEL_ID) est refusé.
     const systemChannels = new Set(Object.entries(env).filter(([key, value]) => /CHANNEL_ID$/.test(key) && value).map(([, value]) => String(value).trim()));
     if (channelIds.some((id) => systemChannels.has(id))) return abandon(input, "mismatch");
@@ -517,34 +550,35 @@ export async function deleteTeamSpace(input: {
     if ((byId.has(link.channelId) && byId.get(link.channelId)!.type !== 0)
       || (link.voiceChannelId && byId.has(link.voiceChannelId) && byId.get(link.voiceChannelId)!.type !== 2)) return abandon(input, "mismatch");
     const present = channelIds.filter((id) => byId.has(id));
+    // Accès à retirer : anciens membres transportés + surcharges nominatives réellement posées sur NOS salons, moins les membres ACTUELS.
+    const currentMembers = new Set(team.members.map((member) => member.discordId).filter((id): id is string => Boolean(id)));
+    const accessIds = [...new Set([
+      ...(input.formerMemberDiscordIds ?? []),
+      ...present.flatMap((id) => byId.get(id)?.memberOverwriteIds ?? []),
+    ])].filter((id) => /^[0-9]{16,20}$/.test(id) && !currentMembers.has(id));
+    const revoke = async () => {
+      if (!input.api.setMemberPermission) throw new Error("revoke_unavailable");
+      for (const channelId of present) {
+        for (const discordId of accessIds) await input.api.setMemberPermission(channelId, discordId, "0", "remove");
+      }
+    };
+    if (abandonReason) return abandon(input, abandonReason, accessIds.length > 0 && present.length > 0 ? revoke : undefined);
     if (input.dryRun) return { status: "dry_run", channelIds: present };
     if (present.length === 0) {
       await store.markDeleted?.(team.id, new Date());
       return { status: "already_deleted", channelIds: [] };
     }
     if (!input.api.deleteChannel) return { status: "failed", channelIds: present };
-    // D5 : révoquer d'abord les accès nominatifs des anciens membres. Si la
-    // suppression échoue ensuite, plus personne ne garde l'accès aux salons.
-    if (input.formerMemberDiscordIds?.length) {
+    // D5 : révoquer d'abord les accès nominatifs. Si la suppression échoue ensuite, plus personne ne garde l'accès aux salons.
+    if (accessIds.length > 0) {
       if (!input.api.setMemberPermission) return { status: "failed", channelIds: present };
-      const discordIds = [...new Set(input.formerMemberDiscordIds)].filter((id) => /^[0-9]{16,20}$/.test(id));
-      for (const channelId of present) {
-        for (const discordId of discordIds) {
-          await input.api.setMemberPermission(channelId, discordId, "0", "remove");
-        }
-      }
+      await revoke();
     }
     for (const channelId of [...present].reverse()) {
       await input.api.deleteChannel(channelId);
     }
     await store.markDeleted?.(team.id, new Date());
-    await recordSensitiveOperation({
-      actorId: input.actorId ?? null,
-      action: "discord.team_space_delete",
-      communityId: input.communityId,
-      target: input.teamId,
-      outcome: "ok",
-    });
+    await traceDeletion(input, "ok");
     return { status: "deleted", channelIds: present };
   } catch (error) {
     if (error instanceof SpaceStoreUnavailableError) return { status: "failed", channelIds: [] };
@@ -552,13 +586,7 @@ export async function deleteTeamSpace(input: {
       teamId: input.teamId,
       errorType: error instanceof Error ? error.name : "unknown",
     });
-    await recordSensitiveOperation({
-      actorId: input.actorId ?? null,
-      action: "discord.team_space_delete",
-      communityId: input.communityId,
-      target: input.teamId,
-      outcome: "partial",
-    }).catch(() => undefined);
+    await traceDeletion(input, "partial");
     return { status: "partial", channelIds: [] };
   }
 }

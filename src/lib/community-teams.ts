@@ -6,6 +6,8 @@ import { accessibleSessionWhereFor } from "@/lib/session-access";
 import { DEFAULT_COMMUNITY_SLUG } from "@/lib/default-community";
 import { prisma } from "@/lib/prisma";
 import { clearTeamRecruiterRoles } from "@/lib/team-recruiter-cleanup";
+import { logger } from "@/lib/logger";
+import { recordSensitiveOperation } from "@/lib/sensitive-operation-log";
 import type { TeamIdentity } from "@/lib/team-identity";
 
 /**
@@ -218,6 +220,15 @@ export async function joinCommunityTeam(userId: string, communityId: string, tea
   }
 }
 
+/** D5 « inscrite au journal » : la DISSOLUTION elle-même est journalisée au moment où elle est décidée, même si la file des espaces Discord est éteinte. */
+export async function recordTeamDissolution(actorId: string, communityId: string, teamId: string, outcome: "manual" | "last_leave" | "account_deleted"): Promise<void> {
+  try {
+    await recordSensitiveOperation({ actorId, action: "team.dissolve", communityId, target: teamId, outcome });
+  } catch (error) {
+    logger.warn("community-teams", "Dissolution d'équipe non inscrite au journal.", { teamId, errorType: error instanceof Error ? error.name : "unknown" });
+  }
+}
+
 /** Blocages COMMUNS de toute dissolution (manuelle ou au départ du dernier membre, D5) : défi non terminé, signalement ouvert sur
  * un des salons enregistrés, contestation Tower ouverte sur un défi de l'équipe. Même lecture partout, jamais deux règles. */
 export async function dissolutionBlocker(
@@ -291,7 +302,9 @@ export async function leaveCommunityTeam(
   }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
   for (let retry = 0; ; retry++) {
     try {
-      return await attempt();
+      const result = await attempt();
+      if (result === "dissolved_last_member") await recordTeamDissolution(userId, communityId, teamId, "last_leave");
+      return result;
     } catch (error) {
       if (error instanceof Error && error.message === "team_leave_member_missing") return "missing";
       if (await waitBeforeSerializationRetry(error, retry)) continue;
@@ -399,7 +412,7 @@ export async function dissolveCommunityTeam(
   userId: string, communityId: string, teamId: string,
 ): Promise<"dissolved" | "active_challenges" | "open_report_or_appeal" | "invalid" | "unavailable"> {
   if (await getCommunityTeamsCommunityId(userId) !== communityId) return "unavailable";
-  return prisma.$transaction(async tx => {
+  const result = await prisma.$transaction(async tx => {
     if (!await canUseTeams(tx, userId, communityId)) return "unavailable";
     const scopedDb = scopedTransactionPrisma(tx, { communityIds: [communityId], includesDefault: false });
     const team = await scopedDb.communityTeam.findFirst({ where: { id: teamId, communityId },
@@ -419,4 +432,6 @@ export async function dissolveCommunityTeam(
     });
     return "dissolved";
   }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+  if (result === "dissolved") await recordTeamDissolution(userId, communityId, teamId, "manual");
+  return result;
 }

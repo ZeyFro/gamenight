@@ -261,9 +261,12 @@ describe.skipIf(!TEST_DATABASE_URL)("PostgreSQL isolé — espaces d'équipe Dis
       status: "REJECTED", rejectedAt: new Date("2030-01-03T01:00:00Z") } });
     const appeal = await db.towerChallengeAppeal.create({ data: { communityId: ids.community, attemptId: attempt.id, authorUserId: ids.creator, reason: "Contestation du verdict.", dueAt: new Date("2030-01-08") } });
     expect(await run()).toEqual({ ok: true, data: {} });
-    expect(log).toEqual([]);
+    // I1 : l'abandon est terminal ; les accès nominatifs des anciens membres sont retirés (réversible) AVANT, aucun salon n'est supprimé.
+    expect(log).toHaveLength(4);
+    expect(log.every((line) => line.startsWith("remove:"))).toBe(true);
     expect(await deletedAt()).toBeNull();
     expect(await db.sensitiveOperationLog.count({ where: { action: "discord.team_space_delete", outcome: "blocked" } })).toBe(1);
+    log.length = 0;
 
     // 3) Contestation close : les accès nominatifs sont retirés AVANT toute suppression, puis les deux salons enregistrés (et eux seuls) disparaissent.
     await db.towerChallengeAppeal.update({ where: { id: appeal.id }, data: { status: "UPHELD", decidedAt: new Date() } });
@@ -281,6 +284,48 @@ describe.skipIf(!TEST_DATABASE_URL)("PostgreSQL isolé — espaces d'équipe Dis
     const before = log.length;
     expect(await run()).toEqual({ ok: true, data: {} });
     expect(log).toHaveLength(before);
+  });
+
+  it("executor D5 : sans liste d'anciens membres, les surcharges nominatives des salons ENREGISTRÉS sont relues et retirées ; les identifiants Discord sont purgés de l'événement après un traitement terminal, conservés si l'échec est rejouable", async () => {
+    enableQueue();
+    await db.discordTeamSpace.create({ data: { teamId: ids.team, communityId: ids.community, guildId: GUILD, channelId: "chan-ov", voiceChannelId: "voice-ov" } });
+    await db.communityTeamMember.deleteMany({ where: { teamId: ids.team } });
+    const log: string[] = [];
+    let failDelete = true;
+    const present = [
+      { id: "chan-ov", name: "a", type: 0, memberOverwriteIds: [CREATOR_DISCORD, MEMBER_DISCORD] },
+      { id: "voice-ov", name: "b", type: 2, memberOverwriteIds: [CREATOR_DISCORD] },
+      { id: "etranger", name: "a", type: 0, memberOverwriteIds: ["100000000000000099"] },
+    ];
+    const api = {
+      snapshot: async () => ({ channels: [...present], roles: [] }),
+      setMemberPermission: async (channelId: string, userId: string) => { log.push(`remove:${channelId}:${userId}`); },
+      deleteChannel: async (channelId: string) => {
+        if (failDelete) throw new Error("discord_server_error");
+        log.push(`delete:${channelId}`);
+      },
+      createRole: async () => "r", createChannel: async () => "c", renameChannel: async () => undefined, addMemberRole: async () => undefined, removeMemberRole: async () => undefined,
+    };
+    const payloadIds = async () => (await db.notificationEvent.findFirstOrThrow({ where: { eventType: "TEAM_SPACE_SYNC", sourceId: ids.team } })).payload as { formerMemberDiscordIds?: string[] };
+    expect(await queue.enqueueTeamSpaceSync({ teamId: ids.team, communityId: ids.community, intent: "delete", actorUserId: ids.creator, formerMemberDiscordIds: [CREATOR_DISCORD, MEMBER_DISCORD] })).toBe("queued");
+    expect((await payloadIds()).formerMemberDiscordIds).toHaveLength(2);
+    // Aucune liste transportée (cas « liste perdue ») : les accès viennent des surcharges réellement posées.
+    const run = () => runner.runTeamSpaceAction({ teamId: ids.team, communityId: ids.community, intent: "delete", actorUserId: ids.creator }, new Date(Date.now() + 20_000), api as never);
+
+    // Échec rejouable (suppression refusée par Discord) : les accès sont DÉJÀ retirés, les identifiants restent pour le rejeu.
+    expect((await run()).ok).toBe(false);
+    expect(log.filter((line) => line.startsWith("remove:")).sort()).toEqual([
+      `remove:chan-ov:${CREATOR_DISCORD}`, `remove:chan-ov:${MEMBER_DISCORD}`, `remove:voice-ov:${CREATOR_DISCORD}`, `remove:voice-ov:${MEMBER_DISCORD}`,
+    ]);
+    expect(log.some((line) => line.includes("etranger") || line.includes("100000000000000099"))).toBe(false);
+    expect((await payloadIds()).formerMemberDiscordIds).toHaveLength(2);
+
+    // Succès : salons supprimés (enregistrés seulement) puis identifiants Discord purgés de la charge de l'événement.
+    failDelete = false;
+    expect(await run()).toEqual({ ok: true, data: {} });
+    expect(log.filter((line) => line.startsWith("delete:")).sort()).toEqual(["delete:chan-ov", "delete:voice-ov"]);
+    expect((await payloadIds()).formerMemberDiscordIds).toBeUndefined();
+    expect(await payloadIds()).toMatchObject({ intent: "delete", actorUserId: ids.creator });
   });
 
   it("executor : flag fermé ou migration absente ne produit aucune écriture Discord", async () => {

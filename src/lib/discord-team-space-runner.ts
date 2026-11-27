@@ -1,4 +1,5 @@
 import { logger } from "@/lib/logger";
+import { prisma } from "@/lib/prisma";
 import type { DiscordRestFailure, DiscordRestResult } from "@/lib/discord-rest";
 import { createDiscordTeamSpaceApi } from "@/lib/discord-team-space-api";
 import {
@@ -72,6 +73,21 @@ function fromStatus(status: string): DiscordRestResult<Record<string, never>> {
   }
 }
 
+/** Statuts après lesquels la suppression ne sera jamais rejouée avec la même charge (succès, état cible ou abandon terminal). */
+const TERMINAL_DELETE_STATUSES = new Set(["deleted", "already_deleted", "unlinked", "not_dissolved", "open_report", "blocked", "mismatch"]);
+
+/** Retire `formerMemberDiscordIds` des événements d'espace de CETTE équipe ; un échec est journalisé (jamais silencieux) et n'invalide pas la suppression. */
+async function scrubFormerMemberIds(teamId: string, communityId: string): Promise<void> {
+  try {
+    // « TEAM_SPACE_SYNC » = TEAM_SPACE_EVENT (discord-team-space-queue.ts, non importé ici pour éviter un cycle).
+    await prisma.$executeRaw`UPDATE "NotificationEvent" SET "payload" = ("payload"::jsonb - 'formerMemberDiscordIds')
+      WHERE "eventType" = 'TEAM_SPACE_SYNC' AND "sourceId" = ${teamId} AND "communityId" = ${communityId}
+        AND jsonb_exists("payload"::jsonb, 'formerMemberDiscordIds')`;
+  } catch (error) {
+    logger.warn("discord-team-space", "Identifiants des anciens membres non purgés de l'événement.", { teamId, errorType: error instanceof Error ? error.name : "unknown" });
+  }
+}
+
 export async function runTeamSpaceAction(
   input: TeamSpaceActionInput,
   deadline: Date,
@@ -81,9 +97,12 @@ export async function runTeamSpaceAction(
   try {
     if (input.intent === "provision") return fromStatus((await provisionTeamSpace(base)).status);
     if (input.intent === "reconcile") return fromStatus((await reconcileTeamSpace(base)).status);
-    if (input.intent === "delete") return fromStatus((await deleteTeamSpace({
-      ...base, actorId: input.actorUserId, formerMemberDiscordIds: input.formerMemberDiscordIds,
-    })).status);
+    if (input.intent === "delete") {
+      const { status } = await deleteTeamSpace({ ...base, actorId: input.actorUserId, formerMemberDiscordIds: input.formerMemberDiscordIds });
+      // Traitement terminal : les identifiants Discord des anciens membres n'ont plus d'utilité dans la charge de l'événement (minimisation).
+      if (TERMINAL_DELETE_STATUSES.has(status)) await scrubFormerMemberIds(input.teamId, input.communityId);
+      return fromStatus(status);
+    }
     if (!input.discordId) return definitive("Membre Discord manquant pour la synchronisation d'accès.");
     const join = await syncTeamSpaceMember({ ...base, discordId: input.discordId, action: "join" });
     // Plus membre actif de l'équipe : retrait du seul rôle de CETTE équipe.

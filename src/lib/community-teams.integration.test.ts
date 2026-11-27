@@ -293,6 +293,23 @@ describe.skipIf(!TEST_DATABASE_URL)("équipes communautaires : PostgreSQL isolé
       expect((await db.communityTeam.findUniqueOrThrow({ where: { id: team.id } })).isRecruiting).toBe(false);
     });
 
+    it("D5 « inscrite au journal » : la DISSOLUTION elle-même est journalisée au moment où elle est décidée (manuelle, dernier départ), file des espaces éteinte", async () => {
+      await db.sensitiveOperationLog.deleteMany({ where: { action: "team.dissolve" } });
+      const team = await setup();
+      expect(await teams.leaveCommunityTeam(ids.leader, ids.community, team.id)).toBe("confirm_dissolution");
+      expect(await db.sensitiveOperationLog.count({ where: { action: "team.dissolve" } })).toBe(0);
+      expect(await teams.leaveCommunityTeam(ids.leader, ids.community, team.id, { confirmDissolution: true })).toBe("dissolved_last_member");
+      expect(await db.sensitiveOperationLog.findMany({ where: { action: "team.dissolve" }, select: { actorId: true, outcome: true, target: true } }))
+        .toEqual([{ actorId: ids.leader, outcome: "last_leave", target: team.id }]);
+
+      await db.sensitiveOperationLog.deleteMany({ where: { action: "team.dissolve" } });
+      expect(await teams.createCommunityTeam({ ...input(), userId: ids.member, name: "Manuelle" })).toBe("created");
+      const manual = await db.communityTeam.findFirstOrThrow({ where: { communityId: ids.community, createdById: ids.member } });
+      expect(await teams.dissolveCommunityTeam(ids.member, ids.community, manual.id)).toBe("dissolved");
+      expect(await db.sensitiveOperationLog.findMany({ where: { action: "team.dissolve" }, select: { actorId: true, outcome: true, target: true } }))
+        .toEqual([{ actorId: ids.member, outcome: "manual", target: manual.id }]);
+    });
+
     it("est atomique : un échec en fin de transaction annule la passation", async () => {
       const team = await setup();
       await join(ids.racer, team.id, new Date("2030-01-02"));

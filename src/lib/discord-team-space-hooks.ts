@@ -1,4 +1,5 @@
 import { logger } from "@/lib/logger";
+import { persistServerError } from "@/lib/error-log";
 import { scopedPrisma } from "@/lib/community-scoped-client";
 import { enqueueTeamSpaceSync, teamSpaceQueueEnabled } from "@/lib/discord-team-space-queue";
 
@@ -74,11 +75,22 @@ export async function requestTeamSpaceAfterDissolution(input: {
   formerMemberDiscordIds: readonly string[];
 }): Promise<void> {
   if (!teamSpaceQueueEnabled()) return;
-  await enqueueTeamSpaceSync({
-    intent: "delete",
-    communityId: input.communityId,
-    teamId: input.teamId,
-    actorUserId: input.actorUserId,
-    formerMemberDiscordIds: input.formerMemberDiscordIds,
-  });
+  // La dissolution est DÉJÀ faite quand on arrive ici : un échec d'enfilement ne doit ni lever (500 côté web) ni passer inaperçu.
+  // Il est journalisé ; le balayage `sweepDissolvedTeamSpaces` (cron des rappels) rattrape toute équipe vide dont les salons existent encore.
+  try {
+    const result = await enqueueTeamSpaceSync({
+      intent: "delete",
+      communityId: input.communityId,
+      teamId: input.teamId,
+      actorUserId: input.actorUserId,
+      formerMemberDiscordIds: input.formerMemberDiscordIds,
+    });
+    if (result === "unavailable") logger.warn("discord-team-space", "Suppression des salons non enfilée (communauté non reliée) : le balayage réessaiera.", { teamId: input.teamId });
+    if (result === "error") throw new Error("team_space_enqueue_failed");
+  } catch (error) {
+    logger.error("discord-team-space", "Suppression des salons non enfilée : le balayage réessaiera.", {
+      teamId: input.teamId, errorType: error instanceof Error ? error.name : "unknown",
+    });
+    persistServerError("discord-team-space:enqueue-delete", error, { code: "team_space_enqueue_delete" });
+  }
 }

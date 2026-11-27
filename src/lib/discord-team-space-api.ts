@@ -46,6 +46,7 @@ export function createDiscordTeamSpaceApi(executorDeadline?: Date): TeamSpaceDis
           name: channel.name,
           type: channel.type,
           parentId: channel.parent_id ?? null,
+          memberOverwriteIds: (channel.permission_overwrites ?? []).filter((row) => row.type === 1).map((row) => row.id),
         })),
         roles: unwrap(roles).roles,
       };

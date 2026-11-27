@@ -29,7 +29,8 @@ const payloadSchema = z.object({
   formerMemberDiscordIds: z.array(z.string().regex(/^[0-9]{16,20}$/)).max(50).optional(),
 });
 
-export type TeamSpaceEnqueueResult = "queued" | "disabled" | "unavailable";
+/** « error » : échec technique d'enfilement (base, file), distinct de « unavailable » (communauté non reliée) : l'appelant le journalise. */
+export type TeamSpaceEnqueueResult = "queued" | "disabled" | "unavailable" | "error";
 
 export function teamSpaceQueueEnabled(env: NodeJS.ProcessEnv = process.env): boolean {
   return teamSpacesEnabled(env) && env.NOTIFICATION_EXECUTOR_ENABLED === "true" && Boolean(env.DISCORD_BOT_TOKEN?.trim());
@@ -86,7 +87,7 @@ export async function enqueueTeamSpaceSync(
     logger.warn("discord-team-space", "Demande d'espace d'équipe non enfilée.", {
       errorType: error instanceof Error ? error.name : "unknown",
     });
-    return "unavailable";
+    return "error";
   }
 }
 

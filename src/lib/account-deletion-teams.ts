@@ -1,14 +1,16 @@
 import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { scopedPrisma, scopedTransactionPrisma } from "@/lib/community-scoped-client";
-import { dissolutionBlocker } from "@/lib/community-teams";
+import { dissolutionBlocker, recordTeamDissolution } from "@/lib/community-teams";
 import { requestTeamSpaceAfterDissolution } from "@/lib/discord-team-space-hooks";
 
 /**
- * D5 : supprimer son compte est AUSSI un départ. Si la personne est le DERNIER membre actif d'une équipe, l'équipe est dissoute avec les
- * mêmes blocages que la dissolution manuelle (défi non terminé, signalement ou contestation ouverts : la suppression du compte est
- * alors REFUSÉE, rien n'est effacé) ; sinon les salons sont supprimés par la file, par identifiants enregistrés seulement.
- * La confirmation explicite est celle, forte, de la suppression de compte (pseudo exact ou SUPPRIMER).
+ * D5 : supprimer son compte est AUSSI un départ. Si la personne est le DERNIER membre actif d'une équipe, l'équipe est dissoute et ses deux
+ * salons sont supprimés par la file (identifiants enregistrés seulement). Les mêmes blocages que la dissolution manuelle (défi en cours,
+ * signalement ou contestation ouverts) ne REFUSENT PAS la suppression du compte (droit à l'effacement : jamais bloqué pendant des
+ * semaines) : le compte est effacé, la ligne de membre disparaît, mais l'équipe reste NON dissoute (salons intacts, recrutement fermé)
+ * tant que le blocage existe ; le balayage \`sweepDissolvedTeamSpaces\` (cron des rappels) la dissout ensuite quand il tombe.
+ * La confirmation explicite est celle, forte, de la suppression de compte (pseudo exact ou SUPPRIMER), et la page liste ces équipes avant.
  */
 export interface LastMemberTeam { teamId: string; communityId: string; name: string; formerMemberDiscordIds: string[] }
 
@@ -31,32 +33,45 @@ export async function listLastMemberTeams(userId: string): Promise<LastMemberTea
   return found;
 }
 
-/** Noms des équipes dont la dissolution est bloquée (défi en cours, signalement ou contestation ouverts). */
-export async function blockedLastMemberTeams(db: Prisma.TransactionClient | null, teams: readonly LastMemberTeam[]): Promise<string[]> {
-  const blocked: string[] = [];
-  for (const team of teams) {
-    const scopedDb = db
-      ? scopedTransactionPrisma(db, { communityIds: [team.communityId], includesDefault: false })
-      : (scopedPrisma({ communityIds: [team.communityId], includesDefault: false }) as unknown as Prisma.TransactionClient);
-    if (await dissolutionBlocker(scopedDb, team.communityId, team.teamId)) blocked.push(team.name);
-  }
-  return blocked;
+export interface EmptiedTeamsOutcome {
+  /** Lignes de membre retirées (toutes, pour les équipes réellement dissoutes). */
+  removed: number;
+  /** Équipes réellement dissoutes : seules celles-ci voient leurs salons supprimés. */
+  dissolved: LastMemberTeam[];
+  /** Équipes conservées (nouvel arrivant ou blocage ouvert) : jamais dissoutes ici. */
+  kept: string[];
 }
 
-/** Dans la transaction de suppression : l'équipe n'accepte plus de candidats et toutes ses lignes de membre disparaissent. */
-export async function dissolveEmptiedTeams(tx: Prisma.TransactionClient, teams: readonly LastMemberTeam[]): Promise<number> {
-  let removed = 0;
+/**
+ * DANS la transaction de suppression de compte. La ligne de l'équipe est verrouillée (FOR UPDATE) : une arrivée concurrente (clé étrangère,
+ * FOR KEY SHARE) attend, et celles déjà validées sont vues par le RECOMPTAGE. Seule une équipe qui n'a réellement plus d'autre membre actif
+ * ET aucun blocage ouvert est dissoute ; sinon seule la ligne de la personne disparaîtra (boucle générique du plan de suppression).
+ */
+export async function dissolveEmptiedTeams(tx: Prisma.TransactionClient, userId: string, teams: readonly LastMemberTeam[]): Promise<EmptiedTeamsOutcome> {
+  const outcome: EmptiedTeamsOutcome = { removed: 0, dissolved: [], kept: [] };
   for (const team of teams) {
     const scopedDb = scopedTransactionPrisma(tx, { communityIds: [team.communityId], includesDefault: false });
+    await tx.$queryRaw`SELECT "id" FROM "CommunityTeam" WHERE "id" = ${team.teamId} AND "communityId" = ${team.communityId} FOR UPDATE`;
+    const others = await scopedDb.communityTeamMember.count({
+      where: { teamId: team.teamId, communityId: team.communityId, userId: { not: userId }, user: { memberships: { some: { communityId: team.communityId, status: "ACTIVE" } } } },
+    });
+    if (others > 0) { outcome.kept.push(team.name); continue; }
+    // L'équipe n'accepte plus de candidats dès qu'elle est vide, bloquée ou non.
     await scopedDb.communityTeam.updateMany({ where: { id: team.teamId, communityId: team.communityId }, data: { isRecruiting: false } });
-    removed += (await scopedDb.communityTeamMember.deleteMany({ where: { teamId: team.teamId, communityId: team.communityId } })).count;
+    if (await dissolutionBlocker(scopedDb, team.communityId, team.teamId)) { outcome.kept.push(team.name); continue; }
+    outcome.removed += (await scopedDb.communityTeamMember.deleteMany({ where: { teamId: team.teamId, communityId: team.communityId } })).count;
+    outcome.dissolved.push(team);
   }
-  return removed;
+  return outcome;
 }
 
-/** Après la suppression : file d'attente seulement (aucun appel Discord) ; l'exécution revérifie tout. Un échec n'annule jamais la suppression. */
-export async function requestEmptiedTeamsSpaceDeletion(userId: string, teams: readonly LastMemberTeam[]): Promise<void> {
+/**
+ * Après la suppression : journal de la dissolution (D5 « inscrite au journal »), puis file d'attente seulement (aucun appel Discord).
+ * Aucun échec ne défait la suppression du compte : ils sont journalisés, et le balayage rattrape toute équipe vide aux salons existants.
+ */
+export async function recordAndRequestDissolvedTeams(userId: string, teams: readonly LastMemberTeam[]): Promise<void> {
   for (const team of teams) {
+    await recordTeamDissolution(userId, team.communityId, team.teamId, "account_deleted");
     await requestTeamSpaceAfterDissolution({
       communityId: team.communityId, teamId: team.teamId, actorUserId: userId, formerMemberDiscordIds: team.formerMemberDiscordIds,
     });

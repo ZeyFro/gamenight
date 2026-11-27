@@ -64,6 +64,8 @@ export interface GuildChannelSummary {
   name: string;
   type: number;
   parentId?: string | null;
+  /** Identifiants des membres ayant une surcharge de permission NOMINATIVE sur ce salon (type 1) ; déjà fournis par la liste des salons. */
+  memberOverwriteIds?: string[];
 }
 
 export interface GuildRoleSummaryLite {

@@ -26,7 +26,7 @@ export async function deleteMyAccountAction(formData: FormData): Promise<void> {
     if (error instanceof AccountBlobUnavailableError) redirect("/profil/compte?erreur=stockage");
     throw error;
   }
-  if (result.status === "refused") redirect(result.reason === "team_blocked" ? "/profil/compte?erreur=equipe" : "/profil/compte?erreur=proprietaire");
+  if (result.status === "refused") redirect("/profil/compte?erreur=proprietaire");
   if (result.status === "not_found") redirect("/");
   // « supprimé » ou « déjà supprimé » : la session ne désigne plus personne, on la ferme et on revient à l'accueil.
   await signOut({ redirectTo: "/?compte=supprime" });

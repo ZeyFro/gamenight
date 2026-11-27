@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const mocks = vi.hoisted(() => ({ findTeam: vi.fn(), record: vi.fn(), openReports: vi.fn(), activeChallenges: vi.fn(), openAppeals: vi.fn() }));
+const mocks = vi.hoisted(() => ({ findTeam: vi.fn(), record: vi.fn(), openReports: vi.fn(), activeChallenges: vi.fn(), openAppeals: vi.fn(), warn: vi.fn() }));
+vi.mock("@/lib/logger", () => ({ logger: { warn: mocks.warn, error: vi.fn(), info: vi.fn(), debug: vi.fn() } }));
 
 vi.mock("@/lib/community-scoped-client", () => ({
   scopedPrisma: () => ({
@@ -110,21 +111,84 @@ describe("deleteTeamSpace", () => {
   });
 
   it.each([["un défi relancé", "activeChallenges"], ["une contestation ouverte", "openAppeals"]] as const)(
-    "revérifie à l'exécution : %s abandonne la suppression avant tout appel Discord, trace au journal",
+    "revérifie à l'exécution : %s abandonne la suppression (aucun salon supprimé), RETIRE d'abord les accès des anciens membres, trace au journal",
     async (_label, mock) => {
       mocks[mock].mockResolvedValue(1);
       const { api, deleted, removed } = fakeApi(existing);
-      const snapshot = vi.spyOn(api, "snapshot");
       const result = await deleteTeamSpace({
         teamId: TEAM, communityId: "community-1", api, store: store(), env: enabled, formerMemberDiscordIds: ["111111111111111111"],
       });
       expect(result).toEqual({ status: "blocked", channelIds: [] });
-      expect(snapshot).not.toHaveBeenCalled();
       expect(deleted).toEqual([]);
-      expect(removed).toEqual([]);
+      // I1 : l'abandon est terminal, les anciens membres ne gardent PAS leur accès nominatif indéfiniment (retrait réversible).
+      expect(removed).toEqual(["chan-1:111111111111111111", "voice-1:111111111111111111"]);
       expect(mocks.record).toHaveBeenCalledWith(expect.objectContaining({ outcome: "blocked" }));
     },
   );
+
+  it("I1 : un signalement ouvert révoque aussi les accès avant l'abandon ; un membre ACTUEL de l'équipe n'est jamais révoqué (équipe repeuplée)", async () => {
+    mocks.openReports.mockResolvedValue(1);
+    const first = fakeApi(existing);
+    expect((await deleteTeamSpace({ teamId: TEAM, communityId: "community-1", api: first.api, store: store(), env: enabled, formerMemberDiscordIds: ["111111111111111111"] })).status).toBe("open_report");
+    expect(first.removed).toEqual(["chan-1:111111111111111111", "voice-1:111111111111111111"]);
+    expect(first.deleted).toEqual([]);
+
+    mocks.openReports.mockResolvedValue(0);
+    mocks.findTeam.mockResolvedValue({ ...team(), members: [{ userId: "u9", user: { discordId: "999999999999999999", memberships: [{ id: "m9" }] } }] });
+    const second = fakeApi(existing);
+    const repopulated = await deleteTeamSpace({
+      teamId: TEAM, communityId: "community-1", api: second.api, store: store(), env: enabled,
+      formerMemberDiscordIds: ["111111111111111111", "999999999999999999"],
+    });
+    expect(repopulated.status).toBe("not_dissolved");
+    expect(second.removed.every((entry) => entry.endsWith(":111111111111111111"))).toBe(true);
+    expect(second.removed.some((entry) => entry.includes("999999999999999999"))).toBe(false);
+    expect(second.deleted).toEqual([]);
+  });
+
+  it("I1 : si le retrait des accès échoue avant un abandon, le résultat est « partial » (rejouable), jamais un abandon silencieux", async () => {
+    mocks.activeChallenges.mockResolvedValue(1);
+    const { api, deleted } = fakeApi(existing);
+    api.setMemberPermission = async () => { throw new Error("discord_server_error"); };
+    const result = await deleteTeamSpace({ teamId: TEAM, communityId: "community-1", api, store: store(), env: enabled, formerMemberDiscordIds: ["111111111111111111"] });
+    expect(result.status).toBe("partial");
+    expect(deleted).toEqual([]);
+    expect(mocks.record).toHaveBeenCalledWith(expect.objectContaining({ outcome: "partial" }));
+  });
+
+  it("I4 : sans liste d'anciens membres (perdue ou illisible), les surcharges nominatives des salons ENREGISTRÉS sont relues et retirées avant la suppression", async () => {
+    const withOverwrites = [
+      { id: "chan-1", name: "a", type: 0, memberOverwriteIds: ["111111111111111111", "222222222222222222"] },
+      { id: "voice-1", name: "b", type: 2, memberOverwriteIds: ["111111111111111111"] },
+      // Salon étranger : ses surcharges ne sont JAMAIS touchées.
+      { id: "intrus", name: "a", type: 0, memberOverwriteIds: ["333333333333333333"] },
+    ];
+    const order: string[] = [];
+    const { api } = fakeApi(withOverwrites);
+    const baseSet = api.setMemberPermission!;
+    api.setMemberPermission = async (channelId, userId, allow, action) => { order.push(`remove:${channelId}:${userId}`); return baseSet(channelId, userId, allow, action); };
+    const baseDelete = api.deleteChannel!;
+    api.deleteChannel = async (channelId) => { order.push(`delete:${channelId}`); return baseDelete(channelId); };
+    const result = await deleteTeamSpace({ teamId: TEAM, communityId: "community-1", api, store: store(), env: enabled });
+    expect(result.status).toBe("deleted");
+    const firstDelete = order.findIndex((entry) => entry.startsWith("delete:"));
+    expect(order.slice(0, firstDelete).sort()).toEqual([
+      "remove:chan-1:111111111111111111", "remove:chan-1:222222222222222222", "remove:voice-1:111111111111111111", "remove:voice-1:222222222222222222",
+    ]);
+    expect(order.some((entry) => entry.includes("intrus") || entry.includes("333333333333333333"))).toBe(false);
+  });
+
+  it("MINEUR : un journal des opérations sensibles défaillant ne fait ni lever ni taire : l'abandon et la suppression aboutissent, l'échec est visible dans les logs", async () => {
+    mocks.record.mockRejectedValue(new Error("journal indisponible"));
+    mocks.openReports.mockResolvedValue(1);
+    const blocked = fakeApi(existing);
+    expect((await deleteTeamSpace({ teamId: TEAM, communityId: "community-1", api: blocked.api, store: store(), env: enabled })).status).toBe("open_report");
+    mocks.openReports.mockResolvedValue(0);
+    const ok = fakeApi(existing);
+    expect((await deleteTeamSpace({ teamId: TEAM, communityId: "community-1", api: ok.api, store: store(), env: enabled })).status).toBe("deleted");
+    expect(ok.deleted.sort()).toEqual(["chan-1", "voice-1"]);
+    expect(mocks.warn).toHaveBeenCalledWith("discord-team-space", expect.stringContaining("Journal de suppression d’espace non écrit"), expect.anything());
+  });
 
   it("n'efface jamais un salon système : un identifiant enregistré égal à un salon configuré est refusé", async () => {
     const { api, deleted } = fakeApi(existing);
