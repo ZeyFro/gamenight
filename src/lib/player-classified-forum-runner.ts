@@ -13,6 +13,7 @@ import { countGamePingOptIns } from "@/lib/game-ping-optin";
 import { logger } from "@/lib/logger";
 import { persistServerError } from "@/lib/error-log";
 import { buildGameRolePing } from "@/lib/notification-policy";
+import { isTonightMessage } from "@/lib/tonight-rules";
 import { consumePlayerClassifiedPing } from "@/lib/player-classified-pings";
 import {
   enqueuePlayerClassifiedForum,
@@ -32,13 +33,44 @@ const notFound = (message: string): DiscordRestResult<{ threadId?: string }> => 
 
 interface RemovalOutcome { threadId: string; /** `false` : suppression refusée (permission), le fil a seulement été archivé ET verrouillé. */ removed: boolean }
 
+/** Liste des forums « recherche de joueurs » par serveur, gardée 60 s : un balayage de 25 lignes ou une suppression de compte ne la relit pas à chaque fil. */
+const FORUM_IDS_TTL_MS = 60_000;
+const forumIdsCache = new Map<string, { at: number; ids: Set<string> }>();
+/** Vide le cache (tests). */
+export function resetForumChannelCache(): void {
+  forumIdsCache.clear();
+}
+async function forumIdsFor(guildId: string, deadline: Date, fresh = false): Promise<DiscordRestResult<Set<string>>> {
+  const hit = forumIdsCache.get(guildId);
+  if (!fresh && hit && Date.now() - hit.at < FORUM_IDS_TTL_MS) return { ok: true, data: hit.ids };
+  const forums = await listDiscordForumChannels({ guildId, deadline });
+  if (!forums.ok) return forums;
+  const ids = new Set(forums.data.filter((forum) => forum.name === PLAYER_CLASSIFIED_FORUM_NAME).map((forum) => forum.id));
+  forumIdsCache.set(guildId, { at: Date.now(), ids });
+  return { ok: true, data: ids };
+}
+
+/**
+ * Repli de la suppression : le fil (identifiant issu de la base ou de l'événement) est archivé ET verrouillé, et l'échec est signalé (journal
+ * d'erreurs et journal, sans donnée personnelle). Le contenu reste lisible : la suppression est retentée chaque jour par le balayage.
+ */
+async function archiveLockedFallback(threadId: string, deadline: Date, reason: string): Promise<DiscordRestResult<RemovalOutcome>> {
+  logger.warn("player-classified-forum", "Suppression du fil impossible : repli sur l'archivage verrouillé.", { reason });
+  persistServerError("player-classified-forum", new Error(`Suppression d'un fil forum impossible (${reason}) : fil archivé et verrouillé seulement, nouvel essai quotidien.`), { route: "executor/player-classified-forum" });
+  const archived = await archiveThread({ threadId, locked: true, deadline });
+  if (!archived.ok && archived.kind !== "not_found") return archived;
+  return { ok: true, data: { threadId, removed: false } };
+}
+
 /**
  * Suppression d'un fil de relais, avec garde-fous :
  * - défense en profondeur : avant tout `DELETE`, un `GET` vérifie que l'identifiant est bien un fil PUBLIC (type 11) du serveur de la
- *   communauté ET du forum « recherche de joueurs » (jamais la suppression d'un autre salon par un identifiant erroné) ; fil absent (404) =
- *   objectif atteint ;
- * - repli : si Discord refuse la suppression (permission ou authentification), le fil est archivé ET verrouillé et l'échec est signalé
- *   (journal d'erreurs + journal, sans donnée personnelle). Permission requise : « Gérer les fils » sur le forum (docs/PERMISSIONS_BOTS.md).
+ *   communauté, enfant d'un forum « recherche de joueurs » (jamais la suppression d'un autre salon par un identifiant erroné) ; fil absent
+ *   (404) = objectif atteint ;
+ * - le fil étant CONNU (identifiant issu de la base), un contrôle qui ne peut pas conclure ne rend jamais un fil légitime impossible à
+ *   retirer : lecture refusée (permission) ou parent inconnu (forum renommé) = repli sur l'archivage verrouillé, échec signalé ; un
+ *   identifiant qui n'est PAS un fil du serveur (autre type, autre serveur) est refusé sans rien archiver ni supprimer ;
+ * - repli aussi si Discord refuse la suppression (permission « Gérer les fils » : docs/PERMISSIONS_BOTS.md).
  */
 async function removeForumThread(threadId: string, communityId: string, deadline: Date): Promise<DiscordRestResult<RemovalOutcome>> {
   const community = await scopedPrisma(null).community.findUnique({ where: { id: communityId }, select: { discordGuildId: true } });
@@ -46,25 +78,30 @@ async function removeForumThread(threadId: string, communityId: string, deadline
   if (!guildId) return { ok: false, kind: "not_found", message: "Serveur Discord non relié : fil non joignable.", retryable: false };
 
   const channel = await getChannel({ channelId: threadId, deadline });
-  if (!channel.ok) return channel.kind === "not_found" ? { ok: true, data: { threadId, removed: true } } : channel;
-  const forums = await listDiscordForumChannels({ guildId, deadline });
-  if (!forums.ok) return forums;
-  const forumIds = new Set(forums.data.filter((forum) => forum.name === PLAYER_CLASSIFIED_FORUM_NAME).map((forum) => forum.id));
-  if (channel.data.type !== PUBLIC_THREAD_TYPE || channel.data.guildId !== guildId || !channel.data.parentId || !forumIds.has(channel.data.parentId)) {
-    persistServerError("player-classified-forum", new Error("Suppression refusée : l'identifiant n'est pas un fil du forum des recherches de joueurs."), { route: "executor/player-classified-forum" });
-    return { ok: false, kind: "destination_mismatch", message: "L'identifiant n'est pas un fil du forum des recherches de joueurs : suppression refusée.", retryable: false };
+  if (!channel.ok) {
+    if (channel.kind === "not_found") return { ok: true, data: { threadId, removed: true } };
+    if (channel.kind === "auth_or_permission") return archiveLockedFallback(threadId, deadline, "lecture du fil refusée");
+    return channel;
+  }
+  if (channel.data.type !== PUBLIC_THREAD_TYPE || channel.data.guildId !== guildId) {
+    persistServerError("player-classified-forum", new Error("Suppression refusée : l'identifiant n'est pas un fil public du serveur de la communauté."), { route: "executor/player-classified-forum" });
+    return { ok: false, kind: "destination_mismatch", message: "L'identifiant n'est pas un fil public du serveur : suppression refusée.", retryable: false };
+  }
+  let forumIds = await forumIdsFor(guildId, deadline);
+  if (!forumIds.ok) return forumIds.kind === "auth_or_permission" ? archiveLockedFallback(threadId, deadline, "liste des forums refusée") : forumIds;
+  if (!channel.data.parentId || !forumIds.data.has(channel.data.parentId)) {
+    // Cache possiblement périmé (forum renommé à l'instant) : une relecture avant de conclure.
+    forumIds = await forumIdsFor(guildId, deadline, true);
+    if (!forumIds.ok) return forumIds.kind === "auth_or_permission" ? archiveLockedFallback(threadId, deadline, "liste des forums refusée") : forumIds;
+    if (!channel.data.parentId || !forumIds.data.has(channel.data.parentId)) {
+      return archiveLockedFallback(threadId, deadline, "forum des recherches de joueurs introuvable ou renommé");
+    }
   }
 
   const deleted = await deleteThreadPermanently({ threadId, deadline });
   if (deleted.ok || deleted.kind === "not_found") return { ok: true, data: { threadId, removed: true } };
   if (deleted.kind !== "auth_or_permission") return deleted;
-
-  // Repli : le bot n'a pas le droit de supprimer. Le contenu ne doit pas rester ouvert : archivage + verrouillage, échec signalé.
-  logger.warn("player-classified-forum", "Suppression du fil refusée par Discord : repli sur l'archivage verrouillé.", { kind: deleted.kind });
-  persistServerError("player-classified-forum", new Error("Suppression d'un fil forum refusée (permission « Gérer les fils » manquante ?) : fil archivé et verrouillé seulement."), { route: "executor/player-classified-forum" });
-  const archived = await archiveThread({ threadId, locked: true, deadline });
-  if (!archived.ok && archived.kind !== "not_found") return archived;
-  return { ok: true, data: { threadId, removed: false } };
+  return archiveLockedFallback(threadId, deadline, "suppression refusée (permission « Gérer les fils » manquante ?)");
 }
 
 /**
@@ -123,6 +160,8 @@ export async function runPlayerClassifiedForumAction(
   if (!listing || listing.communityId !== input.communityId || !listing.community.discordGuildId) return notFound("Annonce introuvable.");
   if (listing.forumThreadId) return { ok: true, data: { threadId: listing.forumThreadId } };
   if (listing.forumRemovedAt) return notFound("Fil forum déjà retiré.");
+  // « 🟢 Dispo ce soir » n'est jamais relayé sur le forum, par aucun chemin.
+  if (isTonightMessage(listing.message)) return notFound("Déclaration « Dispo ce soir » : jamais relayée.");
   // Un profil masqué ne fuit jamais son annonce dans le forum public.
   if (listing.createdBy.profileVisibility?.visibility === "HIDDEN") return notFound("Profil masqué : annonce non relayée.");
   if (listing.forumPostingAt) {

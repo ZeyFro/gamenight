@@ -3,7 +3,8 @@ import { checkRateLimit } from "@/lib/rate-limit";
 import { wallClockNow } from "@/lib/wallclock";
 import { logger } from "@/lib/logger";
 import { persistServerError } from "@/lib/error-log";
-import { enqueueForumThreadRemovals, enqueuePlayerClassifiedForum, isForumAuthorHidden, playerClassifiedForumEnabled } from "@/lib/player-classified-forum";
+import { enqueueForumThreadRemovals, enqueuePlayerClassifiedForum, isForumAuthorHidden, markForumRelayRetry, playerClassifiedForumEnabled } from "@/lib/player-classified-forum";
+import { isTonightMessage } from "@/lib/tonight-rules";
 import type { PlayerClassifiedFilters } from "@/lib/player-classified-filters";
 import type { GameLevel } from "@/lib/game-levels-rules";
 import {
@@ -107,7 +108,7 @@ export async function createPlayerListing(input: {
     } as Parameters<typeof scopedDb.playerClassified.create>[0]["data"],
     select: { id: true, expiresAt: true },
   });
-  await relayNewPlayerListing({ listingId: listing.id, communityId: input.communityId, userId: input.userId });
+  await relayNewPlayerListing({ listingId: listing.id, communityId: input.communityId, userId: input.userId, message: validatedMessage });
   return { status: "created", id: listing.id, expiresAt: listing.expiresAt };
 }
 
@@ -119,20 +120,34 @@ export async function createPlayerListing(input: {
  * L'annonce existe déjà : une panne du relais ne doit jamais faire échouer la création (le joueur réessaierait et créerait un doublon). Elle
  * est donc journalisée explicitement (journal serveur + journal d'erreurs) et la création réussit.
  */
-export async function relayNewPlayerListing(input: { listingId: string; communityId: string; userId: string }): Promise<void> {
+export async function relayNewPlayerListing(input: { listingId: string; communityId: string; userId: string; message: string }): Promise<void> {
   if (!playerClassifiedForumEnabled()) return;
+  // « 🟢 Dispo ce soir » n'est jamais relayé sur le forum (D3 : seules les annonces créées par le joueur le sont).
+  if (isTonightMessage(input.message)) return;
   try {
     if (await isForumAuthorHidden(input.userId)) return;
     const queued = await enqueuePlayerClassifiedForum({ listingId: input.listingId, communityId: input.communityId, intent: "post" });
     if (queued === "retry") {
-      // Échec transitoire de la mise en file : l'annonce existe, le balayage du cron des rappels rattrape le relais (annonce récente, sans fil).
+      // Échec transitoire de la mise en file : marque explicite, le balayage du cron rattrape UNIQUEMENT ces annonces.
       const error = new Error("Relais forum non mis en file à la création (réessayable) : rattrapage par le balayage du cron.");
       logger.error("player-listings", error, { step: "forum-relay-retry" });
       persistServerError("player-listings", error, { route: "player-listings/forum-relay" });
+      await markRelayRetry(input);
     }
   } catch (error) {
     logger.error("player-listings", error, { step: "forum-relay" });
     persistServerError("player-listings", error, { route: "player-listings/forum-relay" });
+    await markRelayRetry(input);
+  }
+}
+
+/** Pose la marque « relais à retenter » ; si même cela échoue, l'échec est journalisé (jamais avalé en silence). */
+async function markRelayRetry(input: { listingId: string; communityId: string }): Promise<void> {
+  try {
+    await markForumRelayRetry(input.listingId, input.communityId);
+  } catch (markError) {
+    logger.error("player-listings", markError, { step: "forum-relay-mark" });
+    persistServerError("player-listings", markError, { route: "player-listings/forum-relay" });
   }
 }
 
