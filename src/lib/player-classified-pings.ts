@@ -3,12 +3,15 @@ import { prisma } from "@/lib/prisma";
 import { logger } from "@/lib/logger";
 
 /**
- * Ping de rôle de jeu des annonces « recherche de joueurs » : opt-in via le rôle
- * du jeu (voir `buildGameRolePing`), plafonné à 3 par joueur et par jour.
+ * Ping de rôle de jeu des annonces « recherche de joueurs » : opt-in via le rôle du jeu (voir `buildGameRolePing`), plafonné à 3 PAR JOUEUR
+ * ET PAR JOUR, toutes communautés confondues (D3/D10). Le compteur est tenu par (communauté, joueur, jour) mais le plafond se calcule sur la
+ * SOMME des communautés du jour de Paris.
  *
- * Le compteur est consommé AVANT l'enqueue du relais. La consommation est
- * atomique (`INSERT ... ON CONFLICT ... WHERE count < 3`) : deux annonces
- * simultanées du même joueur ne peuvent jamais dépasser le plafond.
+ * Atomicité sans migration : un verrou advisory TRANSACTIONNEL sur le joueur sérialise les consommations simultanées (même sur deux
+ * serveurs), puis la somme du jour est lue et le compteur de la communauté incrémenté dans la même transaction.
+ *
+ * `now` est un VRAI instant (`new Date()`), jamais l'heure murale de `wallClockNow()` (heure de Paris encodée en UTC) : la convertir une
+ * seconde fois vers Europe/Paris décalerait le jour d'une à deux heures.
  */
 export const PLAYER_CLASSIFIED_DAILY_PINGS = 3;
 
@@ -25,27 +28,29 @@ export function playerClassifiedPingDay(now: Date): Date {
 export async function consumePlayerClassifiedPing(input: {
   communityId: string;
   userId: string;
+  /** VRAI instant (jamais l'heure murale). */
   now?: Date;
 }): Promise<boolean> {
   const now = input.now ?? new Date();
   const day = playerClassifiedPingDay(now);
   try {
-    const rows = await prisma.$queryRaw<Array<{ count: number }>>`
-      INSERT INTO "PlayerClassifiedPing"
-        ("id", "communityId", "userId", "day", "count", "createdAt", "updatedAt")
-      VALUES
-        (${randomUUID()}, ${input.communityId}, ${input.userId}, ${day}, 1, ${now}, ${now})
-      ON CONFLICT ("communityId", "userId", "day")
-      DO UPDATE SET
-        "count" = "PlayerClassifiedPing"."count" + 1,
-        "updatedAt" = ${now}
-      WHERE "PlayerClassifiedPing"."count" < ${PLAYER_CLASSIFIED_DAILY_PINGS}
-      RETURNING "count"
-    `;
-    return rows.length > 0;
+    return await prisma.$transaction(async (tx) => {
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${"player-classified-ping:" + input.userId}))`;
+      const [{ total }] = await tx.$queryRaw<Array<{ total: number }>>`
+        SELECT COALESCE(SUM("count"), 0)::int AS total FROM "PlayerClassifiedPing"
+        WHERE "userId" = ${input.userId} AND "day" = ${day}
+      `;
+      if (total >= PLAYER_CLASSIFIED_DAILY_PINGS) return false;
+      await tx.$executeRaw`
+        INSERT INTO "PlayerClassifiedPing" ("id", "communityId", "userId", "day", "count", "createdAt", "updatedAt")
+        VALUES (${randomUUID()}, ${input.communityId}, ${input.userId}, ${day}, 1, ${now}, ${now})
+        ON CONFLICT ("communityId", "userId", "day")
+        DO UPDATE SET "count" = "PlayerClassifiedPing"."count" + 1, "updatedAt" = ${now}
+      `;
+      return true;
+    }, { timeout: 5000, maxWait: 5000 });
   } catch (error) {
-    // Table absente (migration pas encore appliquée) : aucun ping, jamais un
-    // blocage de la création d'annonce.
+    // Table absente (migration pas encore appliquée) ou base indisponible : aucun ping, jamais un blocage du relais.
     logger.warn("player-classified-pings", "Compteur de pings indisponible.", {
       errorType: error instanceof Error ? error.name : "unknown",
     });

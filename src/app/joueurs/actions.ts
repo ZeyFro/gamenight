@@ -54,7 +54,7 @@ export async function createPlayerClassifiedAction(formData: FormData): Promise<
     select: { id: true },
   });
   // Relais forum (D3) : mêmes garde-fous que la commande Discord (profil masqué jamais relayé, ping opt-in plafonné, aucune écriture directe).
-  await relayNewPlayerListing({ listingId: created.id, communityId, userId: user.id, gameId: game.id, createdAt });
+  await relayNewPlayerListing({ listingId: created.id, communityId, userId: user.id });
   revalidatePath("/joueurs");
   redirect("/joueurs");
 }
