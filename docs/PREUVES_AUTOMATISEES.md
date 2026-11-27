@@ -2,11 +2,11 @@
 
 > **Décision de Maxime du 27 novembre 2026** : pour les lignes du cahier qui exigent trois comptes ou plus, ou un état de temps, de cron ou d'API impossible à réunir en réel, un scénario automatisé en CI sur PostgreSQL avec Discord simulé est accepté comme preuve, à condition qu'il couvre l'exigence de bout en bout avec plusieurs utilisateurs simulés. Les éléments Discord (messages, salons, permissions, arrivée) restent testés en réel.
 >
-> **Aucune ligne du cahier n'est passée au vert par ce document.** Les statuts de [`CAHIER_FINAL.md`](CAHIER_FINAL.md) sont inchangés : une preuve automatisée ne remplace ni le test réel d'un compte non-admin, ni un envoi Discord réel, ni un cron réellement déclenché.
+> **Application du 27/11/2026** : cette décision permet de passer au vert **C030, C031, C077, C084 et C021**. Les autres lignes couvertes ici restent en **« preuve automatisée prête, contrôle réel restant »** : une preuve automatisée ne remplace ni un envoi Discord réel, ni un cron réellement déclenché, ni l'observation d'un élément Discord. **C050 reste hors passage au vert** (consigne du 27/11).
 
 ## Périmètre
 
-Lignes traitées : **C008, C017, C021, C029, C050, C078, C079**. C081 et D6 (tournoi, poule à 5 équipes) sont volontairement absents : ils attendent la fusion de #641 sur `main`.
+Lignes traitées : **C008, C017, C021, C029, C030, C031, C050, C057, C077, C078, C079, C083, C084, C088, D14**. C081 et D6 (tournoi, poule à 5 équipes) sont volontairement absents : ils attendent la fusion de #641 sur `main`.
 
 Méthode commune :
 
@@ -31,11 +31,19 @@ En CI, les fichiers sont répartis par `npm run test:postgres -- --shard=N/4` av
 | --- | --- | --- | --- |
 | C008 | Couvert de bout en bout | `tower-ranks.integration.test.ts` (nouveau, 2 tests, 5 utilisateurs) | Attribution et affichage réels des grades dans Discord |
 | C017 | Couvert de bout en bout | `tower-challenges.integration.test.ts`, `tower-team-daily.regression.integration.test.ts`, `tower-team-daily.test.ts` | Déclenchement réel du cron (cron-job.org / GitHub Actions), messages Discord réels |
-| C021 | Couvert de bout en bout | `tower-challenge-proposals.integration.test.ts` (8 tests, 6 utilisateurs) | Commande et formulaire Discord réels ; interrupteur éteint en Production |
+| C021 | Couvert de bout en bout | `tower-challenge-proposals.integration.test.ts` (9 tests, 6 utilisateurs) | Commande et formulaire Discord réels |
 | C029 | Couvert de bout en bout, par plusieurs scénarios | `community-highlights.integration.test.ts`, `tower-weekly-recap.integration.test.ts`, `superlative-voting.integration.test.ts`, `tournament-announce.integration.test.ts`, `notification-kinds.test.ts` | Envois Discord réels ; aucune donnée de Production ; aucune preuve unique couvrant les sept sous-exigences ensemble |
+| C030 | Couvert de bout en bout | `team-applications.integration.test.ts` (5 utilisateurs) | Aucun clic sur l'interface web, aucun message Discord réel |
+| C031 | Couvert de bout en bout | `team-applications.integration.test.ts` (fiche lue par un autre membre) | Rendu visuel non ouvert dans un navigateur |
 | C050 | Couvert en partie | `tower-season-awards.integration.test.ts`, `profile-customization.integration.test.ts`, `community-progression.integration.test.ts`, `superlative-voting.integration.test.ts` | Hall of Fame manuel, « choisir certains événements » absent du code, badge de podium attribué manuellement |
+| C057 | Couvert de bout en bout pour le périmètre automatisable | `moderation-confidentiality.integration.test.ts` | Salons Discord simulés, aucun message réel lu ni publié |
+| C077 | Couvert de bout en bout | `team-recruiters.integration.test.ts` (2 recruteurs, relance 48 h, expiration 7 j, plafond 8) | Cron réel non déclenché, MP Discord non envoyés, tournoi non joué |
 | C078 | Couvert de bout en bout | `tower-discord-votes.integration.test.ts` (2 tests C078 ajoutés), `tower-challenges.integration.test.ts` | Clics réels sur les boutons ✅/❌, fils Discord réels |
-| C079 | Couvert de bout en bout | `tower-steam-measure.integration.test.ts` (5 tests, 3 utilisateurs, API simulée) | API Steam réelle, cron réel, profil Steam réellement privé ; interrupteur éteint en Production |
+| C079 | Couvert de bout en bout | `tower-steam-measure.integration.test.ts` (5 tests, 3 utilisateurs, API simulée) | API Steam réelle, cron réel, profil Steam réellement privé |
+| C083 | Couvert de bout en bout | `projects.integration.test.ts` (deux candidats, clôture, archivage) | Cycle avancé par dates injectées, fils Discord non créés |
+| C084 | Couvert de bout en bout | `team-rivalries.integration.test.ts` (deux capitaines, trois intéressés) | « Rejoindre » appelé au niveau service, défi non joué réellement |
+| C088 | Couvert de bout en bout | `discord-report-command.integration.test.ts` (deux reporters, deux tickets staff) | Aucun clic sur la commande Discord, sanction humaine hors périmètre |
+| D14 | Couvert de bout en bout | `discord-report-command.integration.test.ts` (contexte complet, aucune colonne de sanction) | Décision humaine et sanction éventuelle non simulées |
 
 ---
 
@@ -79,7 +87,7 @@ TEST_DATABASE_URL='postgresql://postgres@127.0.0.1:55439/gamenight_test' \
 
 **Ce que la preuve établit** : une attribution par équipe et par jour de Paris, idempotente sous reprises et verrous, avec budget, confirmation des participants et plafonds de récompense ; la route cron elle-même est exercée avec des dizaines d'équipes.
 
-**Limites** : le cron réel (cron-job.org ou workflow GitHub) n'est pas déclenché depuis la CI ; `TOWER_TEAM_DAILY_ENABLED` est éteint en Production ; aucun message Discord réel n'est envoyé (la file est vérifiée en base).
+**Limites** : le cron réel (cron-job.org ou workflow GitHub) n'est pas déclenché depuis la CI ; `TOWER_TEAM_DAILY_ENABLED` est allumé en Production depuis le 24/11 (relevé du 27/11) ; aucun message Discord réel n'est envoyé (la file est vérifiée en base).
 
 **Commande** :
 
@@ -108,7 +116,7 @@ TEST_DATABASE_URL='postgresql://postgres@127.0.0.1:55439/gamenight_test' \
 
 **Ce que la preuve établit** : le parcours complet — proposition par un Ranker/High Ranker, validation par le staff, création d'un défi unique — avec les refus d'autorisation et l'anti-abus.
 
-**Limites** : la commande Discord et le formulaire réel ne sont pas cliqués ; `TOWER_CHALLENGE_PROPOSALS_ENABLED` est éteint en Production ; la pertinence éditoriale d'une proposition n'est pas évaluée par un test.
+**Limites** : la commande Discord et le formulaire réel ne sont pas cliqués ; `TOWER_CHALLENGE_PROPOSALS_ENABLED` est allumé en Production depuis le 24/11 (relevé du 27/11) ; la pertinence éditoriale d'une proposition n'est pas évaluée par un test.
 
 **Commande** :
 
@@ -189,7 +197,7 @@ Preuves existantes :
 
 **Limites** : aucun clic réel sur les boutons Discord, aucun fil Discord réel ; le vote et le message sont simulés côté transport. `TOWER_DISCORD_VOTES_ENABLED` est allumé en Production depuis le 25/11, mais l'essai réel reste à consigner.
 
-**Écart de documentation constaté (non corrigé)** : le cahier §27.1 B demande des votants « présents depuis 7 jours au moins », alors que la ligne C078 de `CAHIER_FINAL.md` et le code appliquent **3 jours** (audit du 23/11/2026, constat 1.3). Le test fige les 3 jours du code et de la ligne C078. Gravité : faible (contradiction documentaire), mais elle doit être tranchée avant de déclarer C078 vérifiée en réel.
+**Alignement documentaire** : le cahier des charges §27.1 B, la ligne C078 de `CAHIER_FINAL.md` et le code appliquent désormais **3 jours** (décision de Maxime du 23/11, constat 1.4). Le test fige ces 3 jours ; le contrôle réel doit vérifier qu'un compte de moins de 3 jours est refusé et qu'un compte de 3 jours ou plus peut voter.
 
 **Commande** :
 
@@ -216,7 +224,7 @@ TEST_DATABASE_URL='postgresql://postgres@127.0.0.1:55439/gamenight_test' \
 
 **Ce que la preuve établit** : le parcours complet mesure → doute → crédit ou repli vote, avec plusieurs comptes et un cron protégé, sans IA.
 
-**Limites** : l'API Steam est simulée (aucun appel réseau réel), le cron n'est pas déclenché réellement, un vrai profil Steam privé n'est pas testé, et `TOWER_STEAM_AUTOVALIDATE_ENABLED` est éteint en Production.
+**Limites** : l'API Steam est simulée (aucun appel réseau réel), le cron n'est pas déclenché réellement, un vrai profil Steam privé n'est pas testé, et `TOWER_STEAM_AUTOVALIDATE_ENABLED` est allumé en Production depuis le 24/11 (relevé du 27/11).
 
 **Commande** :
 
@@ -421,9 +429,9 @@ TEST_DATABASE_URL='postgresql://postgres@127.0.0.1:55439/gamenight_test' \
 
 ---
 
-## Écarts et limites signalés (aucun correctif produit dans cette PR)
+## Écarts et limites restants
 
-1. **C078 — 3 jours contre 7 jours** : contradiction entre `CAHIER_DES_CHARGES.md` §27.1 B (« 7 jours ») et `CAHIER_FINAL.md` / le code (« 3 jours »). Gravité **faible** (documentation), à trancher par Maxime.
+1. **C078 — ancienneté** : `CAHIER_DES_CHARGES.md` §27.1 B, `CAHIER_FINAL.md` et le code sont alignés sur **3 jours** (décision du 23/11). Aucun écart restant.
 2. **C050 — « choisir certains événements »** : exigence du cahier §15.1 sans implémentation ni test dans `src/`. Gravité **moyenne** pour la ligne C050, qui reste « couvert en partie ».
 3. **C050 — Hall of Fame et badge de podium** : remise manuelle, sans interface admin prouvée ni idempotence (`docs/TOWER_S1_REWARDS_MANUAL.md`). Gravité **moyenne** : la ligne ne peut pas être déclarée vérifiée sur la seule base du code.
 4. **C008 — prestige Discord** : les grades sont calculés et lus, mais aucun test ne prouve l'attribution ou l'affichage réel des rôles de prestige dans Discord. Relève du test réel.
@@ -431,4 +439,4 @@ TEST_DATABASE_URL='postgresql://postgres@127.0.0.1:55439/gamenight_test' \
 ## Hors périmètre
 
 - **C081 et D6** : non traités, conformément à la consigne, tant que #641 n'est pas fusionnée sur `main`.
-- Aucune ligne du cahier n'est passée au vert, aucun interrupteur n'est modifié, aucune migration n'est ajoutée, aucune donnée de Production n'est utilisée.
+- **C030, C031, C077, C084 et C021** passent au vert par application de la décision du 27/11 ; les autres lignes traitées restent en « preuve automatisée prête, contrôle réel restant » et **C050** reste hors passage au vert. Aucun interrupteur n'est modifié par ce document, aucune migration n'est ajoutée, aucune donnée de Production n'est utilisée.

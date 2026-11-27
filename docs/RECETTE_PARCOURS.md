@@ -1,19 +1,19 @@
 # Recette réelle par parcours — 6 parcours pour les 61 lignes actives
 
-Relevé du 27/11/2026 sur `main` `5bfe5ec7`. Ce document **regroupe** les 61 lignes actives de [CAHIER_FINAL.md](CAHIER_FINAL.md) en **6 parcours de test réel**, pour faire moins de tests tout en couvrant les mêmes lignes. Le détail ligne par ligne (prérequis, étapes, preuves attendues) reste dans [RECETTE_61_LIGNES.md](RECETTE_61_LIGNES.md).
+Relevé du 27/11/2026. Ce document **regroupe** les 61 lignes actives de [CAHIER_FINAL.md](CAHIER_FINAL.md) en **6 parcours de test réel**, pour faire moins de tests tout en couvrant les mêmes lignes. Le détail ligne par ligne (prérequis, étapes, preuves attendues) reste dans [RECETTE_61_LIGNES.md](RECETTE_61_LIGNES.md).
 
-**Règle D1** ([décisions produit](DECISIONS_PRODUIT_20261126.md)) : une ligne n'est verte qu'après un **test réel d'un compte non-admin, daté et consigné**. Ce document ne passe aucune ligne au vert et ne change aucun statut.
+**Règle de preuve amendée le 27/11/2026** : **ZeyFro ou Melah** sont acceptés ; l’**accès, la visibilité, la confidentialité et l’arrivée** se vérifient avec **Melah** ; pour les lignes à **3 comptes ou plus**, un **scénario automatisé multi-utilisateurs** daté et consigné est accepté, les **éléments Discord** restant vérifiés en réel. Ce document ne change aucun statut. Les parcours des lignes déjà vertes (**C021, C030, C031, C077, C084**) restent des contrôles de non-régression facultatifs.
 
 ## Comptes et règles communes
 
 **Comptes**
-- **M** : Melah, membre non-admin de The Tower (MEMBER, non booster).
-- **M2** : second membre non-admin. **Il n'existe pas encore** : il faut le créer ou le demander à un vrai membre. Sans lui, les parcours P2 à P5 ne sont que partiels.
+- **M** : Melah, membre de The Tower (MEMBER, non booster).
+- **M2** : second compte accepté, **ZeyFro ou Melah**. Pour une ligne à **3 comptes ou plus**, le scénario automatisé multi-utilisateurs remplace M2.
 - **N** : compte Discord **neuf**, jamais entré sur le serveur (parcours P1).
-- **A** : admin (`!!ZeyFro`), seulement pour préparer, arbitrer ou observer. **Il ne prouve jamais une ligne.**
+- **A** : `!!ZeyFro`, admin. Il prépare, arbitre ou observe, et peut prouver les lignes que la règle du 27/11 accepte.
 
 **Règles**
-- **Aucun flag** n'est allumé pour un parcours sans l'accord de Maxime, lot par lot ([ALLUMAGES.md](ALLUMAGES.md)).
+- Les flags du relevé Production du 27/11 sont **déjà allumés** ([ALLUMAGES.md](ALLUMAGES.md)). Aucun autre flag ne s'allume sans l'accord de Maxime, lot par lot.
 - **Données de test** : créées pendant le parcours par M ou M2, puis supprimées ou laissées selon la décision de Maxime. Jamais de données inventées en base.
 - **Arrêt immédiat** : appliquer [PLAN_TESTS.md § 10](PLAN_TESTS.md).
 
@@ -55,16 +55,16 @@ Le résultat est ensuite reporté dans la colonne « Preuve attendue » du cahie
 | C006 Panneau à 3 boutons | Après #640, puis publication du panneau avec l'accord de Maxime |
 | C001 Sans Nitro ni boost | Maintenant |
 | C059 Commandes et boutons du bot | Maintenant |
-| C007 `/role` modernisé | Après allumage du lot G |
-| C082 Création de rôle par la file | Après allumage du lot G |
-| D01 Consentement `connections` | Après allumage du lot C |
-| C086 Comptes liés, plateformes, crossplay | Après allumage du lot C |
-| C040 Profil complet | Après allumage du lot C |
-| C090 Personnalisation du profil | Après allumage du lot C |
+| C007 `/role` modernisé | Maintenant (flag allumé le 27/11) |
+| C082 Création de rôle par la file | Maintenant (flag allumé le 27/11) |
+| D01 Consentement `connections` | Maintenant (flag allumé le 27/11) |
+| C086 Comptes liés, plateformes, crossplay | Maintenant (flag allumé le 27/11) |
+| C040 Profil complet | Maintenant (flag allumé le 27/11) |
+| C090 Personnalisation du profil | Maintenant (flag allumé le 27/11) |
 
 ## P2 — Recherche de joueurs et Potes (M, M2)
 
-**Prérequis** : lot C (niveaux de jeu, matchmaking, visibilité, Potes, « Qui joue ce soir ? »). L'état réel de `GAME_LEVELS_*` et de `POTES_FRIENDS_ENABLED` est **à confirmer par ChatGPT Work dans Vercel**. Relais forum : #639 (D3).
+**Prérequis** : flags du lot C **allumés** (Vercel 27/11 : niveaux de jeu, matchmaking, visibilité, Potes, « Qui joue ce soir ? »). Relais forum : #639 (D3).
 
 **Étapes**
 1. M2 déclare un niveau de jeu, se dit « dispo ce soir » et publie une annonce « je cherche une partie ».
@@ -78,18 +78,18 @@ Le résultat est ensuite reporté dans la colonne « Preuve attendue » du cahie
 
 | Ligne | Testable |
 | --- | --- |
-| C035 Critères (jeux, plateformes, niveau…) | Après confirmation de l'état des flags (lot C) |
-| C087 Niveau de jeu et matchmaking | Après allumage du lot C |
-| C036 Langue, préférences, habitudes | Après allumage du lot C |
-| C037 « Qui joue ce soir ? », « Je cherche une partie » | Après allumage du lot C ; relais forum après #639 |
-| C038 Partenaires compatibles | Après allumage du lot C |
-| C039 Visibilité respectée | Après allumage du lot C (correctif #637 fusionné) |
-| C128 Potes = amis | Après confirmation de l'état du flag (lot C) |
-| C044 Interfaces « Ce soir », roulette, calendrier, notifications | Après allumage du lot C |
+| C035 Critères (jeux, plateformes, niveau…) | Maintenant (flags allumés le 27/11) |
+| C087 Niveau de jeu et matchmaking | Maintenant (flags allumés le 27/11) |
+| C036 Langue, préférences, habitudes | Maintenant (flag allumé le 27/11) |
+| C037 « Qui joue ce soir ? », « Je cherche une partie » | Maintenant ; relais forum après #639 |
+| C038 Partenaires compatibles | Maintenant (flag allumé le 27/11) |
+| C039 Visibilité respectée | Maintenant (flags allumés le 27/11 ; correctif #637 fusionné) |
+| C128 Potes = amis | Maintenant (flag allumé le 27/11) |
+| C044 Interfaces « Ce soir », roulette, calendrier, notifications | Maintenant (flags allumés le 27/11) |
 
 ## P3 — Équipe (M capitaine, M2 candidat puis recruteur)
 
-**Prérequis** : lot E, déjà allumé (candidatures, recruteurs, critères, rivalités) ; #641 (passation journalisée) ; #642 (dissolution, D5) ; lot G pour les salons d'équipe.
+**Prérequis** : lot E, déjà allumé (candidatures, recruteurs, critères, rivalités) ; #641 (passation journalisée) ; #642 (dissolution, D5) ; `DISCORD_TEAM_SPACES_ENABLED` allumé (Vercel 27/11).
 
 **Étapes**
 1. M crée une équipe et renseigne objectifs, critères et rendez-vous.
@@ -107,11 +107,11 @@ Le résultat est ensuite reporté dans la colonne « Preuve attendue » du cahie
 | C031 Fiche d'équipe | Maintenant |
 | C077 Recruteurs, invités, relance 48 h, expiration 7 jours | Maintenant ; passation journalisée après #641 |
 | C084 « Jouer maintenant » et rivalités | Maintenant |
-| C053 Salons vocaux d'équipe et d'événement | Après #642 et allumage du lot G ; vocaux de soirée après #646 |
+| C053 Salons vocaux d'équipe et d'événement | Maintenant (flags allumés le 27/11) ; vocaux de soirée après #646 |
 
 ## P4 — Compétition : tournoi et défis de la Tour (M, M2 ; A seulement pour arbitrer)
 
-**Prérequis** : lot E (tournois d'équipes et scores, déjà allumés) ; #641 (poule à 5 équipes, arbitrage après 24 h, repli à 48 h, migration à appliquer avec l'accord de Maxime) ; lot B pour les défis éteints.
+**Prérequis** : lot E (tournois d'équipes et scores, déjà allumés) ; #641 (poule à 5 équipes, arbitrage après 24 h, repli à 48 h, migration à appliquer avec l'accord de Maxime) ; flags du lot B **allumés** (Vercel 27/11).
 
 **Étapes**
 1. Tournoi individuel : M et M2 s'inscrivent, déclarent un résultat, puis consultent le classement et l'annonce.
@@ -120,7 +120,7 @@ Le résultat est ensuite reporté dans la colonne « Preuve attendue » du cahie
 4. M demande `/tower defi`, dépose une preuve ; M2 (sur le serveur depuis 3 jours au moins) vote ✅ ou ❌ dans le fil de la preuve.
 5. M signale un message (« Signaler ») : le ticket privé arrive au staff, sans sanction. M2 ne voit ni la preuve privée, ni le ticket.
 6. Classements, Hall of Fame, récapitulatif de la semaine, exploits (après des données réelles).
-7. Après le lot B :
+7. Contrôles des défis désormais allumés :
    - remplacement d'un défi sur un jeu non possédé ;
    - défi d'équipe de 18 h ;
    - validation automatique par Steam ;
@@ -140,16 +140,16 @@ Le résultat est ensuite reporté dans la colonne « Preuve attendue » du cahie
 | D14 « Signaler » → ticket staff | Maintenant (même test que C088) |
 | C052 Le Sommet (classements, Hall of Fame…) | Maintenant, avec des données réelles |
 | C029 Animation (exploits, récapitulatifs) | Maintenant, avec des données réelles |
-| C008 Grades (Irregular) | Après allumage du lot B |
-| C017 Défi d'équipe quotidien | Après allumage du lot B et du cron de 18 h |
-| C020 Remplacement d'un défi | Après allumage du lot B |
-| C021 Propositions de défis | Après allumage du lot B (il faut un vrai Ranker) |
-| C079 Validation automatique Steam | Après allumage du lot B |
-| C050 Récompenses de saison | Après allumage des lots B et C, et une fin de saison réelle |
+| C008 Grades (Irregular) | Maintenant (flag allumé le 27/11) ; preuve automatisée prête, contrôle Discord restant |
+| C017 Défi d'équipe quotidien | Maintenant (flag allumé le 27/11) ; contrôle du cron réel restant |
+| C020 Remplacement d'un défi | Maintenant (flag allumé le 27/11) |
+| C021 Propositions de défis | ✅ Fait par preuve automatisée le 27/11 (6 comptes) |
+| C079 Validation automatique Steam | Maintenant (flag allumé le 27/11) ; contrôle Steam réel restant |
+| C050 Récompenses de saison | Après une fin de saison réelle (flags allumés le 27/11) ; statut inchangé |
 
 ## P5 — Soirée, projets et notifications (M créateur, M2 invité ou candidat)
 
-**Prérequis** : `SESSION_VISIBILITY_ENABLED` (déjà allumé) ; #646 (espaces selon la visibilité, D7) ; `PROJECT_ORGANIZER_ENABLED` (déjà allumé) ; #641 (projets à 90 jours) ; lot C pour le centre de notifications.
+**Prérequis** : `SESSION_VISIBILITY_ENABLED` (déjà allumé) ; #646 (espaces selon la visibilité, D7) ; `PROJECT_ORGANIZER_ENABLED` (déjà allumé) ; #641 (projets à 90 jours) ; `NOTIFICATION_CENTER_ENABLED` allumé (Vercel 27/11).
 
 **Étapes**
 1. M crée une soirée **publique**, une **sur candidature** et une **privée**.
@@ -167,9 +167,9 @@ Le résultat est ensuite reporté dans la colonne « Preuve attendue » du cahie
 | C003 GameNight → Discord sans doublon | Maintenant |
 | C093 Écritures par la file | Maintenant (journal Vercel : Maxime) |
 | C083 Projets (organisateur, date de fin, fils, archivage) | Maintenant ; 90 jours renouvelables après #641 |
-| C076 Notifications configurables | Après allumage du lot C |
-| C085 MP ciblés, pings sur abonnement, centre de notifications | Après allumage du lot C |
-| D09 Pings de rôle de jeu sur abonnement | Après allumage du lot C |
+| C076 Notifications configurables | Maintenant (flag allumé le 27/11) |
+| C085 MP ciblés, pings sur abonnement, centre de notifications | Maintenant (flags allumés le 27/11) |
+| D09 Pings de rôle de jeu sur abonnement | Maintenant (flags allumés le 27/11) |
 
 ## P6 — Lignes sans code et configuration Discord (Maxime, A pour observer, N et M pour vérifier)
 
@@ -211,26 +211,26 @@ Le résultat est ensuite reporté dans la colonne « Preuve attendue » du cahie
 | C056 Rôles de prestige, permissions sensibles | Maxime seul (correction de High Ranker d'abord) |
 | C089 Boosters | Maxime seul (il faut un vrai booster) |
 | D15 Boosters (décision) | Maxime seul (même test que C089) |
-| C091 Tableau de bord staff | Après allumage du lot A ; A observe, M reçoit la 404 |
+| C091 Tableau de bord staff | Maintenant (flag allumé le 27/11) ; A observe, M reçoit la 404 |
 
 ---
 
 ## Bilan de couverture
 
-| Parcours | Lignes | Testables maintenant | Après PR | Après allumage | Maxime seul |
-| --- | ---: | ---: | --- | ---: | ---: |
-| P1 Arrivée et `/role` | 11 | 4 | 1 (#640, puis publication du panneau) | 6 (lots C, G) | — |
-| P2 Recherche et Potes | 8 | 0 | 1 (#639, relais forum) | 8 (lot C) | — |
-| P3 Équipe | 5 | 4 | 2 (#641, #642) | 1 (lot G) | — |
-| P4 Compétition | 14 | 8 | 1 (#641) | 6 (lots B, C) | — |
-| P5 Soirée, projets, notifications | 7 | 4 | 2 (#646, #641) | 3 (lot C) | — |
-| P6 Sans code et configuration Discord | 16 | 7 | — | 1 (lot A) | 7 (+ C104 après P1 à P5) |
-| **Total** | **61** | **27** | | | |
+| Parcours | Lignes | Testables maintenant | Après PR | Cas particulier | Maxime seul |
+| --- | ---: | ---: | --- | --- | ---: |
+| P1 Arrivée et `/role` | 11 | 10 | 1 (#640, puis publication du panneau) | — | — |
+| P2 Recherche et Potes | 8 | 8 | — | relais forum après #639 | — |
+| P3 Équipe | 5 | 5 | — | dissolution après #642 | — |
+| P4 Compétition | 14 | 13 | — | C050 après une fin de saison | — |
+| P5 Soirée, projets, notifications | 7 | 7 | — | espaces après #646 | — |
+| P6 Sans code et configuration Discord | 16 | 8 | — | C104 après P1 à P5 | 7 |
+| **Total** | **61** | **51** | | | |
 
-Une ligne peut compter dans deux colonnes : testable maintenant pour une partie, et après une PR pour le reste (par exemple C081, maintenant pour la double confirmation, après #641 pour la poule).
+Les flags sont allumés ; les colonnes « Après PR » ne concernent plus que des évolutions de code ou la publication du panneau d'accueil.
 
 Chaque ligne figure dans **un seul** parcours. Un même test peut toutefois alimenter plusieurs lignes : D14 = C088, D15 = C089, D01 ⊂ C086, C035 ≈ C087, C085 ≈ D09 ≈ C076.
 
 ## Ce que ce document ne prouve pas
 
-C'est un **plan**. Aucun test réel n'a été fait ici, aucun flag n'a été allumé, aucun statut n'a changé. Il manque toujours le **second compte non-admin (M2)** et la publication du panneau d'accueil, qui exige l'accord de Maxime.
+C'est un **plan**. Aucun test réel n'a été fait ici et aucun statut n'a changé. Les flags du relevé du 27/11 sont déjà allumés. Les lignes à 3 comptes ou plus peuvent utiliser un scénario automatisé ; les autres utilisent Melah et, si besoin, ZeyFro comme second compte. La publication du panneau d'accueil reste soumise à l'accord de Maxime.

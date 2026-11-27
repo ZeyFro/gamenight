@@ -77,3 +77,4 @@ Les anciens journaux et états de reprise sont dans [l’archive documentaire](a
 
 - [Recette par parcours](RECETTE_PARCOURS.md) — les 61 lignes actives regroupées en 6 parcours de test réel (arrivée et /role, recherche, équipe, compétition, soirée, sans code), avec ce qui est testable maintenant ou après une PR.
 - [Recette des 61 lignes actives](RECETTE_61_LIGNES.md) — prérequis, scénarios et preuves attendues.
+- [Preuves automatisées multi-utilisateurs](PREUVES_AUTOMATISEES.md) — scénarios PostgreSQL multi-comptes acceptés par la décision du 27/11, avec les contrôles réels restants.
