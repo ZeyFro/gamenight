@@ -3283,7 +3283,7 @@ model PlayerClassified {
   forumPostingAt DateTime?
   /** Fil SUPPRIMÉ (profil masqué, annonce ou compte retiré), distinct de l'archivage à l'expiration. */
   forumRemovedAt DateTime?
-  /** Curseur du balayage du cron (rotation des lignes bloquées). */
+  /** Curseur du balayage du cron (rotation des lignes bloquées) ; sur une annonce SANS fil : marque « mise en file du relais à retenter ». */
   forumSweptAt DateTime?
   /** Ping de rôle de jeu consommé pour cette annonce (plafond journalier). */
   pingedAt DateTime?

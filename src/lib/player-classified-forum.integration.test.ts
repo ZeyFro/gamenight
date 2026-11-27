@@ -105,6 +105,7 @@ describe.skipIf(!url)("relais forum des annonces de joueurs", () => {
     // Contrôle avant suppression : un fil PUBLIC (11) du serveur, dans le forum des recherches de joueurs.
     discord.getChannel.mockImplementation(async ({ channelId }: { channelId: string }) => ({ ok: true, data: { channelId, type: 11, guildId: GUILD, parentId: FORUM } }));
     session.admin.mockResolvedValue(null);
+    (await import("./player-classified-forum-runner")).resetForumChannelCache();
     await cleanup();
     await db.user.createMany({ data: ["author", "other", "admin"].map((name, index) => ({ id: id(name), discordId: scope + index, discordName: name })) });
     await db.community.create({ data: { id: communityId, name: communityId, slug: communityId, status: "ACTIVE", discordGuildId: GUILD, playerClassifiedsEnabled: true } });
@@ -380,13 +381,69 @@ describe.skipIf(!url)("relais forum des annonces de joueurs", () => {
     it.each([
       ["un salon texte (type 0)", { type: 0, guildId: GUILD, parentId: FORUM }],
       ["un fil d'un autre serveur", { type: 11, guildId: "888888888888888888", parentId: FORUM }],
-      ["un fil d'un autre forum", { type: 11, guildId: GUILD, parentId: "777777777777777777" }],
-      ["un fil sans parent", { type: 11, guildId: GUILD, parentId: null }],
-    ])("contrôle avant suppression : %s n'est JAMAIS supprimé", async (_label, info) => {
+    ])("contrôle avant suppression : %s n'est JAMAIS supprimé ni archivé", async (_label, info) => {
       const row = await relayed();
       discord.getChannel.mockResolvedValue({ ok: true, data: { channelId: THREAD, ...info } });
       expect(await run("remove", row.id, THREAD)).toMatchObject({ ok: false, retryable: false });
       expect(discord.deleteThread).not.toHaveBeenCalled();
+      expect(discord.archive).not.toHaveBeenCalled();
+    });
+
+    it.each([
+      ["forum renommé (parent inconnu)", { type: 11, guildId: GUILD, parentId: "777777777777777777" }],
+      ["fil sans parent", { type: 11, guildId: GUILD, parentId: null }],
+    ])("fil légitime que le contrôle ne peut pas rattacher au forum (%s) : repli sur l'archivage VERROUILLÉ, échec signalé, jamais supprimé", async (_label, info) => {
+      const row = await relayed();
+      discord.getChannel.mockResolvedValue({ ok: true, data: { channelId: THREAD, ...info } });
+      const { logger } = await import("@/lib/logger");
+      const warn = vi.spyOn(logger, "warn");
+      expect((await run("remove", row.id, THREAD)).ok).toBe(true);
+      expect(discord.deleteThread).not.toHaveBeenCalled();
+      expect(discord.archive).toHaveBeenCalledWith(expect.objectContaining({ threadId: THREAD, locked: true }));
+      expect(warn).toHaveBeenCalledWith("player-classified-forum", expect.stringContaining("repli"), expect.any(Object));
+      expect((await db.playerClassified.findUniqueOrThrow({ where: { id: row.id } })).forumRemovedAt).toBeNull();
+    });
+
+    it("lecture du fil refusée (permission) au contrôle préalable : repli sur l'archivage verrouillé, échec signalé", async () => {
+      const row = await relayed();
+      discord.getChannel.mockResolvedValue({ ok: false, kind: "auth_or_permission", message: "Missing Access", retryable: false });
+      expect((await run("remove", row.id, THREAD)).ok).toBe(true);
+      expect(discord.deleteThread).not.toHaveBeenCalled();
+      expect(discord.archive).toHaveBeenCalledWith(expect.objectContaining({ threadId: THREAD, locked: true }));
+    });
+
+    it("la déduplication ne bloque pas un nouvel essai légitime : après un repli, le balayage du lendemain remet la suppression en file (occurrence du jour) et, la permission accordée, le fil est supprimé", async () => {
+      const row = await relayed();
+      await hideInDb();
+      discord.deleteThread.mockResolvedValueOnce({ ok: false, kind: "auth_or_permission", message: "Missing Permissions", retryable: false });
+      const { enqueuePlayerClassifiedForum, runPlayerClassifiedForumLifecycle } = await import("./player-classified-forum");
+      expect(await enqueuePlayerClassifiedForum({ listingId: row.id, communityId, intent: "remove", threadId: THREAD })).toBe("queued");
+      expect((await run("remove", row.id, THREAD)).ok).toBe(true);
+      expect((await db.playerClassified.findUniqueOrThrow({ where: { id: row.id } })).forumRemovedAt).toBeNull();
+      const tomorrow = new Date(Date.now() + 24 * 3600_000);
+      await runPlayerClassifiedForumLifecycle(tomorrow);
+      const retries = await events("remove");
+      expect(retries.map((event) => event.occurrence).sort()).toEqual([
+        "remove:" + THREAD,
+        "remove:" + THREAD + ":" + tomorrow.toISOString().slice(0, 10).replace(/-/g, ""),
+      ].sort());
+      // Les deux livraisons existent et sont résolubles par l'exécuteur (créneau versionné cohérent).
+      const { playerClassifiedForumResolver } = await import("./player-classified-forum");
+      const versioned = retries.find((event) => event.occurrence.split(":").length === 3)!;
+      const delivery = await db.notificationDelivery.findFirstOrThrow({ where: { eventId: versioned.id } });
+      expect(await playerClassifiedForumResolver.resolve({ event: versioned, delivery } as never)).toMatchObject({ eligible: true });
+      expect((await run("remove", row.id, THREAD)).ok).toBe(true);
+      expect(discord.deleteThread).toHaveBeenCalledTimes(2);
+      expect((await db.playerClassified.findUniqueOrThrow({ where: { id: row.id } })).forumRemovedAt).not.toBeNull();
+    });
+
+    it("coût REST : la liste des forums n'est lue qu'UNE fois pour plusieurs suppressions du même serveur (un GET par fil seulement)", async () => {
+      const rows = [] as Array<{ id: string }>;
+      for (let i = 0; i < 3; i++) rows.push(await relayed({ forumThreadId: "40000000000000000" + i }));
+      for (const [index, row] of rows.entries()) expect((await run("remove", row.id, "40000000000000000" + index)).ok).toBe(true);
+      expect(discord.forums).toHaveBeenCalledTimes(1);
+      expect(discord.getChannel).toHaveBeenCalledTimes(3);
+      expect(discord.deleteThread).toHaveBeenCalledTimes(3);
     });
 
     it("fil déjà absent (404 au contrôle) : objectif atteint, aucune suppression tentée", async () => {
@@ -556,13 +613,67 @@ describe.skipIf(!url)("relais forum des annonces de joueurs", () => {
       expect(await events("post")).toHaveLength(1);
     });
 
-    it("le rattrapage ignore un profil masqué, une annonce ancienne (plus de 6 h) et une annonce retirée", async () => {
-      await listing({ message: "ancienne", createdAt: new Date(Date.now() - 7 * 3600_000), expiresAt: new Date(Date.now() + 3600_000) });
-      await listing({ message: "retirée", forumRemovedAt: new Date() });
+    it("le rattrapage ignore un profil masqué, une annonce ancienne (plus de 6 h) et une annonce retirée, même marquées", async () => {
+      const marked = { forumSweptAt: new Date() };
+      await listing({ message: "ancienne", createdAt: new Date(Date.now() - 7 * 3600_000), expiresAt: new Date(Date.now() + 3600_000), ...marked });
+      await listing({ message: "retirée", forumRemovedAt: new Date(), ...marked });
       await hideInDb();
-      await listing({ message: "masquée" });
+      await listing({ message: "masquée", ...marked });
       const { runPlayerClassifiedForumLifecycle } = await import("./player-classified-forum");
       expect((await runPlayerClassifiedForumLifecycle(new Date())).postsQueued).toBe(0);
+      expect(await events("post")).toHaveLength(0);
+    });
+
+    it("le rattrapage ne vise QUE les annonces dont la mise en file a échoué : une annonce non marquée n'est jamais relayée par le balayage", async () => {
+      await listing({ message: "jamais tentée par le relais" });
+      const { runPlayerClassifiedForumLifecycle } = await import("./player-classified-forum");
+      expect((await runPlayerClassifiedForumLifecycle(new Date())).postsQueued).toBe(0);
+      expect(await events("post")).toHaveLength(0);
+    });
+
+    it("postsQueued ne compte que les mises en file réelles : la marque est consommée, un second passage ne recompte rien", async () => {
+      faults.eventCreation = true;
+      await create("Relais raté, puis rattrapé");
+      faults.eventCreation = false;
+      const { runPlayerClassifiedForumLifecycle } = await import("./player-classified-forum");
+      expect((await runPlayerClassifiedForumLifecycle(new Date())).postsQueued).toBe(1);
+      expect((await runPlayerClassifiedForumLifecycle(new Date())).postsQueued).toBe(0);
+      expect((await db.playerClassified.findFirstOrThrow({ where: { createdById: id("author") } })).forumSweptAt).toBeNull();
+    });
+  });
+
+  describe("« 🟢 Dispo ce soir » n'est jamais relayée, par aucun chemin (relais allumé)", () => {
+    it("déclaration « dispo ce soir » : ni événement à la création, ni rattrapage, ni post par le résolveur ou le runner, ni ping consommé", async () => {
+      await optIn("other"); mentionable();
+      const { replaceTonightClassifieds } = await import("./tonight-write");
+      await replaceTonightClassifieds({ communityId, userId: id("author"), gameIds: [id("game")], message: "🟢 Dispo ce soir — Hades II", createdAt: new Date(), expiresAt: new Date(Date.now() + 3600_000) });
+      const row = await db.playerClassified.findFirstOrThrow({ where: { createdById: id("author") } });
+      const { runPlayerClassifiedForumLifecycle, enqueuePlayerClassifiedForum, playerClassifiedForumResolver } = await import("./player-classified-forum");
+      // balayage (rattrapage) : rien, même plusieurs déclarations de suite
+      await runPlayerClassifiedForumLifecycle(new Date());
+      await replaceTonightClassifieds({ communityId, userId: id("author"), gameIds: [id("game")], message: "🟢 Dispo ce soir — Hades II", createdAt: new Date(), expiresAt: new Date(Date.now() + 3600_000) });
+      expect((await runPlayerClassifiedForumLifecycle(new Date())).postsQueued).toBe(0);
+      expect(await events("post")).toHaveLength(0);
+      // même marquée « à retenter » (marque hostile ou erronée), jamais rattrapée
+      await db.playerClassified.updateMany({ where: { createdById: id("author") }, data: { forumSweptAt: new Date() } });
+      expect((await runPlayerClassifiedForumLifecycle(new Date())).postsQueued).toBe(0);
+      expect(await events("post")).toHaveLength(0);
+      // enfilement forcé : le résolveur refuse
+      const current = await db.playerClassified.findFirstOrThrow({ where: { createdById: id("author") } });
+      expect(await enqueuePlayerClassifiedForum({ listingId: current.id, communityId, intent: "post" })).toBe("queued");
+      const [event] = await events("post");
+      const delivery = await db.notificationDelivery.findFirstOrThrow({ where: { eventId: event.id } });
+      expect(await playerClassifiedForumResolver.resolve({ event, delivery } as never)).toMatchObject({ eligible: false });
+      // et le runner refuse aussi, sans appel Discord ni ping
+      expect((await run("post", current.id)).ok).toBe(false);
+      expect(discord.createPost).not.toHaveBeenCalled();
+      expect(await pingRows()).toHaveLength(0);
+      expect(row.id).toBeTruthy();
+    });
+
+    it("un message tapé à la main avec ce préfixe dans le formulaire normal n'est pas relayé non plus", async () => {
+      expect((await create("🟢 Dispo ce soir — tapé à la main")).status).toBe("created");
+      expect(await createViaWeb("🟢 Dispo ce soir via la page web")).toBe("REDIRECT:/joueurs");
       expect(await events("post")).toHaveLength(0);
     });
   });
